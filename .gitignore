@@ -1,0 +1,5 @@
+# Local planning notes and documentation (kept out of the repository)
+plan/
+docs/
+
+.DS_Store
