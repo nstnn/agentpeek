@@ -1,0 +1,13 @@
+{
+  // Code that runs in the sandboxed browser window. It has the DOM but no Node.js types.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "jsx": "react-jsx"
+  },
+  // src/core and src/shared are also checked here, without Node.js types, so they stay usable in the window.
+  "include": ["src/renderer/src/**/*", "src/core/**/*", "src/shared/**/*"],
+  "exclude": ["**/*.test.ts"]
+}

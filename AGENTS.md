@@ -4,7 +4,7 @@ AgentPeek is a standalone macOS app built with Electron, TypeScript, and React. 
 
 ## Where to look
 
-- [`README.md`](README.md): what AgentPeek is, its status, and (once code exists) how to run it.
+- [`README.md`](README.md): what AgentPeek is, its status, how to set it up, run, and check it, and the source folder layout.
 - [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md): product behavior, scope, privacy rules, and open decisions; it separates planned from implemented behavior.
 - [`plan/agent-sessions/agent-sessions.md`](plan/agent-sessions/agent-sessions.md): Phase 1 requirements, constraints, and task cards, plus the observed formats of the tools' local files.
 

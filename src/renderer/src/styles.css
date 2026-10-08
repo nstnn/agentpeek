@@ -1,0 +1,36 @@
+/* System colors follow the macOS Light or Dark appearance automatically. */
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  background: Canvas;
+  color: CanvasText;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+.placeholder {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.placeholder h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.placeholder p {
+  margin: 0;
+  color: color-mix(in srgb, CanvasText 65%, Canvas);
+}

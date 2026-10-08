@@ -2,4 +2,16 @@
 plan/
 docs/
 
+# Dependencies and build output
+node_modules/
+out/
+dist/
+
+# Test and tool output
+coverage/
+test-results/
+playwright-report/
+.eslintcache
+*.log
+
 .DS_Store

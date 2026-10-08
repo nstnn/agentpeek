@@ -1,0 +1,6 @@
+{
+  // Editors use this file to find the right project for each source file.
+  // The main process and the renderer are checked separately because they run in different environments.
+  "files": [],
+  "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.web.json" }]
+}
