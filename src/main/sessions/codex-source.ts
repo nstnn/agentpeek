@@ -26,6 +26,7 @@ import {
   type RecentMessages,
   type SessionSource
 } from './session-source'
+import { createQueue, isMissing } from './source-support'
 
 // The Codex source (TASK-007). It lists the user's Codex threads and reports their facts.
 // - Which threads: at each reconcile, a metadata-only sweep lists the rollouts and their
@@ -396,22 +397,4 @@ function lastActivityAt(entry: TrackedRollout): number {
 
 function newestFirst(a: TrackedRollout, b: TrackedRollout): number {
   return lastActivityAt(b) - lastActivityAt(a) || a.meta.id.localeCompare(b.meta.id)
-}
-
-function isMissing(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null || !('code' in error)) return false
-  return error.code === 'ENOENT' || error.code === 'ENOTDIR'
-}
-
-/**
- * Runs tasks one at a time, in call order, so a reconcile and a refresh never change the source's
- * state at the same time.
- */
-function createQueue(): <T>(task: () => Promise<T>) => Promise<T> {
-  let last: Promise<unknown> = Promise.resolve()
-  return (task) => {
-    const run = last.then(task, task)
-    last = run.catch(() => undefined)
-    return run
-  }
 }

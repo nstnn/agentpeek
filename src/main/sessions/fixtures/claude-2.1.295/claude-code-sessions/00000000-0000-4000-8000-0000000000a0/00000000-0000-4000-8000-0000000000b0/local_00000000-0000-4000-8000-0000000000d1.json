@@ -1,0 +1,18 @@
+{
+  "sessionId": "local_synthetic",
+  "cliSessionId": "00000000-0000-4000-8000-0000000000c1",
+  "cwd": "/Users/synthetic/projects/demo",
+  "createdAt": 1768467600000,
+  "lastActivityAt": 1768467610000,
+  "model": "claude-synthetic",
+  "isArchived": false,
+  "permissionMode": "default",
+  "mcpServers": {
+    "synthetic": {
+      "command": "synthetic"
+    }
+  },
+  "completedTurns": 1,
+  "lastAssistantUuid": "00000000-0000-4000-8000-000000000905",
+  "title": "Synthetic Desktop session"
+}
