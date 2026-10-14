@@ -1,0 +1,19 @@
+{
+  "pid": 48151,
+  "sessionId": "00000000-0000-4000-8000-0000000000c1",
+  "cwd": "/Users/synthetic/projects/demo",
+  "startedAt": 1768467600000,
+  "version": "2.1.295",
+  "peerProtocol": 1,
+  "peerFeatures": [],
+  "kind": "interactive",
+  "entrypoint": "claude-desktop",
+  "messagingSocketPath": "/tmp/synthetic.sock",
+  "name": "Synthetic Desktop session",
+  "nameSince": 1768467600000,
+  "updatedAt": 1768467664000,
+  "procStart": "Thu Jan 15 09:00:00 2026",
+  "status": "waiting",
+  "statusUpdatedAt": 1768467664000,
+  "waitingFor": "permission prompt"
+}

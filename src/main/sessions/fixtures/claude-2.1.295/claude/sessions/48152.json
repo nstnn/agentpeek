@@ -1,0 +1,18 @@
+{
+  "pid": 48152,
+  "sessionId": "00000000-0000-4000-8000-0000000000c4",
+  "cwd": "/Users/synthetic/projects/demo",
+  "startedAt": 1768467600000,
+  "version": "2.1.295",
+  "peerProtocol": 1,
+  "peerFeatures": [],
+  "kind": "interactive",
+  "entrypoint": "claude-desktop",
+  "messagingSocketPath": "/tmp/synthetic.sock",
+  "name": "Synthetic helper",
+  "nameSince": 1768467600000,
+  "updatedAt": 1768468000000,
+  "procStart": "Thu Jan 15 09:00:00 2026",
+  "status": "idle",
+  "statusUpdatedAt": 1768468000000
+}
