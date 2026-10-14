@@ -1,0 +1,46 @@
+# AgentPeek verification map
+
+This folder is the maintained source for verifying what a user of AgentPeek can observe. Read this index before driving the app, then follow the matching feature file as the recipe. Command names below (`launch`, `doctor`, `click`, …) are subcommands of `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs`; the feature files spell each command out in full.
+
+## Baseline preconditions
+
+- The user approved launching AgentPeek for this task (see the skill's ground rules).
+- `launch --label <feature>` succeeded, and `doctor` prints `doctor: OK`.
+- The run uses an empty synthetic home unless the feature file names a fixture. The app reads no tool files yet, so every feature below works on the empty home.
+- No step drives an instance that this run did not start.
+
+## Driving conventions
+
+- Start every recipe from a fresh `launch` unless its preconditions say otherwise. Lifecycle recipes end the app; launch again before the next recipe.
+- Find handles with `aria` (page roles and names) and `menu` (menu labels). Use them literally, including case and spacing.
+- Act through `click`, `key`, `type`, `menu-click`, `focus`, and `relaunch`. Observe through `aria`, `menu`, `eval`, `main-eval`, `screenshot`, and `wait-exit`.
+- Menu items need the window focused: run `focus` before `menu-click` when `menu-click` reports `window not focused`.
+- Never change the Mac's settings to reach a state. Use the overrides a feature file names instead, and report them as overrides.
+
+## Proof and skip reporting
+
+- Capture the user action and the resulting state, not only the final screen: an `aria` or `menu` snapshot and a screenshot before and after the change, with the action in `actions.jsonl`.
+- Record the feature file and sub-feature ID with every artifact name, for example `app-menu-reload-disabled.menu.txt`.
+- When a step cannot run, report the command you tried and the unmet precondition. Never report a skipped entry point as verified through a different one.
+- A step whose observed result differs from the recipe is a failure to report, not a recipe to rewrite. Change a recipe only when the product's intended behavior changed.
+
+## Feature entry contract
+
+Each feature file starts with an H1 title and one paragraph describing the user-visible behavior. It then uses exactly four H2 sections, in this order:
+
+1. `Sub-features` lists short IDs with one line for each behavior.
+2. `How to get to it (user POV)` lists every user entry point.
+3. `Driving it with agentpeek.mjs` starts with `Preconditions:` and uses labeled bullets that pair each user action with an exact command and its observable result.
+4. `Gotchas` lists traps that can waste or invalidate a verification run.
+
+Keep implementation details out of the map. Name only user paths, stable handles, required state, commands, and observable proof.
+
+## Features
+
+- [Main window](./main-window.md) covers the window that opens at launch, its placeholder content, its sizes, and its Light and Dark appearance.
+- [Application menu](./app-menu.md) covers the menu bar's items, shortcuts, and disabled states.
+- [Window and app lifecycle](./window-lifecycle.md) covers closing the window, quitting, and minimizing.
+- [Single instance](./single-instance.md) covers opening AgentPeek while it is already open.
+- [Renderer lockdown](./renderer-lockdown.md) covers what the page can and cannot do: no Node.js, no navigation, no new windows, no remote loads, no permissions.
+
+Not yet built, so not mapped: the session list, session detail, pins and read markers, Reload Sessions, the Session menu, tool health, and the Fixture data banner. Add a feature file in the change that ships each of them.
