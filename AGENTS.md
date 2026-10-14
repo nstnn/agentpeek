@@ -25,6 +25,12 @@ AgentPeek is a standalone macOS app built with Electron, TypeScript, and React. 
 - Ask before launching anything that opens a window. Agent-run launches use synthetic fixture data, unless the user agrees to real data for that run. Afterwards, quit every process you started.
 - Never commit `plan/` or `docs/`, and commit or push only when the user asks. Write code, documentation, plans, and commit messages in English.
 
+## Verification
+
+- After changing anything a user of AgentPeek can observe (what the window shows, its menus and shortcuts, how the window and app open, close, and quit, or what the page is allowed to do), follow [`.agents/skills/verify-agentpeek/SKILL.md`](.agents/skills/verify-agentpeek/SKILL.md) for the affected features and include the evidence in your report.
+- No evidence means the change is not done. If verification cannot run, for example because the user declined a launch, report the change as unverified and say why.
+- Adding or changing a feature updates `.agents/skills/verify-agentpeek/features/` in the same change.
+
 ## Working with project documents
 
 Read the documents relevant to a change and update them when their content becomes inaccurate. Change `AGENTS.md` only when a project-wide rule, the core project identity, or this document map changes.
