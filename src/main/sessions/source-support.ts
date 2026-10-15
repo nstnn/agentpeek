@@ -1,4 +1,4 @@
-// Small helpers both sources share.
+// Small helpers that several files in this folder share (the sources and the state store).
 
 /** Whether a file-system error means the file or folder is not there. */
 export function isMissing(error: unknown): boolean {
