@@ -17,6 +17,11 @@ export interface ClaudeFactsInput {
   /** The session's registry entry, or null when its process is not running. */
   registry: ClaudeRegistryEntry | null
   /**
+   * Whether the registry folder could be listed. When it could not, no session's activity is
+   * known: a missing registry entry no longer means the process is not running.
+   */
+  registryReadable: boolean
+  /**
    * Whether the registry's process still runs (TASK-002). It is only checked, and only matters,
    * while the registry says `busy` or `waiting`.
    */
@@ -36,7 +41,7 @@ export function claudeSessionFacts(input: ClaudeFactsInput): SessionFacts {
       // The plan's title rule: the catalog title, then the registry name, then the custom title.
       title: catalog?.title ?? registry?.name ?? transcript.customTitle,
       workspacePath: catalog?.cwd ?? registry?.cwd ?? null,
-      lastActivityAt: lastActivityAt(input),
+      lastActivityAt: claudeLastActivityAt(input),
       toolVersion: registry?.version ?? transcript.version
     },
     turn: turnFacts(input),
@@ -44,8 +49,13 @@ export function claudeSessionFacts(input: ClaudeFactsInput): SessionFacts {
   }
 }
 
-/** The newer of the catalog's activity time and the transcript's last record time. */
-function lastActivityAt(input: ClaudeFactsInput): number {
+/**
+ * The session's last activity: the newer of the catalog's activity time and the transcript's last
+ * record time.
+ */
+export function claudeLastActivityAt(
+  input: Pick<ClaudeFactsInput, 'catalog' | 'transcript' | 'transcriptModifiedAt'>
+): number {
   const times = [input.catalog?.lastActivityAt, input.transcript.lastRecordAt].filter(
     (time) => typeof time === 'number'
   )
@@ -54,7 +64,9 @@ function lastActivityAt(input: ClaudeFactsInput): number {
 
 function turnFacts(input: ClaudeFactsInput): TurnFacts {
   const { registry } = input
-  if (input.transcriptStatus === 'unreadable') return { kind: 'unreadable' }
+  if (input.transcriptStatus === 'unreadable' || !input.registryReadable) {
+    return { kind: 'unreadable' }
+  }
   if (input.transcriptStatus === 'unsupported') return { kind: 'unsupported' }
   if (registry === null) return { kind: 'claude', registry: null }
   if (registry.status === 'unrecognized') return { kind: 'unsupported' }

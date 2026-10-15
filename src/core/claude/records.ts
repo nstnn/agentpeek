@@ -106,6 +106,13 @@ export const STOP_MARKER = '[Request interrupted by user]'
 /** Written when the user denies a tool permission, which also ends the turn. Matched exactly. */
 export const DENIED_MARKER = '[Request interrupted by user for tool use]'
 
+/**
+ * The output of a slash command or a `!` shell command. Claude Code writes it as a user record,
+ * without an `origin` in the files seen, but the user did not type it, so it is not a prompt. The
+ * command itself (`<command-name>`, `<bash-input>`) is.
+ */
+const LOCAL_OUTPUT = /^\s*<(local-command-stdout|local-command-stderr|bash-stdout|bash-stderr)>/
+
 type JsonObject = Record<string, unknown>
 
 /** Reads a Desktop catalog file. Only the listed fields are picked from it. */
@@ -191,6 +198,7 @@ function userRecord(value: JsonObject, at: number | null, version: string | null
     return { kind: 'other', at, version }
   if (value.isVisibleInTranscriptOnly === true) return { kind: 'other', at, version }
   if (!fromUser(value.origin) || text.trim() === '') return { kind: 'other', at, version }
+  if (LOCAL_OUTPUT.test(text)) return { kind: 'other', at, version }
   return { kind: 'prompt', at, version, text }
 }
 

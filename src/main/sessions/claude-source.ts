@@ -1,4 +1,8 @@
-import { type ClaudeFileStatus, claudeSessionFacts } from '../../core/claude/facts'
+import {
+  type ClaudeFileStatus,
+  claudeLastActivityAt,
+  claudeSessionFacts
+} from '../../core/claude/facts'
 import { claudeMessages } from '../../core/claude/messages'
 import {
   type CatalogFileResult,
@@ -89,6 +93,12 @@ interface TrackedTranscript {
   status: ClaudeFileStatus
 }
 
+/** How many files of one kind AgentPeek recognized, and how many it did not. */
+interface FormatCount {
+  recognized: number
+  unrecognized: number
+}
+
 /** What listing one of Claude Code's folders found. */
 type FolderListing =
   { kind: 'files'; files: ListedFile[] } | { kind: 'missing' } | { kind: 'no-access' }
@@ -131,6 +141,8 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
   const tracked = new Map<string, TrackedTranscript>()
   /** The last liveness answer for each registry process. */
   const liveness = new Map<number, { procStart: string | null; at: number; alive: boolean }>()
+  /** Whether the last reconcile could list the registry folder. A missing one counts: no process. */
+  let registryReadable = true
   let health: ToolHealth = { state: 'checking' }
   let lastReadAt: number | null = null
   const serialized = createQueue()
@@ -142,6 +154,9 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
       listFolder(() => listCatalogFiles(paths)),
       checkFolder(paths.projects)
     ])
+    // Without the registry, no session's activity is known, so every session shows as Unknown
+    // ("Can't read") rather than Idle. The entries read before are dropped: they may be out of date.
+    registryReadable = registry.kind !== 'no-access'
     if (registry.kind === 'missing' && catalog.kind === 'missing' && projects === 'missing') {
       health = { state: 'not-installed' }
       forgetEverything()
@@ -158,11 +173,9 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
     } else {
       lastReadAt = startedAt
       const format = formatCheck()
-      // Every file AgentPeek looked at is in a format it does not know: Claude Code has changed.
-      health =
-        format.recognized === 0 && format.unrecognized > 0
-          ? { state: 'unsupported', toolVersion: format.version }
-          : { state: 'connected', lastReadAt: startedAt }
+      health = format.changed
+        ? { state: 'unsupported', toolVersion: format.version }
+        : { state: 'connected', lastReadAt: startedAt }
     }
     return facts(all)
   }
@@ -346,6 +359,15 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
         continue
       }
       entry.modifiedAt = transcript.modifiedAt
+      // `activeAt` can be later than the last activity: records without a time, such as a custom
+      // title, also change the file's modification time. A session last active before the window
+      // takes no place in the list.
+      const lastActivityAt = claudeLastActivityAt({
+        catalog: candidate.catalog,
+        transcript: entry.state,
+        transcriptModifiedAt: entry.modifiedAt
+      })
+      if (!open && lastActivityAt < cutoff) continue
       kept.set(candidate.id, entry)
     }
     tracked.clear()
@@ -435,6 +457,7 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
         sessionId: id,
         catalog: candidate.catalog,
         registry,
+        registryReadable,
         ownerAlive: registry === null ? true : (liveness.get(registry.pid)?.alive ?? true),
         transcript: transcript.state,
         transcriptStatus: transcript.status,
@@ -449,30 +472,39 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
     )
   }
 
-  /** Counts the files AgentPeek recognized and those it did not, for the Unsupported state. */
-  function formatCheck(): { recognized: number; unrecognized: number; version: string | null } {
-    let recognized = 0
-    let unrecognized = 0
+  /**
+   * Whether Claude Code has changed a format, for the Unsupported state: one kind of file (registry,
+   * catalog, or transcript) has files, and AgentPeek recognized none of them. Each kind is checked
+   * on its own, so a change to one is seen while the others still read. The version comes from the
+   * registry, else a transcript.
+   */
+  function formatCheck(): { changed: boolean; version: string | null } {
+    const registry: FormatCount = { recognized: 0, unrecognized: 0 }
+    const catalog: FormatCount = { recognized: 0, unrecognized: 0 }
+    const transcripts: FormatCount = { recognized: 0, unrecognized: 0 }
     let version: string | null = null
     for (const { result } of registryFiles.values()) {
       if (result.kind === 'entry') {
-        recognized++
+        registry.recognized++
         version ??= result.entry.version
       } else if (result.kind === 'unrecognized') {
-        unrecognized++
+        registry.unrecognized++
         version ??= result.version
       }
     }
     for (const { result } of catalogFiles.values()) {
-      if (result.kind === 'entry') recognized++
-      else if (result.kind === 'unrecognized') unrecognized++
+      if (result.kind === 'entry') catalog.recognized++
+      else if (result.kind === 'unrecognized') catalog.unrecognized++
     }
     for (const transcript of tracked.values()) {
-      if (transcript.status === 'read') recognized++
-      else if (transcript.status === 'unsupported') unrecognized++
+      if (transcript.status === 'read') transcripts.recognized++
+      else if (transcript.status === 'unsupported') transcripts.unrecognized++
       version ??= transcript.state.version
     }
-    return { recognized, unrecognized, version }
+    const changed = [registry, catalog, transcripts].some(
+      (count) => count.recognized === 0 && count.unrecognized > 0
+    )
+    return { changed, version }
   }
 
   function forgetEverything(): void {

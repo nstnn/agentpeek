@@ -12,7 +12,7 @@ import {
   writeFile
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, sep } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   apiErrorLine,
@@ -524,6 +524,28 @@ describe('catalog', () => {
     expect(opened).not.toContain(join(paths.projects, CWD_FOLDER, `${oldIdle}.jsonl`))
   })
 
+  it('gives no place to sessions whose transcripts changed without a timed record', async () => {
+    // Records without a time (such as a custom title) changed these transcripts a minute ago, but
+    // the sessions were last active 8 days ago.
+    for (let n = 0; n < 100; n++) {
+      const id = syntheticId(0x400 + n)
+      // Half are Claude.app sessions, half CLI sessions: either alone would fill the cap.
+      if (n < 50) await writeCatalog({ cliSessionId: id, lastActivityAt: NOW - 8 * DAY })
+      else await writeRegistry({ pid: 5000 + n, sessionId: id, status: 'idle' })
+      await writeTranscript(
+        id,
+        [...finishedSession(R1, NOW - 8 * DAY), customTitleLine('Synthetic title', id)],
+        NOW - MINUTE
+      )
+    }
+    // Claude.app saw activity 2 minutes ago, after the transcript's last timed record.
+    await writeCatalog({ cliSessionId: S1, lastActivityAt: NOW - 2 * MINUTE })
+    await writeTranscript(S1, finishedSession(R1, NOW - 8 * DAY), NOW - 2 * MINUTE)
+    const facts = await createSource().catalog()
+    expect(ids(facts)).toEqual([S1])
+    expect(facts[0]?.summary.lastActivityAt).toBe(NOW - 2 * MINUTE)
+  })
+
   it('does not read the transcript of an idle session last active more than 7 days ago', async () => {
     await writeRegistry({ pid: 4242, sessionId: S1, status: 'idle' })
     const path = await writeTranscript(S1, finishedSession(R1, NOW - 9 * DAY), NOW - 9 * DAY)
@@ -616,6 +638,15 @@ describe('health', () => {
     expect(source.health()).toEqual({ state: 'connected', lastReadAt: NOW })
   })
 
+  it('reports sessions as Idle without a registry folder, as no process runs', async () => {
+    await rm(paths.registry, { recursive: true })
+    await writeCatalog({ cliSessionId: S1 })
+    await writeTranscript(S1, finishedSession(R1))
+    const source = createSource()
+    expect((await source.catalog())[0]?.turn).toEqual({ kind: 'claude', registry: null })
+    expect(source.health()).toEqual({ state: 'connected', lastReadAt: NOW })
+  })
+
   it('is No access when a folder cannot be listed, with the last read time', async () => {
     await writeCatalog({ cliSessionId: S1 })
     await writeTranscript(S1, finishedSession(R1))
@@ -625,6 +656,24 @@ describe('health', () => {
     clock = NOW + MINUTE
     expect(await source.catalog()).toEqual([])
     expect(source.health()).toEqual({ state: 'no-access', lastReadAt: NOW })
+  })
+
+  it('reports no activity, not Idle, while the registry folder cannot be listed', async () => {
+    await writeCatalog({ cliSessionId: S1 })
+    await writeTranscript(S1, finishedSession(R1))
+    await writeRegistry({ pid: 4242, sessionId: S1, status: 'busy' })
+    const source = createSource()
+    expect((await source.catalog())[0]?.turn).toMatchObject({ registry: { status: 'busy' } })
+    await chmod(paths.registry, 0o000)
+    clock = NOW + MINUTE
+    const facts = await source.catalog()
+    expect(ids(facts)).toEqual([S1])
+    expect(facts[0]?.turn).toEqual({ kind: 'unreadable' })
+    expect(source.health()).toEqual({ state: 'no-access', lastReadAt: NOW })
+    await chmod(paths.registry, 0o755)
+    clock = NOW + 2 * MINUTE
+    expect((await source.catalog())[0]?.turn).toMatchObject({ registry: { status: 'busy' } })
+    expect(source.health()).toEqual({ state: 'connected', lastReadAt: NOW + 2 * MINUTE })
   })
 
   it('is Unsupported, with the version, when no file is in a format it knows', async () => {
@@ -638,6 +687,69 @@ describe('health', () => {
     const source = createSource()
     expect(await source.catalog()).toEqual([])
     expect(source.health()).toEqual({ state: 'unsupported', toolVersion: '9.0.0' })
+  })
+
+  it('is Unsupported when only the registry format changed', async () => {
+    await writeCatalog({ cliSessionId: S1 })
+    await writeTranscript(S1, finishedSession(R1))
+    const registry = JSON.parse(registryJson({ pid: 4242, sessionId: S1, status: 'busy' })) as {
+      pid?: number
+    }
+    delete registry.pid
+    await writeFile(
+      join(paths.registry, '4242.json'),
+      JSON.stringify({ ...registry, processId: 4242, version: '9.0.0' })
+    )
+    const source = createSource()
+    // The catalog and the transcript still read, but the session's activity is not known.
+    expect(ids(await source.catalog())).toEqual([S1])
+    expect(source.health()).toEqual({ state: 'unsupported', toolVersion: '9.0.0' })
+  })
+
+  it('is Unsupported when only the catalog format changed', async () => {
+    const catalog = JSON.parse(catalogJson({ cliSessionId: S1 })) as { cliSessionId?: string }
+    delete catalog.cliSessionId
+    const path = join(paths.catalog, 'account', 'organization', 'local_synthetic.json')
+    await mkdir(dirname(path), { recursive: true })
+    await writeFile(path, JSON.stringify({ ...catalog, cliSession: S1 }))
+    await writeTranscript(S1, finishedSession(R1))
+    await writeRegistry({ pid: 4242, sessionId: S2, status: 'busy' })
+    await writeTranscript(S2, finishedSession(R2))
+    const source = createSource()
+    // The CLI session still reads, but the Claude.app session is missing from the list.
+    expect(ids(await source.catalog())).toEqual([S2])
+    expect(source.health()).toEqual({ state: 'unsupported', toolVersion: VERSION })
+  })
+
+  it('is Unsupported when only the transcript format changed', async () => {
+    // A CLI session (registry only) and a Claude.app session.
+    await writeRegistry({ pid: 4242, sessionId: S1, status: 'idle' })
+    await writeTranscript(S1, ['{"kind":"future-record"}'])
+    await writeCatalog({ cliSessionId: S2 })
+    await writeTranscript(S2, ['["a list"]'])
+    const source = createSource()
+    expect((await source.catalog()).map((fact) => fact.turn)).toEqual([
+      { kind: 'unsupported' },
+      { kind: 'unsupported' }
+    ])
+    expect(source.health()).toEqual({ state: 'unsupported', toolVersion: VERSION })
+  })
+
+  it('is Connected when some files of each kind are in a format it knows', async () => {
+    await writeFile(
+      join(paths.registry, '4241.json'),
+      JSON.stringify({ processId: 4241, version: '9.0.0' })
+    )
+    await writeRegistry({ pid: 4242, sessionId: S1, status: 'idle' })
+    const path = join(paths.catalog, 'account', 'organization', 'local_synthetic.json')
+    await mkdir(dirname(path), { recursive: true })
+    await writeFile(path, JSON.stringify({ id: 'synthetic' }))
+    await writeCatalog({ cliSessionId: S2 })
+    await writeTranscript(S1, finishedSession(R1))
+    await writeTranscript(S2, finishedSession(R2))
+    const source = createSource()
+    expect(ids(await source.catalog())).toEqual([S2, S1])
+    expect(source.health()).toEqual({ state: 'connected', lastReadAt: NOW })
   })
 
   it('is Connected with the time of the last read', async () => {
@@ -788,6 +900,27 @@ describe('refresh', () => {
       registry: { ownerAlive: false }
     })
     expect(alive).toHaveBeenLastCalledWith(4242, 'Other start')
+  })
+
+  it('ignores a changed path with `.` or `..` parts', async () => {
+    await writeCatalog({ cliSessionId: S1 })
+    await writeTranscript(S1, finishedSession(R1))
+    await writeCatalog({ cliSessionId: S2 })
+    const source = createSource()
+    await source.catalog()
+    // A listed transcript named another way, and the transcript of a session not listed yet.
+    const listed = [paths.projects, CWD_FOLDER, '..', CWD_FOLDER, `${S1}.jsonl`].join(sep)
+    const added = await writeTranscript(S2, finishedSession(R2))
+    const addedAnotherWay = [paths.projects, '.', CWD_FOLDER, `${S2}.jsonl`].join(sep)
+    opened = []
+    const facts = await source.refresh([listed, addedAnotherWay])
+    expect(ids(facts)).toEqual([S1])
+    expect(facts[0]?.turn).toEqual({ kind: 'claude', registry: null })
+    expect(opened).toEqual([])
+    // Named the usual way, the new transcript is read, and both sessions stay readable.
+    expect(ids(await source.refresh([added]))).toEqual([S1, S2])
+    expect((await source.catalog()).map((fact) => fact.turn.kind)).toEqual(['claude', 'claude'])
+    expect(opened).not.toContain(listed)
   })
 
   it('drops a session whose transcript was removed', async () => {

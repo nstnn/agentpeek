@@ -1,6 +1,6 @@
 import { chmod, mkdir, mkdtemp, rm, symlink, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   checkFolder,
@@ -86,6 +86,19 @@ describe('classifyPath', () => {
       join(home, '.claude', 'history.jsonl'),
       'relative/path.jsonl'
     ]) {
+      expect(classifyPath(paths, path)).toEqual({ kind: 'other' })
+    }
+  })
+
+  it('ignores paths with `.` or `..` parts, which the access gate refuses', () => {
+    // Joined by hand: `join` would remove the parts.
+    for (const path of [
+      [paths.projects, 'folder', '..', 'folder', `${SESSION}.jsonl`],
+      [paths.projects, '.', 'folder', `${SESSION}.jsonl`],
+      [paths.projects, 'folder', '', `${SESSION}.jsonl`],
+      [paths.registry, '..', 'sessions', '4242.json'],
+      [paths.catalog, 'a', '.', 'b', `local_${SESSION}.json`]
+    ].map((parts) => parts.join(sep))) {
       expect(classifyPath(paths, path)).toEqual({ kind: 'other' })
     }
   })
