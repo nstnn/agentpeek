@@ -171,7 +171,40 @@ describe('parseRecord', () => {
   it('reads a slash command or a shell command the user ran as a prompt', () => {
     const command =
       '<command-message>synthetic</command-message>\n<command-name>/synthetic</command-name>'
-    expect(parseRecord(promptLine(command, T0))).toMatchObject({ kind: 'prompt', text: command })
+    const shell = '<bash-input>echo synthetic</bash-input>'
+    for (const text of [command, shell]) {
+      for (const origin of ['human', null]) {
+        expect(parseRecord(promptLine(text, T0, { origin }))).toMatchObject({
+          kind: 'prompt',
+          text
+        })
+      }
+    }
+  })
+
+  it('keeps the output of a slash command or a shell command only as activity', () => {
+    for (const tag of [
+      'local-command-stdout',
+      'local-command-stderr',
+      'bash-stdout',
+      'bash-stderr'
+    ]) {
+      const output = `<${tag}>Synthetic output.</${tag}>`
+      for (const text of [output, `\n${output}`]) {
+        for (const origin of [null, 'human']) {
+          for (const asParts of [false, true]) {
+            expect(parseRecord(promptLine(text, T0, { origin, asParts }))).toEqual({
+              kind: 'other',
+              at: T0,
+              version: VERSION
+            })
+          }
+        }
+      }
+    }
+    // Anywhere but at the start, the tag is the user's own text.
+    const quoted = 'Why does <bash-stdout> appear here?'
+    expect(parseRecord(promptLine(quoted, T0))).toMatchObject({ kind: 'prompt', text: quoted })
   })
 
   it('does not take messages the user did not type as prompts', () => {

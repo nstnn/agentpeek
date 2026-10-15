@@ -235,10 +235,19 @@ describe('claudeMessages', () => {
         promptLine('Synthetic prompt.', T0),
         interruptLine(STOP_MARKER, T0 + SECOND),
         promptLine('Synthetic notice.', T0 + 2 * SECOND, { origin: 'task-notification' }),
-        apiErrorLine('rate_limit', T0 + 3 * SECOND)
+        apiErrorLine('rate_limit', T0 + 3 * SECOND),
+        promptLine('<command-name>/synthetic</command-name>', T0 + 4 * SECOND, { origin: null }),
+        promptLine(
+          '<local-command-stdout>Synthetic output.</local-command-stdout>',
+          T0 + 5 * SECOND,
+          { origin: null }
+        )
       ])
     )
-    expect(messages).toEqual([{ kind: 'prompt', text: 'Synthetic prompt.', at: T0 }])
+    expect(messages).toEqual([
+      { kind: 'prompt', text: 'Synthetic prompt.', at: T0 },
+      { kind: 'prompt', text: '<command-name>/synthetic</command-name>', at: T0 + 4 * SECOND }
+    ])
   })
 })
 
@@ -266,6 +275,7 @@ describe('claudeSessionFacts', () => {
         lastActivityAt: T0 + MINUTE
       },
       registry: null,
+      registryReadable: true,
       ownerAlive: true,
       transcript: {
         lastReply: null,
@@ -350,6 +360,14 @@ describe('claudeSessionFacts', () => {
     expect(claudeSessionFacts(input({ registry, transcriptStatus: 'unreadable' })).turn).toEqual({
       kind: 'unreadable'
     })
+  })
+
+  it('reports no activity while the registry folder cannot be listed', () => {
+    for (const known of [null, registry]) {
+      expect(claudeSessionFacts(input({ registry: known, registryReadable: false })).turn).toEqual({
+        kind: 'unreadable'
+      })
+    }
   })
 
   it('passes the last reply through', () => {

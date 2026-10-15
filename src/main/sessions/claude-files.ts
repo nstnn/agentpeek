@@ -1,6 +1,6 @@
 import type { Dirent, Stats } from 'node:fs'
 import { lstat, readdir } from 'node:fs/promises'
-import { isAbsolute, join, relative, sep } from 'node:path'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { isMissing } from './source-support'
 
 // Where Claude Code keeps its files, and metadata-only listings of them. Listing a folder and
@@ -70,6 +70,8 @@ function transcriptSessionId(name: string): string | null {
 }
 
 export function classifyPath(paths: ClaudePaths, path: string): ClaudePathKind {
+  // A relative path, or one with `.` or `..` parts: the access gate refuses it, so it never reads.
+  if (resolve(path) !== path) return { kind: 'other' }
   const registry = namesInside(paths.registry, path)
   if (registry?.length === 1 && isRegistryName(registry[0] ?? '')) return { kind: 'registry' }
   const catalog = namesInside(paths.catalog, path)
