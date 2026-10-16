@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CODEX_QUIET_LIMIT_MS } from './activity'
 import { establishBaseline, markRead } from './attention'
-import { deriveSession } from './derive-session'
+import { deriveSession, factsUnderHealth } from './derive-session'
 import type { SessionFacts, SessionLocalState, SessionReply } from './session'
 import { EMPTY_LOCAL_STATE } from './session'
 
@@ -106,5 +106,30 @@ describe('deriveSession', () => {
       deriveSession({ facts, local: EMPTY_LOCAL_STATE, baselineAt: FIRST_LAUNCH, now }).activity
     expect(at(lastWrite + 10 * 60 * 1000)).toEqual({ state: 'running' })
     expect(at(lastWrite + CODEX_QUIET_LIMIT_MS)).toEqual({ state: 'unknown', reason: 'quiet' })
+  })
+})
+
+describe('factsUnderHealth', () => {
+  const reply = finished('turn-1', FIRST_LAUNCH + HOUR)
+  const facts = codexFacts(reply, reply.completedAt)
+
+  it('leaves the facts of a tool AgentPeek can read as they are', () => {
+    expect(factsUnderHealth(facts, { state: 'connected', lastReadAt: FIRST_LAUNCH })).toBe(facts)
+    expect(factsUnderHealth(facts, { state: 'no-access', lastReadAt: null })).toBe(facts)
+    expect(factsUnderHealth(facts, { state: 'checking' })).toBe(facts)
+  })
+
+  it('shows every session of a tool in an unsupported format as Unknown, with no reply', () => {
+    const distrusted = factsUnderHealth(facts, { state: 'unsupported', toolVersion: '9.0.0' })
+    expect(distrusted).toEqual({ ...facts, turn: { kind: 'unsupported' }, lastReply: null })
+    const session = deriveSession({
+      facts: distrusted,
+      local: EMPTY_LOCAL_STATE,
+      baselineAt: FIRST_LAUNCH,
+      now: FIRST_LAUNCH + HOUR
+    })
+    expect(session.activity).toEqual({ state: 'unknown', reason: 'unsupported' })
+    expect(session.attention).toEqual({ waiting: false, newReply: false, error: false })
+    expect(session.summary).toBe(facts.summary)
   })
 })

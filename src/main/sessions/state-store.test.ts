@@ -269,6 +269,50 @@ describe('an interrupted save', () => {
     expect((await open()).localState(CLAUDE).pinned).toBe(true)
   })
 
+  it('tells its listener when a save fails and when a later one succeeds, and only then', async () => {
+    const store = await open()
+    const listener = vi.fn()
+    store.setStatusListener(listener)
+    store.setLocalState(CODEX, { ...EMPTY_LOCAL_STATE, pinned: true })
+    await store.flush()
+    expect(listener).not.toHaveBeenCalled()
+
+    vi.mocked(rename).mockRejectedValueOnce(new Error('interrupted'))
+    store.setLocalState(CLAUDE, { ...EMPTY_LOCAL_STATE, pinned: true })
+    await store.flush()
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(store.status()).toEqual({ kind: 'unavailable', reason: 'unwritable' })
+
+    // Failing again changes nothing, so the listener is not called again.
+    vi.mocked(rename).mockRejectedValueOnce(new Error('interrupted'))
+    await store.flush()
+    expect(listener).toHaveBeenCalledTimes(1)
+
+    await store.flush()
+    expect(listener).toHaveBeenCalledTimes(2)
+    expect(store.status()).toEqual({ kind: 'available' })
+
+    // A listener that throws does not stop later saves.
+    store.setStatusListener(() => {
+      throw new Error('listener failed')
+    })
+    vi.mocked(rename).mockRejectedValueOnce(new Error('interrupted'))
+    store.setLocalState(CODEX, { ...EMPTY_LOCAL_STATE, seenCursor: REPLY })
+    await store.flush()
+    expect(store.status()).toEqual({ kind: 'unavailable', reason: 'unwritable' })
+    await store.flush()
+    expect(store.status()).toEqual({ kind: 'available' })
+    expect((await open()).localState(CODEX).seenCursor).toBe(REPLY)
+
+    // A removed listener is not called.
+    store.setStatusListener(listener)
+    store.setStatusListener(null)
+    vi.mocked(rename).mockRejectedValueOnce(new Error('interrupted'))
+    store.setLocalState(CODEX, EMPTY_LOCAL_STATE)
+    await store.flush()
+    expect(listener).toHaveBeenCalledTimes(2)
+  })
+
   it('ignores a leftover temporary file with damaged contents, and replaces all of it', async () => {
     await writeState([stored(CODEX)])
     // Longer than the next save, so a save that only overwrote its start would leave a tail.

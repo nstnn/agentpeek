@@ -48,14 +48,14 @@ npm start
 
 AgentPeek follows Electron's process model. Only the main process touches files and the system; the window shows what the main process sends it.
 
-| Folder              | What runs there                                                            | It may import                      |
-| ------------------- | -------------------------------------------------------------------------- | ---------------------------------- |
-| `src/main/*.ts`     | Electron main process: app lifecycle, window, menus                        | Electron, Node.js                  |
-| `src/main/sessions` | Reading the tools' files, and saving AgentPeek's own state (plain Node.js) | Node.js, but not Electron          |
-| `src/preload`       | The bridge that exposes `window.agentpeek`                                 | Electron's `contextBridge`         |
-| `src/renderer`      | The React interface, in a sandboxed window                                 | React, but not Node.js or Electron |
-| `src/core`          | Pure logic shared by the other parts                                       | Nothing from Node.js or Electron   |
-| `src/shared`        | Types used on both sides of the bridge                                     | Nothing from Node.js or Electron   |
+| Folder              | What runs there                                                                                               | It may import                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `src/main/*.ts`     | Electron main process: app lifecycle, window, menus                                                           | Electron, Node.js                  |
+| `src/main/sessions` | Reading and watching the tools' files, the sessions service, and saving AgentPeek's own state (plain Node.js) | Node.js, but not Electron          |
+| `src/preload`       | The bridge that exposes `window.agentpeek`                                                                    | Electron's `contextBridge`         |
+| `src/renderer`      | The React interface, in a sandboxed window                                                                    | React, but not Node.js or Electron |
+| `src/core`          | Pure logic shared by the other parts                                                                          | Nothing from Node.js or Electron   |
+| `src/shared`        | Types used on both sides of the bridge                                                                        | Nothing from Node.js or Electron   |
 
 ESLint enforces the import rules. Tests sit next to the code they test, as `*.test.ts`.
 

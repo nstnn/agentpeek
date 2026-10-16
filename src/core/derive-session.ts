@@ -1,5 +1,6 @@
 import { deriveActivity } from './activity'
 import { deriveAttention } from './attention'
+import type { ToolHealth } from './health'
 import type { Session, SessionActivity, SessionFacts, SessionLocalState } from './session'
 
 export interface DeriveSessionInput {
@@ -35,4 +36,15 @@ export function deriveSession(input: DeriveSessionInput): Session {
     lastReply: facts.lastReply,
     pinned: local.pinned
   }
+}
+
+/**
+ * Applies the tool's health to a session's facts. When the tool writes its files in a format
+ * AgentPeek does not recognize ("Unsupported format"), none of its facts can be trusted: each of
+ * its sessions shows "Unknown · Unsupported format", and nothing read from it counts as a new reply
+ * or an error. The source still lists the sessions it could read, so the titles stay.
+ */
+export function factsUnderHealth(facts: SessionFacts, health: ToolHealth): SessionFacts {
+  if (health.state !== 'unsupported') return facts
+  return { ...facts, turn: { kind: 'unsupported' }, lastReply: null }
 }
