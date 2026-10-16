@@ -6,6 +6,7 @@ import {
   type SessionLocalState,
   sessionKeyToString
 } from '../../core/session'
+import type { LocalStateStatus } from '../../core/snapshot'
 import { type AgentTool, isAgentTool } from '../../core/tools'
 import {
   isStoredId,
@@ -42,18 +43,17 @@ export const FORGET_AFTER_MS = 90 * 24 * 60 * 60 * 1000
 /** How often `lastListedAt` moves forward: precise enough for `FORGET_AFTER_MS`, rarely saved. */
 const LISTED_AT_STEP_MS = 24 * 60 * 60 * 1000
 
-/**
- * Whether changes are saved.
- * - `newer-version` and `unreadable`: the saved file was left unchanged and is never written.
- * - `unwritable`: the last save failed, or the state grew past `MAX_STATE_FILE_BYTES`. The next
- *   change tries again.
- */
-export type LocalStateStatus =
-  | { kind: 'available' }
-  | { kind: 'unavailable'; reason: 'newer-version' | 'unreadable' | 'unwritable' }
-
 export interface StateStore {
+  /**
+   * Whether changes are saved (`LocalStateStatus` in src/core/snapshot.ts). `unwritable` means the
+   * last save failed, or the state grew past `MAX_STATE_FILE_BYTES`; the next change tries again.
+   */
   status(): LocalStateStatus
+  /**
+   * Calls `listener` each time `status()` changes after a save attempt, so the service can show or
+   * hide the banner. One listener at a time; null removes it.
+   */
+  setStatusListener(listener: (() => void) | null): void
   /** A session's state, or `EMPTY_LOCAL_STATE` when nothing is stored for it. */
   localState(key: SessionKey): SessionLocalState
   /**
@@ -101,6 +101,7 @@ export async function openStateStore(options: StateStoreOptions): Promise<StateS
     loaded.kind === 'state' ? { ...loaded.data.baselines } : {}
   const sessions = new Map<string, StoredSession>()
 
+  let statusListener: (() => void) | null = null
   let dirty = false
   let timer: ReturnType<typeof setTimeout> | null = null
   // Saves run one after another, never at the same time.
@@ -119,6 +120,7 @@ export async function openStateStore(options: StateStoreOptions): Promise<StateS
     saving = saving.then(async () => {
       if (!dirty) return
       dirty = false
+      const before = status
       const text = serializeStateFile({ baselines, sessions: [...sessions.values()] })
       try {
         // A file over the cap would be reported as unreadable at the next launch, and then never
@@ -131,6 +133,13 @@ export async function openStateStore(options: StateStoreOptions): Promise<StateS
         // change tries again.
         dirty = true
         status = { kind: 'unavailable', reason: 'unwritable' }
+      }
+      if (status.kind !== before.kind) {
+        try {
+          statusListener?.()
+        } catch {
+          // A listener that fails must not stop the saves that follow.
+        }
       }
     })
     return saving
@@ -147,6 +156,10 @@ export async function openStateStore(options: StateStoreOptions): Promise<StateS
 
   return {
     status: () => status,
+
+    setStatusListener(listener) {
+      statusListener = listener
+    },
 
     localState(key) {
       const session = sessions.get(sessionKeyToString(key))
