@@ -1,10 +1,11 @@
 # Renderer lockdown
 
-Whatever the window displays, its page cannot reach the Mac or the network. It has no Node.js, only the `window.agentpeek` bridge; it cannot navigate away, open windows, load anything remote, run `eval` or injected scripts, or get permissions such as notifications or the camera. Users rely on this when AgentPeek shows text written by agents, links, and Markdown.
+Whatever the window displays, its page has no direct file, system, or network access. It has no Node.js and uses only the typed `window.agentpeek` bridge for validated session requests and explicit actions such as opening a tool or a web link. It cannot navigate away, open windows, load remote content, run `eval` or injected scripts, or get permissions such as notifications or the camera. Users rely on this when AgentPeek shows text written by agents, links, and Markdown.
 
 ## Sub-features
 
-- `bridge-only` exposes `window.agentpeek` (empty for now) and no `require`, `process`, `module`, or `Buffer`.
+- `bridge-only` exposes exactly the 12 named session capabilities below, without a raw IPC transport, Electron event, `require`, `process`, `module`, or `Buffer`.
+- `validated-requests` rejects foreign senders, child frames, extra arguments, invalid keys/tools/limits/booleans, and unsafe links before any side effect; request failures omit source text.
 - `no-navigation` keeps the page on AgentPeek's own file after a navigation attempt.
 - `no-new-windows` makes `window.open` return `null` and opens no window.
 - `no-remote-loads` blocks remote requests and images through the Content Security Policy before any request is made.
@@ -24,7 +25,8 @@ Preconditions:
 
 Each step runs script inside the page, which is exactly what hostile content would do.
 
-- **Bridge only.** Look for Node.js in the page. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs eval "({ bridge: Object.keys(window.agentpeek), require: typeof require, process: typeof process, module: typeof module, Buffer: typeof Buffer })"`. The result is `bridge: []` and `"undefined"` for the other four.
+- **Bridge only.** Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs eval "({ bridge: Object.keys(window.agentpeek).sort(), require: typeof require, process: typeof process, module: typeof module, Buffer: typeof Buffer })"`. The bridge is exactly `["copySessionId", "getMessages", "getSnapshot", "markRead", "onCommand", "onSnapshot", "openLink", "openTool", "reload", "setPinned", "setSelection", "showSessionMenu"]`; the four Node globals are `"undefined"`. Mark Read already acknowledges errors, so there is no separate `acknowledgeError` capability (TASK-010 handoff).
+- **Validated requests (automated contract).** Run `npm exec -- vitest run src/main/ipc.test.ts src/preload/api.test.ts`. All tests pass. The synthetic main-process tests call every handler with foreign senders, same-URL child frames, and extra arguments and assert no reads or actions; they also exercise bad keys, tools, limits, pin values, and unsafe links. The preload tests assert the exact members, fixed channels, event stripping, and listener cleanup. This proves the request boundary with fakes; the bridge observation above proves the built renderer's actual capability surface. Never expose a raw IPC channel just to forge a sender from the page.
 - **No navigation.** Try to leave the page. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs eval "(location.href = 'https://example.invalid/', 'tried')"`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs eval "location.href"`. The second result still ends in `/out/renderer/index.html`.
 - **No new windows.** Try to open a window. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs eval "window.open('https://example.invalid/') === null"`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "BrowserWindow.getAllWindows().length"`. The results are `true` and `1`.
 - **No remote request.** Try to fetch from the network. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs eval "new Promise((done) => { document.addEventListener('securitypolicyviolation', (e) => done(e.violatedDirective), { once: true }); fetch('https://example.invalid/').catch(() => {}) })"`. The result is `"connect-src"`.

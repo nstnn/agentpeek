@@ -1,11 +1,12 @@
 # Application menu
 
-AgentPeek has a standard macOS menu bar with four menus. The first menu holds About and Quit, Edit holds Copy and Select All for the window's text, View holds Reload Sessions (shown but disabled until AgentPeek reads sessions) and, in development builds only, Toggle Developer Tools, and Window holds Minimize, Zoom, Close Window, and Bring All to Front.
+AgentPeek has five native menus: AgentPeek, Edit, View, Session, and Window. View offers Active, Pinned, All Sessions, and enabled Reload Sessions, plus developer tools in development only. Session acts on the selected session; its actions are disabled while the placeholder has no selection.
 
 ## Sub-features
 
-- `menu-structure` lists exactly these items with these shortcuts: About AgentPeek; Quit AgentPeek (Command-Q); Copy (Command-C); Select All (Command-A); Reload Sessions (Command-R); Toggle Developer Tools (Option-Command-I); Minimize (Command-M); Zoom; Close Window (Command-W); Bring All to Front.
-- `menu-reload-disabled` shows Reload Sessions disabled, so neither the item nor Command-R does anything.
+- `menu-structure` lists About, Quit (Command-Q), Copy (Command-C), Select All (Command-A), Active/Pinned/All Sessions (Command-1/2/3), Reload Sessions (Command-R), the Session actions, and the existing Window items. Developer tools (Option-Command-I) appear only in development.
+- `menu-reload` refreshes sessions through the enabled Reload Sessions item.
+- `menu-session-unselected` disables Open Codex, Mark Read, Pin, Copy Session ID, and Back when no session is selected.
 - `menu-select-all` selects all of the window's text.
 - `menu-copy` copies the selected text to the clipboard.
 - `menu-about` opens the standard About panel.
@@ -23,10 +24,11 @@ Preconditions:
 - A fresh run from `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs launch --label app-menu`, and `doctor` prints `doctor: OK`.
 - The window is focused: `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs focus` prints `"windowFocused": true`.
 
-- **Structure.** Open each menu and read it. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu app-menu-structure`. The listing matches `menu-structure`: menus `AgentPeek`, `Edit`, `View`, and `Window`, with `Reload Sessions [disabled] (CommandOrControl+R) #reload-sessions` under View and every other item enabled.
-- **Reload Sessions is disabled.** Choose View > Reload Sessions. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu-click "View > Reload Sessions"`. The result is `{"clicked": false, "reason": "disabled"}` with exit code 1.
-- **Select All.** Choose Edit > Select All. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu-click "Edit > Select All"`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs eval "String(window.getSelection())"` and `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs screenshot app-menu-select-all`. The click reports `"via": "selectAll:"`, the selection is `"AgentPeek\nNo sources connected yet"`, and the screenshot shows both lines highlighted.
-- **Copy.** Only with the user's OK, because it replaces their clipboard. After Select All, choose Edit > Copy. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu-click "Edit > Copy"`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "electron.clipboard.readText()"`. The click reports `"via": "copy:"` and the clipboard holds `"AgentPeek\nNo sources connected yet"`.
+- **Structure.** Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu app-menu-structure`. The five menus and shortcuts match `menu-structure`; Reload Sessions is enabled. Session items are disabled with no selection. Save `screenshot app-menu-initial` for the accompanying placeholder.
+- **Reload.** Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu-click "View > Reload Sessions"`. The result is `clicked: true` via its click handler. Follow the snapshot-timestamp and count checks in `sessions-connection.md`.
+- **View commands.** Read-only observation may subscribe with `eval "window.observedCommands = []; window.stopObservingCommands = window.agentpeek.onCommand(c => window.observedCommands.push(c)); true"`. Choose Active, Pinned, and All Sessions with `menu-click`, then read `eval "window.observedCommands"`: `view:active`, `view:pinned`, `view:all`, in order. Finish with `eval "window.stopObservingCommands(); true"`. This records events only; it does not set application state or prove the future list interface.
+- **Select All.** Run `menu-click "Edit > Select All"`, then `eval "String(window.getSelection())"` and `screenshot app-menu-select-all`. The selection includes the fixture banner, AgentPeek heading, and current session count.
+- **Copy.** Only with the user's OK, because it replaces their clipboard. After Select All, run `menu-click "Edit > Copy"`, then `main-eval "electron.clipboard.readText()"`. The clipboard holds the same synthetic page text that was selected.
 - **About.** Choose AgentPeek > About AgentPeek. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu-click "AgentPeek > About AgentPeek"`. The click reports `"via": "orderFrontStandardAboutPanel:"`. The panel is native, so seeing it needs the user or a desktop-control tool; report it as unverified otherwise.
 - **Developer tools.** Choose View > Toggle Developer Tools. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu-click "View > Toggle Developer Tools"`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "BrowserWindow.getAllWindows()[0].webContents.isDevToolsOpened()"`. The click reports `"via": "click handler"` and the check is `true`. Choose the item again to close them.
 
@@ -39,4 +41,4 @@ Preconditions:
 - Toggle Developer Tools can take focus too. Run `focus` before choosing it again to close the tools.
 - Copy replaces the user's clipboard. Never read the clipboard before copying: it may hold the user's private text, and `main-eval` results go into `actions.jsonl`.
 - That Toggle Developer Tools is absent from packaged builds can only be verified once a packaged build exists.
-- When Reload Sessions starts working, or the Session menu lands, update `menu-structure` and replace the disabled check with a recipe for the working item.
+- Row selection and context-menu entry points arrive in TASK-012/013. Do not manufacture selection through eval to claim user-path proof. The current main-process tests verify the selection and attention combinations and fixed system dispatch.

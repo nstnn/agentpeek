@@ -1,0 +1,78 @@
+import { describe, expect, it, vi } from 'vitest'
+import { IPC } from '../shared/ipc'
+import { createPreloadApi } from './api'
+
+describe('preload API', () => {
+  function setup() {
+    const transport = {
+      invoke: vi.fn().mockResolvedValue(true),
+      on: vi.fn(),
+      removeListener: vi.fn()
+    }
+    return { transport, api: createPreloadApi(transport) }
+  }
+  it('exposes only the specified capabilities, without a raw IPC or Node object', () => {
+    const { api } = setup()
+    expect(Object.keys(api).sort()).toEqual(
+      [
+        'getSnapshot',
+        'onSnapshot',
+        'getMessages',
+        'setPinned',
+        'markRead',
+        'openTool',
+        'copySessionId',
+        'openLink',
+        'reload',
+        'setSelection',
+        'showSessionMenu',
+        'onCommand'
+      ].sort()
+    )
+    expect(Object.isFrozen(api)).toBe(true)
+  })
+  it('uses fixed channels and forwards plain arguments and results', async () => {
+    const { api, transport } = setup()
+    const key = { tool: 'codex', id: 'synthetic' } as const
+    await api.getSnapshot()
+    await api.getMessages(key, 10)
+    await api.setPinned(key, true)
+    await api.markRead(key)
+    await api.openTool('claude')
+    await api.copySessionId(key)
+    await api.openLink('https://example.com')
+    await api.reload()
+    await api.setSelection(null)
+    await api.showSessionMenu(key)
+    expect(transport.invoke.mock.calls).toEqual([
+      [IPC.getSnapshot],
+      [IPC.getMessages, key, 10],
+      [IPC.setPinned, key, true],
+      [IPC.markRead, key],
+      [IPC.openTool, 'claude'],
+      [IPC.copySessionId, key],
+      [IPC.openLink, 'https://example.com'],
+      [IPC.reload],
+      [IPC.setSelection, null],
+      [IPC.showSessionMenu, key]
+    ])
+  })
+  it.each(['snapshot', 'command'] as const)(
+    'strips the Electron event and removes exactly its own %s listener',
+    (kind) => {
+      const { api, transport } = setup()
+      const callback = vi.fn()
+      const unsubscribe = kind === 'snapshot' ? api.onSnapshot(callback) : api.onCommand(callback)
+      const [channel, listener] = transport.on.mock.calls[0] as [
+        string,
+        (event: unknown, value: unknown) => void
+      ]
+      const payload = kind === 'snapshot' ? { sessions: [] } : 'view:pinned'
+      listener({ sender: 'must never escape' }, payload)
+      expect(callback.mock.calls).toEqual([[payload]])
+      unsubscribe()
+      expect(transport.removeListener).toHaveBeenCalledWith(channel, listener)
+      expect(channel).toBe(IPC[kind])
+    }
+  )
+})

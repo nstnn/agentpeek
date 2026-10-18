@@ -44,7 +44,7 @@ Isolation facts, observed on this Mac:
 
 - The own profile gives each run its own single-instance lock, so a verification run can sit beside the user's AgentPeek and beside other runs. The user's real profile at `~/Library/Application Support/AgentPeek/` stays untouched (`stop` reports `defaultProfileUnchanged`).
 - The app is unpackaged: macOS names the process and the first menu `Electron`, the View menu has Toggle Developer Tools, and the window may reload itself. A packaged build has neither; the packaging task, when it lands, needs its own check.
-- **The app does not read `AGENTPEEK_HOME` or `AGENTPEEK_USER_DATA` yet**, because it reads no tool files yet. The helper sets them so the planned fixture mode is used from its first day. When the app starts reading sessions, extend `doctor` to require the "Fixture data" banner before trusting that a run is isolated from real data.
+- **Fixture isolation is active.** The app requires both absolute overrides, uses the isolated profile before its single-instance lock, and reads only the synthetic home. `doctor` requires the snapshot's fixture flag and home plus the visible "Fixture data" banner. Never trust a run whose fixture check fails.
 
 ## Doctor
 
@@ -59,6 +59,7 @@ Read-only. Run it right after `launch`, and again whenever anything looks off (a
 - the window shows the built files (`file://…/out/renderer/index.html`), not a dev server;
 - the main process reports the `package.json` version, the run's profile as `userData`, the run's synthetic home, no `ELECTRON_RENDERER_URL`, and exactly one visible window;
 - the page title is `AgentPeek`, `window.agentpeek` exists, and `require` does not;
+- the snapshot confirms fixture mode and the run's synthetic home, also named in the visible fixture banner;
 - the page has logged no console errors, exceptions, or CSP violations;
 - no file in `src/` (tests excluded) changed after the build the run started from, and `out/` was not rebuilt since. A FAIL here means the instance runs older code: `stop`, then `launch` again.
 

@@ -248,7 +248,12 @@ async function doctor() {
     const pageState = await withPage(run, async (s) => {
       const state = await evaluate(
         s,
-        `({ title: document.title, bridge: typeof window.agentpeek, node: typeof require })`
+        `(async () => {
+          const snapshot = await window.agentpeek.getSnapshot();
+          return { title: document.title, bridge: typeof window.agentpeek, node: typeof require,
+            fixture: snapshot.fixture, fixtureHome: snapshot.fixtureHome,
+            banner: document.querySelector('.fixture-banner')?.textContent ?? null };
+        })()`
       )
       state.problems = await collectConsoleProblems(s)
       return state
@@ -261,6 +266,13 @@ async function doctor() {
         'bridge only, no Node.js',
         pageState.bridge === 'object' && pageState.node === 'undefined',
         `window.agentpeek: ${pageState.bridge}, require: ${pageState.node}`
+      )
+      check(
+        'fixture mode confirmed by the app',
+        pageState.fixture === true &&
+          pageState.fixtureHome === run.homeDir &&
+          pageState.banner?.includes(run.homeDir) === true,
+        pageState.fixtureHome ?? 'no synthetic home in the snapshot'
       )
       check(
         'no console errors',

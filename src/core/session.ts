@@ -156,3 +156,9 @@ export type SessionMessage =
   // A run of consecutive tool calls, shown as one line: how many, and their unique names in order.
   // Never their input or output.
   | { kind: 'tool-calls'; count: number; names: string[]; at: number }
+
+/** Recent conversation text, returned only on request and never included in a snapshot. */
+export type RecentMessages =
+  | { kind: 'messages'; messages: SessionMessage[]; hasOlder: boolean }
+  | { kind: 'not-found' }
+  | { kind: 'unreadable' }

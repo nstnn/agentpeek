@@ -1,0 +1,17 @@
+/** Fixed channels: the page never chooses an IPC channel. */
+export const IPC = {
+  getSnapshot: 'agentpeek:get-snapshot',
+  snapshot: 'agentpeek:snapshot',
+  getMessages: 'agentpeek:get-messages',
+  setPinned: 'agentpeek:set-pinned',
+  markRead: 'agentpeek:mark-read',
+  openTool: 'agentpeek:open-tool',
+  copySessionId: 'agentpeek:copy-session-id',
+  openLink: 'agentpeek:open-link',
+  reload: 'agentpeek:reload',
+  setSelection: 'agentpeek:set-selection',
+  showSessionMenu: 'agentpeek:show-session-menu',
+  command: 'agentpeek:command'
+} as const
+
+export const MAX_MESSAGE_LIMIT = 200
