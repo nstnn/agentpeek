@@ -1,6 +1,6 @@
 # Sessions connection
 
-AgentPeek reads its local sources while its window is open, shows a live session count, and refreshes on focus, wake, and Reload Sessions. Fixture runs name the synthetic home in a persistent banner. Closing or quitting stops the service and its watches and timers.
+AgentPeek reads its local sources while its window is open, shows live session totals in the sidebar, and refreshes on focus, wake, and Reload Sessions. Fixture runs name the synthetic home in a persistent banner. Closing or quitting stops the service and its watches and timers.
 
 ## Sub-features
 
@@ -24,7 +24,7 @@ Preconditions:
 - The user approved launches for this task. The supplied fixture is entirely synthetic, with recent timestamps and known listed IDs; never copy real sessions into it.
 - `launch --label sessions-connection --fixture <absolute-synthetic-home>` succeeded. Record its run ID, home, and userData paths.
 
-- **Isolation.** Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs doctor`. Every check passes, including `fixture mode confirmed by the app`. Save `aria sessions-connection-initial` and `screenshot sessions-connection-initial`; the banner names the run's synthetic home and the count matches the known listed IDs. An empty fixture shows `0 sessions`.
+- **Isolation.** Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs doctor`. Every check passes, including `fixture mode confirmed by the app`. Save `aria sessions-connection-initial` and `screenshot sessions-connection-initial`; the banner names the run's synthetic home and the count matches the known listed IDs. An empty fixture shows All Sessions with 0 and "No sessions yet".
 - **Live count.** Append a new, recent synthetic session to this run's copied home using the fixture simulator, without changing application state through eval. Run `aria sessions-connection-updated` and `screenshot sessions-connection-updated`. The count increases and the window stays focused on the same content.
 - **Reload.** Run `focus`, save `menu sessions-connection-before-reload`, then `menu-click "View > Reload Sessions"`. It reports `clicked: true` via its click handler. Save `aria sessions-connection-after-reload` and `screenshot sessions-connection-after-reload`. Observe the snapshot's `takenAt` before and after with `eval "window.agentpeek.getSnapshot().then(s => ({count: s.sessions.length, takenAt: s.takenAt}))"`; it advances and the fixture count remains correct.
 - **Focus.** Bring another app forward, then run `focus`. After the debounce, observe the snapshot timestamp and count with the same read-only expression and capture `aria sessions-connection-after-focus`. Unit tests separately assert coalescing and cancellation.
@@ -33,6 +33,6 @@ Preconditions:
 ## Gotchas
 
 - File watchers can deliver the fixture change before Reload Sessions. A changed count alone does not prove the menu refreshed; also compare snapshot timestamps around the real menu action.
-- Do not use eval to choose a session or invoke its actions. The list/detail entry points are not built in TASK-011. Selection-aware menus, safe arguments, subscriptions, fixed app bundles, and clipboard dispatch have synthetic contract tests until those entry points exist.
+- Do not use eval to choose a session or invoke its actions. Drive list selection through click/keys and menus; see sessions-list.md. Detail entry points remain TASK-013.
 - Wake wiring has a synthetic lifecycle test. A real system sleep/wake remains Not tested unless actually observed; never put the user's Mac to sleep for an unattended check.
 - Fixture process checks always report alive and never inspect the user's running tools. They do not prove real process liveness or missing-tool activation.

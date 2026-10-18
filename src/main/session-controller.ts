@@ -13,7 +13,7 @@ export function createSessionController(options: {
   reload: () => Promise<void>
   command: (command: MenuCommand) => void
   updateMenu: () => void
-  popup: (template: MenuItemConstructorOptions[]) => void
+  popup: (template: MenuItemConstructorOptions[]) => void | Promise<void>
 }) {
   const { service, system } = options
   let selection: SessionKey | null = null
@@ -78,7 +78,8 @@ export function createSessionController(options: {
     reload: options.reload,
     showSessionMenu: (key: SessionKey) => {
       const session = find(key)
-      if (session) options.popup(buildSessionMenu(session, actions(session.key), { context: true }))
+      if (session)
+        return options.popup(buildSessionMenu(session, actions(session.key), { context: true }))
     }
   }
 }

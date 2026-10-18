@@ -821,6 +821,7 @@ function formatAxTree(nodes) {
 }
 
 const NAMED_KEYS = {
+  F10: 121,
   Enter: 13,
   Escape: 27,
   Tab: 9,

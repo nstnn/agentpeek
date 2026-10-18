@@ -67,11 +67,30 @@ describe('session controller', () => {
     const { controller, service, popup } = setup()
     const key = { tool: 'codex', id: 'absent' } as const
     expect(await controller.getMessages(key, 10)).toEqual({ kind: 'not-found' })
-    controller.showSessionMenu(key)
+    await controller.showSessionMenu(key)
     expect(service.recentMessages).not.toHaveBeenCalled()
     expect(popup).not.toHaveBeenCalled()
-    controller.showSessionMenu(testSession().key)
+    await controller.showSessionMenu(testSession().key)
     expect(popup).toHaveBeenCalledOnce()
     expect(popup.mock.calls[0]?.[0]).toHaveLength(4)
+  })
+  it('keeps the context invocation pending until the native popup is dismissed', async () => {
+    const { controller, popup } = setup()
+    let dismiss!: () => void
+    popup.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          dismiss = resolve
+        })
+    )
+    let finished = false
+    const pending = Promise.resolve(controller.showSessionMenu(testSession().key)).then(() => {
+      finished = true
+    })
+    await Promise.resolve()
+    expect(finished).toBe(false)
+    dismiss()
+    await pending
+    expect(finished).toBe(true)
   })
 })

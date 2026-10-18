@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import type { IpcMain, IpcMainInvokeEvent, MenuItemConstructorOptions } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IPC } from '../shared/ipc'
 import { testService, testSystem } from './test-support'
@@ -16,7 +17,7 @@ function setup() {
     isMinimized: () => false,
     restore: vi.fn(),
     focus: vi.fn(),
-    getContentBounds: () => ({ width: 1100 })
+    getContentBounds: vi.fn(() => ({ width: 1100 }))
   })
   const app = Object.assign(new EventEmitter(), {
     enableSandbox: vi.fn(),
@@ -32,8 +33,13 @@ function setup() {
   const service = testService()
   const open = vi.fn().mockResolvedValue(service)
   const createWindow = vi.fn(() => window)
-  const ipcMain = { handle: vi.fn(), removeHandler: vi.fn() }
-  const Menu = { buildFromTemplate: vi.fn(() => ({ popup: vi.fn() })), setApplicationMenu: vi.fn() }
+  const ipcMain = { handle: vi.fn<IpcMain['handle']>(), removeHandler: vi.fn() }
+  const Menu = {
+    buildFromTemplate: vi.fn<(template: MenuItemConstructorOptions[]) => { popup: () => void }>(
+      () => ({ popup: vi.fn() })
+    ),
+    setApplicationMenu: vi.fn()
+  }
   vi.doMock('electron', () => ({
     app,
     powerMonitor,
@@ -63,6 +69,25 @@ afterEach(() => {
 })
 
 describe('main process lifecycle', () => {
+  it('keeps Back disabled after selecting a row in the narrow list without a detail screen', async () => {
+    const s = setup()
+    s.window.getContentBounds.mockReturnValue({ width: 760 })
+    await import('./index')
+    await vi.waitFor(() => expect(s.service.start).toHaveBeenCalledOnce())
+    const select = s.ipcMain.handle.mock.calls.find(
+      ([channel]) => channel === IPC.setSelection
+    )?.[1]
+    if (!select) throw new Error('Selection handler not registered')
+    await select(
+      { sender: s.contents, senderFrame: s.contents.mainFrame } as unknown as IpcMainInvokeEvent,
+      { tool: 'codex', id: 'synthetic-session' }
+    )
+    const template = s.Menu.buildFromTemplate.mock.lastCall?.[0]
+    const items = template?.find((item) => item.label === 'Session')
+      ?.submenu as MenuItemConstructorOptions[]
+    expect(items.find((item) => item.id === 'session-open')?.enabled).toBe(true)
+    expect(items.find((item) => item.id === 'session-back')?.enabled).toBe(false)
+  })
   it('sets the fixture profile before the lock, starts once, and wires focus and resume', async () => {
     const s = setup()
     await import('./index')
