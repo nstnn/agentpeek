@@ -1,6 +1,6 @@
 # Application menu
 
-AgentPeek has five native menus: AgentPeek, Edit, View, Session, and Window. View offers Active, Pinned, All Sessions, and enabled Reload Sessions, plus developer tools in development only. Session acts on the selected session; its actions are disabled while the placeholder has no selection.
+AgentPeek has five native menus: AgentPeek, Edit, View, Session, and Window. View offers Active, Pinned, All Sessions, and enabled Reload Sessions, plus developer tools in development only. Session acts on the selected session; its actions are disabled when no row is selected.
 
 ## Sub-features
 
@@ -24,10 +24,10 @@ Preconditions:
 - A fresh run from `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs launch --label app-menu`, and `doctor` prints `doctor: OK`.
 - The window is focused: `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs focus` prints `"windowFocused": true`.
 
-- **Structure.** Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu app-menu-structure`. The five menus and shortcuts match `menu-structure`; Reload Sessions is enabled. Session items are disabled with no selection. Save `screenshot app-menu-initial` for the accompanying placeholder.
+- **Structure.** Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu app-menu-structure`. The five menus and shortcuts match `menu-structure`; Reload Sessions is enabled. Session items are disabled with no selection. Save `screenshot app-menu-initial` for the accompanying list interface.
 - **Reload.** Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu-click "View > Reload Sessions"`. The result is `clicked: true` via its click handler. Follow the snapshot-timestamp and count checks in `sessions-connection.md`.
-- **View commands.** Read-only observation may subscribe with `eval "window.observedCommands = []; window.stopObservingCommands = window.agentpeek.onCommand(c => window.observedCommands.push(c)); true"`. Choose Active, Pinned, and All Sessions with `menu-click`, then read `eval "window.observedCommands"`: `view:active`, `view:pinned`, `view:all`, in order. Finish with `eval "window.stopObservingCommands(); true"`. This records events only; it does not set application state or prove the future list interface.
-- **Select All.** Run `menu-click "Edit > Select All"`, then `eval "String(window.getSelection())"` and `screenshot app-menu-select-all`. The selection includes the fixture banner, AgentPeek heading, and current session count.
+- **View commands.** Read-only observation may subscribe with `eval "window.observedCommands = []; window.stopObservingCommands = window.agentpeek.onCommand(c => window.observedCommands.push(c)); true"`. Choose Active, Pinned, and All Sessions with `menu-click`, then read `eval "window.observedCommands"`: `view:active`, `view:pinned`, `view:all`, in order. Finish with `eval "window.stopObservingCommands(); true"`. Also capture the heading after each command; it changes to Active, Pinned and All Sessions. This observer alone proves event delivery.
+- **Select All.** Run `menu-click "Edit > Select All"`, then `eval "String(window.getSelection())"` and `screenshot app-menu-select-all`. The selection includes the fixture banner, sidebar, list heading, and current list content.
 - **Copy.** Only with the user's OK, because it replaces their clipboard. After Select All, run `menu-click "Edit > Copy"`, then `main-eval "electron.clipboard.readText()"`. The clipboard holds the same synthetic page text that was selected.
 - **About.** Choose AgentPeek > About AgentPeek. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu-click "AgentPeek > About AgentPeek"`. The click reports `"via": "orderFrontStandardAboutPanel:"`. The panel is native, so seeing it needs the user or a desktop-control tool; report it as unverified otherwise.
 - **Developer tools.** Choose View > Toggle Developer Tools. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu-click "View > Toggle Developer Tools"`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "BrowserWindow.getAllWindows()[0].webContents.isDevToolsOpened()"`. The click reports `"via": "click handler"` and the check is `true`. Choose the item again to close them.
@@ -41,4 +41,4 @@ Preconditions:
 - Toggle Developer Tools can take focus too. Run `focus` before choosing it again to close the tools.
 - Copy replaces the user's clipboard. Never read the clipboard before copying: it may hold the user's private text, and `main-eval` results go into `actions.jsonl`.
 - That Toggle Developer Tools is absent from packaged builds can only be verified once a packaged build exists.
-- Row selection and context-menu entry points arrive in TASK-012/013. Do not manufacture selection through eval to claim user-path proof. The current main-process tests verify the selection and attention combinations and fixed system dispatch.
+- Select rows through the list (see sessions-list.md), then verify the selected target and enabled Session actions. Do not manufacture selection through eval. Detail buttons remain TASK-013.

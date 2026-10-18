@@ -9,5 +9,5 @@
   },
   // src/core and src/shared are also checked here, without Node.js types, so they stay usable in the window.
   "include": ["src/renderer/src/**/*", "src/core/**/*", "src/shared/**/*"],
-  "exclude": ["**/*.test.ts"]
+  "exclude": ["**/*.test.ts", "**/*.test.tsx"]
 }

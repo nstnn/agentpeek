@@ -1,0 +1,99 @@
+import type { ToolHealth } from '../../core/health'
+import type { Session } from '../../core/session'
+import type { AgentTool } from '../../core/tools'
+import type { GroupId, ViewId } from '../../core/views'
+
+export const VIEW_NAMES: Record<ViewId, string> = {
+  active: 'Active',
+  pinned: 'Pinned',
+  all: 'All Sessions'
+}
+export const GROUP_NAMES: Record<GroupId, string> = {
+  waiting: 'Waiting for you',
+  errors: 'Errors',
+  'new-replies': 'New replies',
+  running: 'Running',
+  unknown: 'Unknown',
+  pinned: 'Pinned',
+  all: 'All Sessions'
+}
+export const toolName = (tool: AgentTool): string => (tool === 'codex' ? 'Codex' : 'Claude Code')
+export const toolHome = (tool: AgentTool): string => (tool === 'codex' ? '~/.codex' : '~/.claude')
+export const sessionTitle = (session: Session): string =>
+  session.summary.title || `Untitled session · ${session.key.id.slice(0, 6)}`
+export const workspaceName = (session: Session): string =>
+  session.summary.workspacePath?.split('/').filter(Boolean).at(-1) ||
+  (session.summary.workspacePath === '/' ? '/' : 'No folder')
+
+const WAITING: Record<string, string> = {
+  'permission prompt': 'Permission',
+  'input needed': 'Question',
+  'dialog open': 'Dialog',
+  'sandbox request': 'Sandbox',
+  'worker request': 'Worker',
+  'goal proposal': 'Goal'
+}
+const UNKNOWN = {
+  'process-ended': 'Process ended',
+  'app-not-running': 'Codex not running',
+  quiet: 'Quiet for 30 min',
+  unreadable: "Can't read",
+  unsupported: 'Unsupported format'
+}
+export function rowStatus(session: Session): { kind: string; label: string } {
+  const activity = session.activity
+  if (activity.state === 'waiting') {
+    const reason = WAITING[activity.waitingFor ?? '']
+    return { kind: 'waiting', label: `Waiting for you${reason ? ` · ${reason}` : ''}` }
+  }
+  if (session.attention.error) {
+    const code = session.lastReply?.errorCode
+    const label = code ? code.replaceAll('_', ' ').replace(/^./, (c) => c.toUpperCase()) : null
+    return { kind: 'error', label: `Error${label ? ` · ${label}` : ''}` }
+  }
+  if (session.attention.newReply) return { kind: 'reply', label: 'New reply' }
+  if (activity.state === 'unknown') {
+    return { kind: 'unknown', label: `Unknown · ${UNKNOWN[activity.reason]}` }
+  }
+  return activity.state === 'running'
+    ? { kind: 'running', label: 'Running' }
+    : { kind: 'idle', label: 'Idle' }
+}
+
+export function relativeTime(at: number, now: number): string {
+  const age = Math.max(0, now - at)
+  if (age < 60_000) return 'now'
+  if (age < 3_600_000) return `${Math.floor(age / 60_000)} min`
+  const date = new Date(at)
+  const today = new Date(now)
+  const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday'
+  if (age < 86_400_000) return `${Math.floor(age / 3_600_000)} h`
+  if (age < 7 * 86_400_000) return date.toLocaleDateString('en-US', { weekday: 'short' })
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+export function healthCopy(tool: AgentTool, health: ToolHealth): { label: string; detail: string } {
+  switch (health.state) {
+    case 'checking':
+      return { label: 'Checking…', detail: '—' }
+    case 'connected':
+      return { label: 'Connected', detail: `Updated ${clockTime(health.lastReadAt)}` }
+    case 'not-installed':
+      return { label: 'Not installed', detail: `Looks in ${toolHome(tool)}` }
+    case 'no-access':
+      return {
+        label: 'No access',
+        detail: health.lastReadAt === null ? '' : `Last updated ${clockTime(health.lastReadAt)}`
+      }
+    case 'unsupported':
+      return {
+        label: 'Unsupported format',
+        detail: `${toolName(tool)} ${health.toolVersion ?? '(unknown version)'}`
+      }
+  }
+}
+
+function clockTime(at: number): string {
+  return new Date(at).toLocaleTimeString('en-US', { hour12: false })
+}

@@ -20,7 +20,7 @@ Preconditions:
 
 - **Second launch.** Open AgentPeek again. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs relaunch`. The result has `"secondExitCode": 0`, `"timedOut": false`, `elapsedMs` under 1000 (about 300 on this Mac), `"firstStillAlive": true`, `"windows": 1`, and `"windowFocusedAfter": true`.
 - **Second launch while minimized.** Minimize the window, then open AgentPeek again. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs focus`, `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu-click "Window > Minimize"`, and `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs relaunch`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "BrowserWindow.getAllWindows()[0].isMinimized()"`. Relaunch reports `"windowFocusedBefore": false` and `"windowFocusedAfter": true`, and the check is `false`.
-- **Proof.** Capture the restored window. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs screenshot single-instance-restored` and `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs doctor`. The screenshot shows the placeholder and doctor still prints `doctor: OK`.
+- **Proof.** Capture the restored window. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs screenshot single-instance-restored` and `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs doctor`. The screenshot shows the session interface and doctor still prints `doctor: OK`.
 
 ## Gotchas
 

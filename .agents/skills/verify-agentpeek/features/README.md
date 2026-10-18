@@ -37,11 +37,13 @@ Keep implementation details out of the map. Name only user paths, stable handles
 
 ## Features
 
-- [Main window](./main-window.md) covers the window that opens at launch, its placeholder content, its sizes, and its Light and Dark appearance.
+- [Main window](./main-window.md) covers the window that opens at launch, its sidebar/list layout, its sizes, and its Light and Dark appearance.
 - [Application menu](./app-menu.md) covers the menu bar's items, shortcuts, and disabled states.
 - [Window and app lifecycle](./window-lifecycle.md) covers closing the window, quitting, and minimizing.
 - [Single instance](./single-instance.md) covers opening AgentPeek while it is already open.
 - [Renderer lockdown](./renderer-lockdown.md) covers what the page can and cannot do: no Node.js, no navigation, no new windows, no remote loads, no permissions.
-- [Sessions connection](./sessions-connection.md) covers the live placeholder count, fixture isolation, refresh, and clean service shutdown.
+- [Sessions connection](./sessions-connection.md) covers the live session total, fixture isolation, refresh, and clean service shutdown.
 
-Not yet built, so not mapped: the sessions list and detail, row selection/context-menu entry points, and the tool-health and local-state interface. Session actions and menu commands are wired but their row/detail entry points arrive in TASK-012/013; verify their contract with the synthetic main/preload tests meanwhile.
+- [Sessions list](./sessions-list.md) covers views, filtering, groups, selection, keyboard/context entry points, tool health and list notices.
+
+Not yet built: session detail, transcript actions, automatic read-on-view, and narrow detail push/Back (TASK-013).
