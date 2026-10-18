@@ -4,7 +4,7 @@ AgentPeek is a macOS app that shows what your local AI coding agents are doing. 
 
 AgentPeek is built with Electron, TypeScript, and React.
 
-**Status: early development.** The app opens its window, but it does not read any sessions yet.
+**Status: early development.** The app reads local Codex and Claude Code sessions while open. Its placeholder shows the session count; the sessions list and detail are not built yet. The typed preload bridge, session menus, refresh, and service lifecycle are connected.
 
 ## Requirements
 
@@ -34,6 +34,16 @@ npm run build
 ```bash
 npm start
 ```
+
+Agent runs use synthetic data. Provide both absolute paths together; incomplete fixture overrides
+are rejected so a fixture run cannot fall back to real sessions or real saved state:
+
+```bash
+AGENTPEEK_HOME=/absolute/path/to/synthetic-home AGENTPEEK_USER_DATA=/absolute/path/to/synthetic-state npm start
+```
+
+Fixture mode shows a persistent banner naming the synthetic home. Its process checks treat fixture
+tools and registry owners as alive; it never checks the user's running tools.
 
 ## Check
 

@@ -1,11 +1,11 @@
 # Main window
 
-Opening AgentPeek shows one window titled AgentPeek. Until AgentPeek reads sessions, the window shows a centered placeholder: the heading "AgentPeek" and the line "No sources connected yet". The window opens at a fixed default size, cannot be made smaller than a minimum size, and follows the Mac's Light or Dark appearance.
+Opening AgentPeek shows one window titled AgentPeek with a centered heading and live session count. Fixture runs also show a persistent banner naming the synthetic home. The window opens at a fixed default size, cannot be made smaller than a minimum size, and follows the Mac's Light or Dark appearance.
 
 ## Sub-features
 
 - `window-open` shows exactly one window, titled AgentPeek, once its content has rendered.
-- `window-placeholder` shows the heading "AgentPeek" and the text "No sources connected yet".
+- `window-placeholder` shows the heading "AgentPeek" and "0 sessions" for the empty synthetic home (or the fixture's actual session count).
 - `window-size` opens at 1100 × 720 points and refuses to shrink below 760 × 480.
 - `window-appearance` uses system colors, so the page is light in Light mode and dark in Dark mode.
 
@@ -23,7 +23,7 @@ Preconditions:
 - No earlier step in this run changed the window's size or theme.
 
 - **Open.** Launch AgentPeek. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs launch --label main-window`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs doctor`. Launch prints a run id, and doctor prints `doctor: OK` with `one visible window: [{"visible":true,"title":"AgentPeek"}]`.
-- **Placeholder.** Look at the window. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs aria main-window-initial` and `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs screenshot main-window-initial`. The tree holds `main`, `heading "AgentPeek" [level=1]`, and `StaticText "No sources connected yet"`, and the screenshot shows both lines centered.
+- **Placeholder.** Look at the window. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs aria main-window-initial` and `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs screenshot main-window-initial`. The tree holds `main`, `heading "AgentPeek" [level=1]`, and `StaticText "0 sessions"` for an empty home. The screenshot shows the heading and count centered, with the fixture banner above.
 - **Default size.** Check the size the window opened at. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "BrowserWindow.getAllWindows()[0].getSize()"`. The result is `[1100, 720]`.
 - **Smallest size.** Try to make the window smaller than allowed. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "(BrowserWindow.getAllWindows()[0].setSize(400, 300), BrowserWindow.getAllWindows()[0].getSize())"`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs screenshot main-window-minimum`. The result is `[760, 480]`, and the screenshot still shows both placeholder lines in full.
 - **Light appearance.** Force the light theme. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "electron.nativeTheme.themeSource = 'light'"`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs eval "matchMedia('(prefers-color-scheme: dark)').matches"` and `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs screenshot main-window-light`. The media query is `false` and the screenshot shows dark text on a light background.

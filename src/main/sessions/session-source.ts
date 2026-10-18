@@ -1,5 +1,6 @@
 import type { ToolHealth } from '../../core/health'
-import type { SessionFacts, SessionKey, SessionMessage } from '../../core/session'
+import type { RecentMessages, SessionFacts, SessionKey } from '../../core/session'
+export type { RecentMessages } from '../../core/session'
 import type { AgentTool } from '../../core/tools'
 
 // The interface each tool's source implements: Codex (codex-source.ts) and Claude Code (TASK-008).
@@ -12,15 +13,6 @@ export const RECENT_SESSION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
 
 /** …at most 50 per tool. */
 export const MAX_SESSIONS_PER_TOOL = 50
-
-/** The result of `recentMessages`. */
-export type RecentMessages =
-  // `hasOlder` is true when the file holds older messages than these: "Showing the last N messages".
-  | { kind: 'messages'; messages: SessionMessage[]; hasOlder: boolean }
-  // The source does not list this session (any more).
-  | { kind: 'not-found' }
-  // The session's file could not be read: "Couldn't load messages".
-  | { kind: 'unreadable' }
 
 export interface SessionSource {
   readonly tool: AgentTool

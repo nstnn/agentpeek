@@ -1,8 +1,15 @@
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow } from 'electron'
 import { mainWindowOptions } from './window-options'
 
 /** Creates the AgentPeek window and loads the interface into it. */
+export function rendererPageUrl(): string {
+  return !app.isPackaged && process.env['ELECTRON_RENDERER_URL']
+    ? new URL(process.env['ELECTRON_RENDERER_URL']).href
+    : pathToFileURL(join(__dirname, '../renderer/index.html')).href
+}
+
 export function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow(mainWindowOptions(join(__dirname, '../preload/index.js')))
 
@@ -10,12 +17,7 @@ export function createMainWindow(): BrowserWindow {
 
   // `npm run dev` serves the interface from electron-vite's dev server, with hot reload.
   // A build loads the bundled files from disk.
-  const devServerUrl = process.env['ELECTRON_RENDERER_URL']
-  if (!app.isPackaged && devServerUrl) {
-    void window.loadURL(devServerUrl)
-  } else {
-    void window.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  void window.loadURL(rendererPageUrl())
 
   return window
 }

@@ -6,7 +6,7 @@ This folder is the maintained source for verifying what a user of AgentPeek can 
 
 - The user approved launching AgentPeek for this task (see the skill's ground rules).
 - `launch --label <feature>` succeeded, and `doctor` prints `doctor: OK`.
-- The run uses an empty synthetic home unless the feature file names a fixture. The app reads no tool files yet, so every feature below works on the empty home.
+- The run uses an empty synthetic home unless the feature file names a fixture. The app reads that home only; `doctor` must confirm the snapshot and banner name it.
 - No step drives an instance that this run did not start.
 
 ## Driving conventions
@@ -20,7 +20,7 @@ This folder is the maintained source for verifying what a user of AgentPeek can 
 ## Proof and skip reporting
 
 - Capture the user action and the resulting state, not only the final screen: an `aria` or `menu` snapshot and a screenshot before and after the change, with the action in `actions.jsonl`.
-- Record the feature file and sub-feature ID with every artifact name, for example `app-menu-reload-disabled.menu.txt`.
+- Record the feature file and sub-feature ID with every artifact name, for example `app-menu-reload.menu.txt`.
 - When a step cannot run, report the command you tried and the unmet precondition. Never report a skipped entry point as verified through a different one.
 - A step whose observed result differs from the recipe is a failure to report, not a recipe to rewrite. Change a recipe only when the product's intended behavior changed.
 
@@ -42,5 +42,6 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Window and app lifecycle](./window-lifecycle.md) covers closing the window, quitting, and minimizing.
 - [Single instance](./single-instance.md) covers opening AgentPeek while it is already open.
 - [Renderer lockdown](./renderer-lockdown.md) covers what the page can and cannot do: no Node.js, no navigation, no new windows, no remote loads, no permissions.
+- [Sessions connection](./sessions-connection.md) covers the live placeholder count, fixture isolation, refresh, and clean service shutdown.
 
-Not yet built, so not mapped: the session list, session detail, pins and read markers, Reload Sessions, the Session menu, tool health, and the Fixture data banner. Add a feature file in the change that ships each of them.
+Not yet built, so not mapped: the sessions list and detail, row selection/context-menu entry points, and the tool-health and local-state interface. Session actions and menu commands are wired but their row/detail entry points arrive in TASK-012/013; verify their contract with the synthetic main/preload tests meanwhile.
