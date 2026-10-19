@@ -4,17 +4,21 @@ AgentPeek is a macOS app that shows what your local AI coding agents are doing. 
 
 AgentPeek is built with Electron, TypeScript, and React.
 
-**Status: early development.** The app reads local Codex and Claude Code sessions while open. The sessions list has Active, Pinned, and All Sessions views, tool filters, source health, keyboard selection, and Session/context menus. Session detail shows recent messages with safe Markdown, long-message expansion, actions, automatic read-on-focused-view, and narrow-window Back. The list and detail have automated and synthetic built-app verification.
+**Status: Phase 1 implemented; final acceptance pending.** The app has live session lists,
+Active/Pinned/All Sessions views, tool filters, source health, safe message detail, pin/read
+actions, keyboard navigation and a local macOS package. Automated tests and approved synthetic
+built-app checks cover the implemented paths. VoiceOver speech, physical sleep/wake, external
+app/browser actions and a complete real-session comparison still need acceptance evidence.
 
 ## Requirements
 
 - macOS on Apple Silicon
-- Node.js 20.19+ or 22.13+, with npm
+- Node.js 22.13+ in the 22.x line, or Node.js 24+, with npm (the packaging fuse tool requires 22.12+)
 
 ## Set up
 
 ```bash
-npm install
+npm ci
 ```
 
 ## Run
@@ -44,6 +48,9 @@ AGENTPEEK_HOME=/absolute/path/to/synthetic-home AGENTPEEK_USER_DATA=/absolute/pa
 
 Fixture mode shows a persistent banner naming the synthetic home. Its process checks treat fixture
 tools and registry owners as alive; it never checks the user's running tools.
+Create the synthetic home and state paths with `npm run fixture -- create`; see the
+[fixture guide](scripts/fixture/README.md) for simulation and cleanup. Both `npm run dev` and
+`npm start` open a window. Agent-run launches require approval for the current task.
 
 ## Package
 
@@ -108,3 +115,10 @@ ESLint enforces the import rules. Tests sit next to the code they test, as `*.te
 ## Contributing
 
 [AGENTS.md](AGENTS.md) lists the project-wide rules for anyone changing the code, including coding agents.
+
+The local documentation set contains `docs/REQUIREMENTS.md` (implemented behavior, scope and
+acceptance limits), `docs/ARCHITECTURE.md` (processes, data flow and security), and
+`plan/agent-sessions/evidence/acceptance.md` (the Phase 1 acceptance record). `docs/` and `plan/`
+are intentionally ignored by Git and may be absent in another checkout. The versioned
+[verification map](.agents/skills/verify-agentpeek/features/README.md) and fixture guide remain
+available there.
