@@ -222,6 +222,58 @@ describe('session detail', () => {
     }
   )
 
+  it('returns to the message start after a late keyboard scroll, without overriding new input', async () => {
+    const f = mountDetail()
+    f.api.getMessages.mockResolvedValue({
+      kind: 'messages',
+      hasOlder: false,
+      messages: [{ kind: 'reply', text: 'Synthetic long reply. '.repeat(400), at: NOW }]
+    })
+    f.rerender(
+      <SessionDetail
+        {...f.props}
+        session={{
+          ...f.props.session,
+          summary: { ...f.props.session.summary, lastActivityAt: NOW }
+        }}
+      />
+    )
+    const toggle = await screen.findByRole('button', { name: 'Show More' })
+    const region = screen.getByRole('region', { name: 'Recent messages' })
+    const message = toggle.closest('.message-text')!
+    vi.spyOn(region, 'getBoundingClientRect').mockImplementation(
+      () => new DOMRect(0, 100, 400, 300)
+    )
+    vi.spyOn(message, 'getBoundingClientRect').mockImplementation(
+      () => new DOMRect(0, 500 - region.scrollTop, 400, 2000)
+    )
+    vi.useFakeTimers()
+    try {
+      fireEvent.click(toggle)
+      region.scrollTop = 3000
+      fireEvent.scroll(region)
+      fireEvent.click(toggle)
+      expect(region.scrollTop).toBe(392)
+      region.scrollTop = 1200
+      fireEvent.scroll(region)
+      act(() => {
+        vi.advanceTimersByTime(150)
+      })
+      expect(region.scrollTop).toBe(392)
+      fireEvent.click(toggle)
+      region.scrollTop = 900
+      fireEvent.scroll(region)
+      fireEvent.wheel(region)
+      act(() => {
+        vi.advanceTimersByTime(150)
+      })
+      expect(region.scrollTop).toBe(900)
+    } finally {
+      f.unmount()
+      vi.useRealTimers()
+    }
+  })
+
   it('preserves independent message disclosures across live updates', async () => {
     const f = mountDetail()
     const messages = [

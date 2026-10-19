@@ -443,12 +443,41 @@ function MessageText({
   const block = useRef<HTMLDivElement>(null)
   const toggle = useRef<HTMLButtonElement>(null)
   const reposition = useRef(false)
+  const cancelAlignment = useRef<(() => void) | null>(null)
+  useEffect(() => () => cancelAlignment.current?.(), [])
   const returnToStart = () => {
+    cancelAlignment.current?.()
     const element = block.current
     const scroller = element?.closest<HTMLElement>('.transcript')
-    if (element && scroller)
-      scroller.scrollTop +=
-        element.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 8
+    if (element && scroller) {
+      const align = () => {
+        if (!element.isConnected) return
+        scroller.scrollTop +=
+          element.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 8
+      }
+      // Chromium may continue the earlier PageDown animation after an immediate jump.
+      // Re-align after it settles, but cancel as soon as the user starts another action.
+      let timer: number | undefined
+      const inputs = ['wheel', 'keydown', 'pointerdown', 'touchstart'] as const
+      const cancel = () => {
+        window.clearTimeout(timer)
+        scroller.removeEventListener('scroll', schedule)
+        inputs.forEach((event) => scroller.removeEventListener(event, cancel))
+        cancelAlignment.current = null
+      }
+      const schedule = () => {
+        window.clearTimeout(timer)
+        timer = window.setTimeout(() => {
+          cancel()
+          align()
+        }, 100)
+      }
+      cancelAlignment.current = cancel
+      scroller.addEventListener('scroll', schedule)
+      inputs.forEach((event) => scroller.addEventListener(event, cancel, { passive: true }))
+      align()
+      schedule()
+    }
     toggle.current?.focus({ preventScroll: true })
   }
   useLayoutEffect(() => {

@@ -51,4 +51,5 @@ Preconditions:
 - Conversation/error text is on-demand memory only, never snapshot/state data. Evidence is synthetic only.
 - Loading/request races have component tests; fast real reads may finish before a screenshot.
 - Title overflow and sticky-control geometry require a real renderer; mocked component dimensions cannot prove layout. Expanded text still obeys 200,000 characters and never loads full history.
+- Test Collapse immediately after rapid PageDown, while keyboard scrolling is still moving: the preview must return to its message start after that motion settles. A subsequent wheel/key/pointer action must cancel that return instead of pulling the user's new scroll backward.
 - DOM/AX labels do not establish VoiceOver speech, physical resizing, external activation or packaged behavior.
