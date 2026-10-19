@@ -34,7 +34,7 @@ node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs launch --label <featu
 What it does:
 
 1. Runs `npm run build` (typecheck + electron-vite build into `out/`). A failed build stops the launch. Pass `--no-build` only when `out/` is known to match the checkout (`doctor` tells you).
-2. Creates the run's evidence folder `test-results/verify-agentpeek/<run-id>/` and its scratch folder `<tmp>/agentpeek-verify/<run-id>/` holding `user-data/` (a fresh Chromium profile) and `home/` (empty, or a copy of `--fixture <dir>`).
+2. Creates the run's evidence folder `test-results/verify-agentpeek/<run-id>/` and its scratch folder `<tmp>/agentpeek-verify/<run-id>/` holding `user-data/` (a fresh Chromium profile) and `home/` (empty, or a copy of `--fixture <dir>` preserving file timestamps so age-based scenarios remain intact).
 3. Starts `node_modules/electron`'s binary on the repository with `--user-data-dir=<scratch>/user-data`, `--remote-debugging-port=0`, and `--inspect=0`, detached, with stdout and stderr in `app.log`. It removes `ELECTRON_RUN_AS_NODE` and `ELECTRON_RENDERER_URL` from the environment and sets `AGENTPEEK_HOME=<scratch>/home` and `AGENTPEEK_USER_DATA=<scratch>/user-data`.
 4. Waits until the instance is usable: both debug ports are announced in `app.log`, the page `out/renderer/index.html` has finished loading, React has rendered into `#root`, and the main process reports a visible window. This takes 1 to 3 seconds after the build.
 
