@@ -67,7 +67,12 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
         }
       }}
     >
-      <SessionBanners snapshot={snapshot} />
+      <SessionBanners
+        snapshot={snapshot}
+        reloadPending={state.reloadPending}
+        reloadError={state.reloadError}
+        onReload={store.reload}
+      />
       <div className="workspace">
         <Sidebar snapshot={snapshot} view={view} onView={store.setView} />
         <main
@@ -161,7 +166,11 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
               visible={detailVisible}
               focused={windowFocused}
               missing={!!missing}
-              confirmedAt={snapshot?.takenAt ?? now}
+              lastSeenAt={state.selection?.lastSeenAt ?? null}
+              sourceEpoch={state.selection?.sourceEpoch ?? 0}
+              reloadPending={state.reloadPending}
+              reloadVersion={state.reloadVersion}
+              onReload={store.reload}
             />
           ) : (
             <div className="detail-placeholder">

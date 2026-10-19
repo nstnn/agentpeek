@@ -1,14 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react'
 import type { RecentMessages, Session, SessionMessage } from '../../core/session'
 import type { AgentPeekApi } from '../../shared/api'
-import { sessionTitle, toolName, workspaceName } from './session-display'
+import { rowStatus, sessionTitle, toolName, workspaceName } from './session-display'
 import { clockTime, detailStatus } from './detail-status'
 import { SessionIcon } from './SessionIcon'
 import { SafeMarkdown } from './SafeMarkdown'
+import { ReloadSessions } from './session-panels'
 
 const PREVIEW_LIMIT = 6000
 const FULL_LIMIT = 200_000
-type Loaded = { revision: string; result: RecentMessages }
+type Loaded = { revision: string; sourceEpoch: number; result: RecentMessages }
 const NOT_FOUND = { kind: 'not-found' } as const
 
 export function SessionDetail({
@@ -17,14 +18,22 @@ export function SessionDetail({
   visible,
   focused,
   missing,
-  confirmedAt
+  lastSeenAt,
+  sourceEpoch,
+  reloadPending,
+  reloadVersion,
+  onReload
 }: {
   session: Session
   api: AgentPeekApi
   visible: boolean
   focused: boolean
   missing: boolean
-  confirmedAt: number
+  lastSeenAt: number | null
+  sourceEpoch: number
+  reloadPending: boolean
+  reloadVersion: number
+  onReload: () => Promise<void>
 }): JSX.Element {
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const [retry, setRetry] = useState(0)
@@ -32,24 +41,40 @@ export function SessionDetail({
   const transcript = useRef<HTMLDivElement>(null)
   const latest = useRef<HTMLDivElement>(null)
   const bottom = useRef<HTMLDivElement>(null)
+  const retryButton = useRef<HTMLButtonElement>(null)
+  const retryFocused = useRef(false)
   const positioned = useRef(false)
   const scrollPosition = useRef(0)
   const seen = useRef<string | null>(null)
-  const revision = `${session.summary.lastActivityAt}:${session.lastReply?.cursor ?? ''}:${missing}`
+  const revision = `${session.summary.lastActivityAt}:${session.lastReply?.cursor ?? ''}:${sourceEpoch}:${reloadVersion}`
   const { tool, id } = session.key
   useEffect(() => {
-    if (!visible) return
+    if (!visible || missing) return
     let active = true
     const receive = (result: RecentMessages) => {
-      if (active) setLoaded({ revision, result })
+      if (active) setLoaded({ revision, sourceEpoch, result })
     }
     void api.getMessages({ tool, id }, 20).then(receive, () => receive({ kind: 'unreadable' }))
     return () => {
       active = false
     }
-  }, [api, tool, id, revision, retry, visible])
+  }, [api, tool, id, revision, retry, visible, missing, reloadVersion, sourceEpoch])
 
-  const result = missing ? NOT_FOUND : loaded?.result
+  const result = missing
+    ? NOT_FOUND
+    : loaded?.sourceEpoch === sourceEpoch
+      ? loaded.result
+      : undefined
+  useLayoutEffect(() => {
+    if (retryFocused.current && result?.kind === 'messages') {
+      retryFocused.current = false
+      if (
+        document.activeElement === retryButton.current ||
+        document.activeElement === document.body
+      )
+        transcript.current?.focus({ preventScroll: true })
+    }
+  }, [result])
   useLayoutEffect(() => {
     if (!visible || result?.kind !== 'messages') return
     const scroller = transcript.current
@@ -105,7 +130,9 @@ export function SessionDetail({
       setActionError(failure)
     }
   }
-  const status = detailStatus(session)
+  const status = missing
+    ? { ...rowStatus(session, true), callout: undefined }
+    : detailStatus(session)
   const openName = tool === 'codex' ? 'Open Codex' : 'Open Claude'
   const messages = result?.kind === 'messages' ? result.messages : []
   let lastPrompt = -1
@@ -123,7 +150,13 @@ export function SessionDetail({
           {toolName(tool)} · {workspaceName(session)}
         </p>
         <p className={`detail-status ${status.kind}`}>
-          <SessionIcon kind={status.kind} /> {status.label} · as of {clockTime(confirmedAt)}
+          <SessionIcon kind={status.kind} /> {status.label}
+        </p>
+        <p className="detail-meta">
+          Last seen in AgentPeek:{' '}
+          {lastSeenAt === null
+            ? 'Unknown'
+            : new Date(lastSeenAt).toLocaleString('en-US', { hour12: false })}
         </p>
         {status.callout && (
           <div className={`detail-callout ${status.kind}`}>
@@ -212,16 +245,27 @@ export function SessionDetail({
           <div className="message-state">
             <h3>Couldn't load messages</h3>
             <p>AgentPeek couldn't read this session's file.</p>
-            {missing && <p>This session is no longer available.</p>}
-            <button
-              type="button"
-              onClick={() => {
-                setLoaded(null)
-                setRetry((n) => n + 1)
-              }}
-            >
-              Try Again
-            </button>
+            {missing || result.kind === 'not-found' ? (
+              <>
+                <p>
+                  This session is unavailable. Reload to check its source again; if it stays
+                  unavailable, check source access or choose another session.
+                </p>
+                <ReloadSessions pending={reloadPending} onReload={onReload} />
+              </>
+            ) : (
+              <button
+                type="button"
+                ref={retryButton}
+                onClick={() => {
+                  retryFocused.current = true
+                  setLoaded(null)
+                  setRetry((n) => n + 1)
+                }}
+              >
+                Try Again
+              </button>
+            )}
           </div>
         ) : (
           <>

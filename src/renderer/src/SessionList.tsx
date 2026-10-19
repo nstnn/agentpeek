@@ -99,15 +99,24 @@ export function SessionList({
         <div role="group" aria-labelledby={`group-${group.id}`} key={group.id}>
           <h2 className="group-heading" id={`group-${group.id}`}>
             <span>{GROUP_NAMES[group.id]}</span>
-            <span>{counts.find((g) => g.id === group.id)?.sessions.length ?? 0}</span>
+            <span>
+              {counts.find((g) => g.id === group.id)?.sessions.length ?? 0}{' '}
+              {['waiting', 'errors', 'new-replies'].includes(group.id) ? 'outstanding' : 'current'}
+            </span>
           </h2>
           {group.sessions.map((session) => {
             const id = sessionKeyToString(session.key)
-            const status = rowStatus(session)
+            const missing = !state.snapshot?.sessions.some((s) => sameKey(s.key, session.key))
+            const status = rowStatus(session, missing)
             const title = sessionTitle(session)
             const time = relativeTime(session.summary.lastActivityAt, now)
             const active = id === selectedId
-            const label = `${title}, ${toolName(session.key.tool)}, ${workspaceName(session)}, ${status.label}, ${time}${session.pinned ? ', pinned' : ''}`
+            const retained =
+              active &&
+              !counts
+                .find((g) => g.id === group.id)
+                ?.sessions.some((s) => sameKey(s.key, session.key))
+            const label = `${title}, ${toolName(session.key.tool)}, ${workspaceName(session)}, ${status.label}, ${time}${session.pinned ? ', pinned' : ''}${retained ? ', kept here while selected' : ''}`
             return (
               <div
                 key={id}
@@ -160,6 +169,7 @@ export function SessionList({
                     {status.label}
                   </span>
                 </div>
+                {retained && <span className="row-retained">Kept here while selected.</span>}
               </div>
             )
           })}

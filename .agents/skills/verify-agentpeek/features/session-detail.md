@@ -12,6 +12,7 @@ Wide selection shows the session header and recent exchange. Narrow click/Return
 - `detail-read`: loaded visible detail plus focus; viewing never clears waiting.
 - `detail-navigation`: narrow click/Return, Back, Escape and Session > Back restore row/focus.
 - `detail-live`: refresh preserves focus/scroll and discards stale requests.
+- `detail-source-recovery`: missing selections show Unavailable with frozen Last seen in AgentPeek and use bounded source reload instead of transcript retry.
 
 ## How to get to it (user POV)
 
@@ -33,7 +34,8 @@ Preconditions:
 - **Long text.** Capture the 6,000-character notice; `click --role button --name "Show Full Message"`; capture the 200,000-character notice and Open-tool guidance. Code blocks scroll sideways without page overflow.
 - **Read/live.** Select running detail; `blur`; capture; append a reply/completion only to the copied synthetic rollout. Capture unread attention, selected key and transcript scroll via read-only eval. `focus` clears unread without changing selection or scroll. `blur` is native window blur, not a physical app switch.
 - **Error/waiting.** Select error and waiting rows; capture callouts. Acknowledged errors retain their detail and quoted Codex error/Claude terminal explanation. Viewing waiting leaves it waiting.
-- **Retry.** Remove read permission from a copied synthetic rollout; select/capture failure. Restore permission; inspect the tree; `click --role button --name "Try Again"`; capture loaded messages. Reconciliation may recover automatically.
+- **Retry.** Remove read permission from a copied synthetic rollout; select/capture failure. Restore permission; inspect the tree; `click --role button --name "Try Again"`; capture loaded messages and focus on Recent messages. Reconciliation may recover automatically. A known missing transcript uses Reload Sessions instead.
+- **Source loss/recovery (`detail-source-recovery`).** Select a synthetic Codex session and capture `aria detail-source-recovery-before` plus `screenshot detail-source-recovery-before`; record Last seen in AgentPeek. Remove access only to the copied `.codex` directory and use View > Reload Sessions. Capture the unavailable row/detail: Unavailable — last known: <state>, the frozen observation time, disabled stale actions and Reload Sessions. Reload again while denied and after a newer Claude snapshot: time stays frozen, and completion alone never restores membership. Restore synthetic directory access, click `click --selector ".message-state button"`, then capture recovered messages and local focus. Repeat at default and 760 × 480 sizes (Enter opens narrow detail; Back/Escape restores the same row/list focus). A genuinely missing session stays unavailable with source-access/choose-another guidance. Rapid repeated Reload Sessions stays one pending request; changing selection never restores the previous selection. Rejected/hanging reloads and delayed results are also covered by transition tests; claim runtime evidence only for exercised cases.
 - **Actions.** Click Pin; capture Unpin/count; then Unpin. Contract tests verify ID/tool/URL and stale targets. Actual clipboard and external activation need separate authorization/reporting.
 - **Narrow.** `main-eval "BrowserWindow.getAllWindows()[0].setSize(760,480)"` stands in for resizing. Capture list/menu: Back disabled. Arrows then `key Enter` open detail with Back focused; capture menu: Back enabled. Test `key Escape`, `menu-click "Session > Back"`, and `click --role button --name "‹ <view name>"`: same selected row and listbox focus. Read-only `eval "document.documentElement.scrollWidth-innerWidth"` returns zero.
 - **Cleanup.** Use main-window.md for app-only Light/Dark overrides, restore system, doctor, Window > Close Window, wait-exit, stop. Retain clean/defaultProfileUnchanged results.
@@ -42,7 +44,8 @@ Preconditions:
 
 - Hidden narrow detail never loads or marks read; width alone never enables Back.
 - Automatic read carries the loaded cursor; main rejects a newer reply.
-- Terminal errors remain in detail after acknowledgement until a newer turn starts.
+- Terminal errors remain Error · Read in row and detail after acknowledgement until a newer turn starts; waiting semantics remain unchanged.
+- Last seen in AgentPeek is snapshot membership observation, not proof of a fresh filesystem read. Missing membership freezes that time; unknown provenance remains Unknown.
 - Conversation/error text is on-demand memory only, never snapshot/state data. Evidence is synthetic only.
 - Loading/request races have component tests; fast real reads may finish before a screenshot.
 - DOM/AX labels do not establish VoiceOver speech, physical resizing, external activation or packaged behavior.

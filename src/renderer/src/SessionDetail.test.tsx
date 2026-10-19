@@ -29,7 +29,11 @@ function mountDetail(change: Partial<Session> = {}, focused = true) {
     visible: true,
     focused,
     missing: false,
-    confirmedAt: NOW
+    lastSeenAt: NOW,
+    sourceEpoch: 0,
+    reloadPending: false,
+    reloadVersion: 0,
+    onReload: fake.api.reload
   }
   return { ...fake, props, ...render(<SessionDetail {...props} />) }
 }
@@ -100,7 +104,7 @@ describe('session detail', () => {
     expect(screen.getByText('3 tool calls · Read, Edit, Bash')).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'Synthetic reply' })).toBeTruthy()
     expect(screen.getByText('Codex · project').title).toBe('/synthetic/project')
-    expect(screen.getByText(/Running · as of/)).toBeTruthy()
+    expect(screen.getByText(/^Running$/)).toBeTruthy()
   })
 
   it('renders hostile Markdown inert and sends only safe links through the API', async () => {
@@ -138,7 +142,7 @@ describe('session detail', () => {
     expect(f.api.openLink).toHaveBeenCalledWith('https://example.com/path')
   })
 
-  it.each(['unreadable', 'not-found', 'rejection'] as const)(
+  it.each(['unreadable', 'rejection'] as const)(
     'retries a %s load without exposing the raw error',
     async (failure) => {
       const f = mountDetail()
