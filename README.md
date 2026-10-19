@@ -4,7 +4,7 @@ AgentPeek is a macOS app that shows what your local AI coding agents are doing. 
 
 AgentPeek is built with Electron, TypeScript, and React.
 
-**Status: early development.** The app reads local Codex and Claude Code sessions while open. The sessions list has Active, Pinned, and All Sessions views, tool filters, source health, keyboard selection, and Session/context menus. Session detail and automatic read-on-view are not built yet. The list has been verified in the built macOS app with synthetic sessions.
+**Status: early development.** The app reads local Codex and Claude Code sessions while open. The sessions list has Active, Pinned, and All Sessions views, tool filters, source health, keyboard selection, and Session/context menus. Session detail shows recent messages with safe Markdown, long-message expansion, actions, automatic read-on-focused-view, and narrow-window Back. The list and detail have automated and synthetic built-app verification.
 
 ## Requirements
 

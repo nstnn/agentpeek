@@ -49,7 +49,7 @@ export interface CodexTurnOutcome {
 export type CodexRecord =
   | { kind: 'turn-started'; at: number }
   // `outcome` is null when the turn ended without a final reply or an error.
-  | { kind: 'turn-completed'; at: number; outcome: CodexTurnOutcome | null }
+  | { kind: 'turn-completed'; at: number; outcome: CodexTurnOutcome | null; errorMessage?: string }
   | { kind: 'turn-aborted'; at: number }
   | { kind: 'user-message'; at: number; text: string }
   | { kind: 'agent-message'; at: number; text: string }
@@ -112,7 +112,14 @@ function eventRecord(payload: JsonObject, at: number): CodexRecord {
     case 'task_started':
       return { kind: 'turn-started', at }
     case 'task_complete':
-      return { kind: 'turn-completed', at, outcome: turnOutcome(payload) }
+      return {
+        kind: 'turn-completed',
+        at,
+        outcome: turnOutcome(payload),
+        ...(isObject(payload.error) && typeof payload.error.message === 'string'
+          ? { errorMessage: payload.error.message }
+          : {})
+      }
     case 'turn_aborted':
       // A turn the user stopped: no reply and no error (TASK-003).
       return { kind: 'turn-aborted', at }

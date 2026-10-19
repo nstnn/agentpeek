@@ -18,6 +18,58 @@ function setup() {
 }
 
 describe('session controller', () => {
+  it('rejects automatic acknowledgement if native focus was lost before IPC arrived', () => {
+    const s = setup()
+    const current = testSession({
+      lastReply: {
+        cursor: 'reply',
+        isError: true,
+        completedAt: 1,
+        errorCode: 'synthetic',
+        newerTurnStarted: false
+      }
+    })
+    s.service.snapshot.mockReturnValue({ ...s.service.snapshot(), sessions: [current] })
+    const controller = createSessionController({ ...s, isFocused: () => false })
+    expect(controller.markRead(current.key, 'reply')).toBe(false)
+    expect(s.service.markRead).not.toHaveBeenCalled()
+    controller.markRead(current.key)
+    expect(s.service.markRead).toHaveBeenCalledWith(current.key)
+  })
+  it('enables Back only for an actual narrow detail and keeps Back usable after the session disappears', () => {
+    const s = setup()
+    const isNarrow = vi.fn(() => false)
+    const controller = createSessionController({ ...s, isNarrow })
+    controller.setSelection(testSession().key)
+    controller.setDetailOpen(true)
+    expect(controller.canGoBack()).toBe(false)
+    isNarrow.mockReturnValue(true)
+    expect(controller.canGoBack()).toBe(false)
+    controller.setDetailOpen(true)
+    expect(controller.canGoBack()).toBe(true)
+    s.service.snapshot.mockReturnValue({ ...s.service.snapshot(), sessions: [] })
+    controller.publish()
+    expect(controller.canGoBack()).toBe(true)
+    controller.setDetailOpen(false)
+    expect(controller.canGoBack()).toBe(false)
+  })
+  it('does not acknowledge a newer reply than the detail actually displayed', () => {
+    const s = setup()
+    const current = testSession({
+      lastReply: {
+        cursor: 'new',
+        isError: false,
+        completedAt: 1,
+        errorCode: null,
+        newerTurnStarted: false
+      }
+    })
+    s.service.snapshot.mockReturnValue({ ...s.service.snapshot(), sessions: [current] })
+    expect(s.controller.markRead(current.key, 'old')).toBe(false)
+    expect(s.service.markRead).not.toHaveBeenCalled()
+    s.controller.markRead(current.key, 'new')
+    expect(s.service.markRead).toHaveBeenCalledWith(current.key)
+  })
   it('exposes the fixture path without adding messages to the snapshot', () => {
     const { controller } = setup()
     expect(controller.snapshot()).toMatchObject({ fixture: true, fixtureHome: '/synthetic/home' })

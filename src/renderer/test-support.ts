@@ -52,7 +52,9 @@ export function fakeApi(initial = snapshot()) {
       command = fn
       return offCommand
     }),
-    getMessages: vi.fn<AgentPeekApi['getMessages']>(),
+    getMessages: vi
+      .fn<AgentPeekApi['getMessages']>()
+      .mockResolvedValue({ kind: 'messages', messages: [], hasOlder: false }),
     setPinned: vi.fn(() => Promise.resolve(true)),
     markRead: vi.fn(() => Promise.resolve(true)),
     openTool: vi.fn(() => Promise.resolve(true)),
@@ -60,6 +62,7 @@ export function fakeApi(initial = snapshot()) {
     openLink: vi.fn(() => Promise.resolve(true)),
     reload: vi.fn(() => Promise.resolve()),
     setSelection: vi.fn(() => Promise.resolve()),
+    setDetailOpen: vi.fn(() => Promise.resolve()),
     showSessionMenu: vi.fn(() => Promise.resolve())
   } satisfies AgentPeekApi
   return {

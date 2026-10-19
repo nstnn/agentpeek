@@ -107,6 +107,7 @@ describe('parseRecord', () => {
     expect(parseRecord(line)).toEqual({
       kind: 'turn-completed',
       at: T0,
+      errorMessage: 'Synthetic error.',
       outcome: { turnId: TURN, isError: true, errorCode: 'server_overloaded' }
     })
   })

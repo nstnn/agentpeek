@@ -1,6 +1,6 @@
 # Main window
 
-Opening AgentPeek shows one window titled AgentPeek with a sidebar, sessions list, and a reserved detail pane at widths of at least 1000 points. Fixture runs also show a persistent banner naming the synthetic home. The window opens at a fixed default size, cannot be made smaller than a minimum size, and follows the Mac's Light or Dark appearance.
+Opening AgentPeek shows one window titled AgentPeek with a sidebar, sessions list, and the selected session detail at widths of at least 1000 points. Fixture runs also show a persistent banner naming the synthetic home. The window opens at a fixed default size, cannot be made smaller than a minimum size, and follows the Mac's Light or Dark appearance.
 
 ## Sub-features
 
@@ -36,4 +36,4 @@ Preconditions:
 - Do not assert the window's position. macOS places it, and it differs between runs.
 - `setSize` stands in for dragging a corner, which this harness cannot do. It proves the minimum size and the layout at that size, not the drag itself.
 - Never change the Mac's appearance setting. The `nativeTheme.themeSource` override is AgentPeek's own and ends when the app quits, but restore it before driving other features in the same run.
-- At widths of at least 1000 points, the sidebar is 190 points and list 420 points. Below that, sidebar is 170 points and detail is hidden. Detail activation/Back arrives in TASK-013.
+- At widths of at least 1000 points, the sidebar is 190 points and list 420 points. Below that, sidebar is 170 points and detail is hidden. Click or Return opens detail in place with Back; see session-detail.md.

@@ -14,6 +14,8 @@ export interface RendererState {
   filter: ToolFilter
   selection: Selection | null
   actionError: string | null
+  narrow: boolean
+  detailOpen: boolean
 }
 
 /** One subscription pair per mounted app. A pushed snapshot always wins over the initial request. */
@@ -24,7 +26,9 @@ export function createSessionsStore(api: AgentPeekApi) {
     view: 'active',
     filter: 'all',
     selection: null,
-    actionError: null
+    actionError: null,
+    narrow: false,
+    detailOpen: false
   }
   const listeners = new Set<() => void>()
   let disconnect: (() => void) | null = null
@@ -40,6 +44,11 @@ export function createSessionsStore(api: AgentPeekApi) {
   const clearSelection = () => {
     sendSelection(null)
     return null
+  }
+  const sendDetailOpen = (open: boolean) => {
+    void api
+      .setDetailOpen(open)
+      .catch(() => emit({ actionError: "Couldn't update Back. Try again." }))
   }
   const store = {
     getSnapshot: () => state,
@@ -66,7 +75,7 @@ export function createSessionsStore(api: AgentPeekApi) {
         const offSnapshot = api.onSnapshot(receive)
         const offCommand = api.onCommand((command) => {
           if (command.startsWith('view:')) store.setView(command.slice(5) as ViewId)
-          // TASK-013 adds the narrow detail's Back action.
+          if (command === 'back') store.back()
         })
         void api
           .getSnapshot()
@@ -91,10 +100,29 @@ export function createSessionsStore(api: AgentPeekApi) {
       }
     },
     setView(this: void, view: ViewId) {
-      emit({ view, selection: clearSelection(), actionError: null })
+      sendDetailOpen(false)
+      emit({ view, selection: clearSelection(), detailOpen: false, actionError: null })
     },
     setFilter(this: void, filter: ToolFilter) {
-      emit({ filter, selection: clearSelection(), actionError: null })
+      sendDetailOpen(false)
+      emit({ filter, selection: clearSelection(), detailOpen: false, actionError: null })
+    },
+    setNarrow(this: void, narrow: boolean) {
+      if (state.narrow === narrow) return
+      sendDetailOpen(false)
+      emit({ narrow, detailOpen: false })
+    },
+    activate(this: void, session: Session, groups: SessionGroup[]) {
+      store.select(session, groups)
+      if (state.narrow) {
+        emit({ detailOpen: true })
+        sendDetailOpen(true)
+      }
+    },
+    back(this: void) {
+      if (!state.detailOpen) return
+      emit({ detailOpen: false })
+      sendDetailOpen(false)
     },
     select(this: void, session: Session, groups: SessionGroup[]) {
       if (state.selection && sameKey(state.selection.session.key, session.key)) return

@@ -53,7 +53,7 @@ export function buildSessionMenu(
         id: 'session-back',
         label: 'Back',
         accelerator: 'CommandOrControl+[',
-        enabled: enabled && options.canGoBack === true,
+        enabled: options.canGoBack === true,
         click: actions.back
       }
     )

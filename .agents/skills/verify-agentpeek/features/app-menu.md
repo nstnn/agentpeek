@@ -41,4 +41,4 @@ Preconditions:
 - Toggle Developer Tools can take focus too. Run `focus` before choosing it again to close the tools.
 - Copy replaces the user's clipboard. Never read the clipboard before copying: it may hold the user's private text, and `main-eval` results go into `actions.jsonl`.
 - That Toggle Developer Tools is absent from packaged builds can only be verified once a packaged build exists.
-- Select rows through the list (see sessions-list.md), then verify the selected target and enabled Session actions. Do not manufacture selection through eval. Detail buttons remain TASK-013.
+- Select rows through the list (see sessions-list.md), then verify the selected target and enabled Session actions. Do not manufacture selection through eval. Detail buttons and narrow Back are covered in session-detail.md.

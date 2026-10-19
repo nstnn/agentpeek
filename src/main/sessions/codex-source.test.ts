@@ -172,6 +172,7 @@ describe('the observed format (fixture codex-0.162)', () => {
     expect(await source.recentMessages({ tool: 'codex', id: user }, 20)).toEqual({
       kind: 'messages',
       hasOlder: false,
+      error: { cursor: syntheticId(0xb3), message: 'Synthetic error message.' },
       messages: [
         {
           kind: 'prompt',
@@ -622,6 +623,23 @@ describe('refresh', () => {
 })
 
 describe('recentMessages', () => {
+  it('returns error text only on demand, never in facts, and drops it when a newer turn starts', async () => {
+    const key = { tool: 'codex', id: USER } as const
+    const path = await writeRollout(USER, [
+      sessionMetaLine({ id: USER }),
+      taskStartedLine(TURN_A, T0),
+      taskCompleteLine(TURN_A, T0 + SECOND, {
+        error: { codex_error_info: 'server_overloaded', message: 'Synthetic private error.' }
+      })
+    ])
+    const source = createSource()
+    expect(JSON.stringify(await source.catalog())).not.toContain('Synthetic private error.')
+    expect(await source.recentMessages(key, 20)).toMatchObject({
+      error: { cursor: TURN_A, message: 'Synthetic private error.' }
+    })
+    await append(path, [taskStartedLine('new-turn', T0 + 2 * SECOND)])
+    expect(await source.recentMessages(key, 20)).not.toHaveProperty('error')
+  })
   it('returns the last messages and says when older ones exist', async () => {
     await writeRollout(USER, [
       sessionMetaLine({ id: USER }),

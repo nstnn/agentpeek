@@ -17,7 +17,7 @@ function setup() {
     isMinimized: () => false,
     restore: vi.fn(),
     focus: vi.fn(),
-    getContentBounds: vi.fn(() => ({ width: 1100 }))
+    getContentSize: vi.fn(() => [1100, 720])
   })
   const app = Object.assign(new EventEmitter(), {
     enableSandbox: vi.fn(),
@@ -71,7 +71,7 @@ afterEach(() => {
 describe('main process lifecycle', () => {
   it('keeps Back disabled after selecting a row in the narrow list without a detail screen', async () => {
     const s = setup()
-    s.window.getContentBounds.mockReturnValue({ width: 760 })
+    s.window.getContentSize.mockReturnValue([760, 480])
     await import('./index')
     await vi.waitFor(() => expect(s.service.start).toHaveBeenCalledOnce())
     const select = s.ipcMain.handle.mock.calls.find(
@@ -101,7 +101,7 @@ describe('main process lifecycle', () => {
       stateFolder: '/synthetic/state',
       fixture: true
     })
-    expect(s.ipcMain.handle).toHaveBeenCalledTimes(10)
+    expect(s.ipcMain.handle).toHaveBeenCalledTimes(11)
     vi.useFakeTimers()
     s.window.emit('focus')
     s.window.emit('focus')
@@ -136,7 +136,7 @@ describe('main process lifecycle', () => {
     expect(s.app.quit).not.toHaveBeenCalled()
     expect(s.service.stop).toHaveBeenCalledOnce()
     expect(s.powerMonitor.listenerCount('resume')).toBe(0)
-    expect(s.ipcMain.removeHandler).toHaveBeenCalledTimes(10)
+    expect(s.ipcMain.removeHandler).toHaveBeenCalledTimes(11)
     expect(vi.getTimerCount()).toBe(0)
     finish()
     await vi.advanceTimersByTimeAsync(0)

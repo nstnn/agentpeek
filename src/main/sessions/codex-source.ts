@@ -356,12 +356,24 @@ export function createCodexSource(options: CodexSourceOptions): SessionSource {
         maxLines: ALL_LINES,
         maxBytes: MESSAGES_TAIL_BYTES
       })
-      const messages = codexMessages(parseRecords(tail.lines))
+      const records = parseRecords(tail.lines)
+      const messages = codexMessages(records)
+      const lastTurn = records.findLast(
+        (record) =>
+          record.kind === 'turn-completed' ||
+          record.kind === 'turn-started' ||
+          record.kind === 'turn-aborted'
+      )
+      const error =
+        lastTurn?.kind === 'turn-completed' && lastTurn.outcome?.isError && lastTurn.errorMessage
+          ? { cursor: lastTurn.outcome.turnId, message: lastTurn.errorMessage }
+          : undefined
       const count = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 0
       return {
         kind: 'messages',
         messages: messages.slice(Math.max(0, messages.length - count)),
-        hasOlder: messages.length > count || !tail.reachedStart
+        hasOlder: messages.length > count || !tail.reachedStart,
+        ...(error ? { error } : {})
       }
     } catch {
       return { kind: 'unreadable' }

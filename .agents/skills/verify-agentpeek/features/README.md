@@ -46,4 +46,4 @@ Keep implementation details out of the map. Name only user paths, stable handles
 
 - [Sessions list](./sessions-list.md) covers views, filtering, groups, selection, keyboard/context entry points, tool health and list notices.
 
-Not yet built: session detail, transcript actions, automatic read-on-view, and narrow detail push/Back (TASK-013).
+- [Session detail](./session-detail.md) covers messages, safe Markdown, long text, actions, focused read-on-view and narrow push/Back.

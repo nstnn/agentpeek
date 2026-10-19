@@ -17,19 +17,26 @@ export function SessionList({
   groups,
   state,
   store,
-  now
+  now,
+  hidden = false
 }: {
   groups: SessionGroup[]
   state: RendererState
   store: SessionsStore
   now: number
+  hidden?: boolean
 }): JSX.Element {
   const [contextKey, setContextKey] = useState<string | null>(null)
   const rows = groups.flatMap((g) => g.sessions)
   const counts = buildView(state.snapshot?.sessions ?? [], state.view, state.filter).groups
   const selected = state.selection?.session
   const selectedId = selected ? sessionKeyToString(selected.key) : null
-  const { list, head, tail, remember: rememberScroll } = useListAnchor(selectedId, state.snapshot)
+  const {
+    list,
+    head,
+    tail,
+    remember: rememberScroll
+  } = useListAnchor(selectedId, state.snapshot, hidden)
   const openContextMenu = async (session: Session) => {
     store.select(session, groups)
     setContextKey(sessionKeyToString(session.key))
@@ -48,10 +55,15 @@ export function SessionList({
       aria-label={`${state.view === 'all' ? 'All' : state.view === 'pinned' ? 'Pinned' : 'Active'} sessions`}
       tabIndex={0}
       ref={list}
+      hidden={hidden}
       onScroll={rememberScroll}
       aria-live="off"
       aria-activedescendant={selectedId ? `session-${selectedId}` : undefined}
       onKeyDown={(event) => {
+        if (event.key === 'Enter' && selected) {
+          event.preventDefault()
+          store.activate(selected, groups)
+        }
         if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
           event.preventDefault()
           const index = rows.findIndex((s) => selected && sameKey(s.key, selected.key))
@@ -108,7 +120,7 @@ export function SessionList({
                   if (event.button === 0) event.preventDefault()
                 }}
                 onClick={() => {
-                  store.select(session, groups)
+                  store.activate(session, groups)
                   list.current?.focus()
                 }}
                 onContextMenu={(event) => {

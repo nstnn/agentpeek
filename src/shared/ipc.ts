@@ -10,6 +10,7 @@ export const IPC = {
   openLink: 'agentpeek:open-link',
   reload: 'agentpeek:reload',
   setSelection: 'agentpeek:set-selection',
+  setDetailOpen: 'agentpeek:set-detail-open',
   showSessionMenu: 'agentpeek:show-session-menu',
   command: 'agentpeek:command'
 } as const

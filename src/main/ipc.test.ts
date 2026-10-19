@@ -16,6 +16,7 @@ const requests: [string, unknown[]][] = [
   [IPC.openLink, ['https://example.com/path?q=1']],
   [IPC.reload, []],
   [IPC.setSelection, [key]],
+  [IPC.setDetailOpen, [true]],
   [IPC.showSessionMenu, [key]]
 ]
 
@@ -116,7 +117,7 @@ describe('IPC trust boundary', () => {
   })
   it.each(requests)('rejects extra arguments for every handler: %s', async (channel, args) => {
     const s = setup()
-    await expect(s.invoke(channel, [...args, 'unexpected'])).rejects.toThrow(
+    await expect(s.invoke(channel, [...args, 'unexpected', 'extra'])).rejects.toThrow(
       'Invalid AgentPeek request'
     )
     s.expectNoEffects()
@@ -173,6 +174,9 @@ describe('IPC trust boundary', () => {
     const s = setup()
     await expect(s.invoke(IPC.openTool, ['arbitrary.bundle'])).rejects.toThrow()
     await expect(s.invoke(IPC.setPinned, [key, 1])).rejects.toThrow()
+    await expect(s.invoke(IPC.setDetailOpen, ['true'])).rejects.toThrow()
+    await expect(s.invoke(IPC.markRead, [key, ''])).rejects.toThrow()
+    await expect(s.invoke(IPC.markRead, [key, 'x\n'])).rejects.toThrow()
     s.expectNoEffects()
     for (const limit of [1, MAX_MESSAGE_LIMIT]) await s.invoke(IPC.getMessages, [key, limit])
     expect(s.service.recentMessages.mock.calls).toEqual([
