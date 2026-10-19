@@ -47,12 +47,20 @@ tools and registry owners as alive; it never checks the user's running tools.
 
 ## Check
 
-| Command             | What it does                                              |
-| ------------------- | --------------------------------------------------------- |
-| `npm run typecheck` | Type-checks the main process and the renderer separately. |
-| `npm run lint`      | Runs ESLint, then checks formatting with Prettier.        |
-| `npm test`          | Runs the unit tests with vitest.                          |
-| `npm run format`    | Rewrites files in the Prettier style.                     |
+| Command                     | What it does                                                                                        |
+| --------------------------- | --------------------------------------------------------------------------------------------------- |
+| `npm run typecheck`         | Type-checks the main process and the renderer separately.                                           |
+| `npm run lint`              | Runs ESLint, then checks formatting with Prettier.                                                  |
+| `npm test`                  | Runs the unit tests with vitest.                                                                    |
+| `npm run fixture -- create` | Creates an isolated synthetic home for regression checks.                                           |
+| `npm run e2e`               | Opens the built app twice for the Playwright fixture smoke; build first and obtain launch approval. |
+| `npm run format`            | Rewrites files in the Prettier style.                                                               |
+
+The [fixture guide](scripts/fixture/README.md) lists the simulator commands and expected states.
+The smoke checks bootstrap, a live update within 2 seconds, safe detail rendering, persisted pins
+and requests limited to the app's renderer files. It uses temporary fixture/profile folders,
+removes them after the run, and retains evidence in ignored `test-results/e2e/`. It does not
+replace manual system, accessibility, packaged-build or consented real-data acceptance.
 
 ## Project layout
 

@@ -47,3 +47,5 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Sessions list](./sessions-list.md) covers views, filtering, groups, selection, keyboard/context entry points, tool health and list notices.
 
 - [Session detail](./session-detail.md) covers messages, safe Markdown, long text, actions, focused read-on-view and narrow push/Back.
+
+- [Fixture regression](./fixture-regression.md) covers the synthetic generator/simulator and built-app Playwright smoke.

@@ -80,7 +80,7 @@ async function launch() {
     const fixture = path.resolve(String(flags.fixture))
     if (!fs.statSync(fixture).isDirectory()) fail(`--fixture ${fixture} is not a folder.`)
     // A copy, so a simulator can append to it without touching the original.
-    fs.cpSync(fixture, homeDir, { recursive: true })
+    fs.cpSync(fixture, homeDir, { recursive: true, preserveTimestamps: true })
   }
 
   const env = { ...process.env }

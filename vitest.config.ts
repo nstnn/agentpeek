@@ -6,7 +6,7 @@ export default defineConfig({
       {
         test: {
           name: 'node',
-          include: ['src/{core,main,preload,shared}/**/*.test.ts'],
+          include: ['src/{core,main,preload,shared}/**/*.test.ts', 'scripts/fixture/*.test.mjs'],
           environment: 'node'
         }
       },

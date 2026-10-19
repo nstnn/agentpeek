@@ -15,10 +15,13 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "lint": "eslint --cache . && prettier --check .",
     "format": "prettier --write .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "fixture": "node scripts/fixture/index.mjs",
+    "e2e": "playwright test"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.1",
     "@testing-library/react": "16.3.3",
     "@testing-library/user-event": "14.6.8",
     "@types/node": "24.19.1",
