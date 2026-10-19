@@ -14,7 +14,7 @@ The synthetic simulator changes the same local file shapes the tools write. The 
 
 - Create data with `npm run fixture -- create`; launch AgentPeek with the two printed overrides after approval.
 - Change synthetic tool activity with `npm run fixture -- simulate <home> <step>`.
-- Read Active, All Sessions and Pinned, open detail, choose Show Full Message or Try Again, or use View > Reload Sessions.
+- Read Active, All Sessions and Pinned, open detail, choose Show More / Collapse Message or Try Again, or use View > Reload Sessions.
 - Run `npm run e2e` after a build and launch approval for the automatic smoke.
 
 ## Driving it with agentpeek.mjs

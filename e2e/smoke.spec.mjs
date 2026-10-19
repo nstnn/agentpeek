@@ -117,12 +117,85 @@ test('built app: fixture bootstrap, live reply, safe detail, persisted pin, no n
     expect(await page.evaluate(() => globalThis.window.fixtureInjected)).toBeUndefined()
     await save('hostile-markdown')
     await page.getByRole('option', { name: /^Fixture Codex long/ }).click()
+    const title = page.locator('.detail-title h2')
+    const titleToggle = page.getByRole('button', { name: /^Show (Full|Less) Title$/ })
+    const titleGeometry = () =>
+      title.evaluate((element) => ({
+        height: element.getBoundingClientRect().height,
+        lineHeight: parseFloat(globalThis.window.getComputedStyle(element).lineHeight)
+      }))
+    await expect(titleToggle).toBeVisible()
+    let geometry = await titleGeometry()
+    expect(geometry.height).toBeLessThanOrEqual(geometry.lineHeight * 2 + 1)
+    await save('long-title-preview')
+    await titleToggle.click()
+    await expect(titleToggle).toHaveText('Show Less Title')
+    await expect(titleToggle).toBeFocused()
+    geometry = await titleGeometry()
+    expect(geometry.height).toBeGreaterThan(geometry.lineHeight * 2 + 1)
+    await save('long-title-expanded')
+    await titleToggle.press('Space')
+    await expect(titleToggle).toHaveText('Show Full Title')
+    await expect(titleToggle).toBeFocused()
     await expect(page.getByText(/Showing the first 6,000/)).toBeVisible()
-    await page.getByRole('button', { name: 'Show Full Message' }).click()
+    await expect(page.getByText(/Expansion is limited to 200,000/)).toBeVisible()
+    const messageToggle = page.getByRole('button', { name: /^(Show More|Collapse Message)$/ })
+    const contentId = await messageToggle.getAttribute('aria-controls')
+    await messageToggle.click()
+    await expect(messageToggle).toHaveText('Collapse Message')
+    await expect(messageToggle).toBeFocused()
+    await expect(messageToggle).toHaveAttribute('aria-expanded', 'true')
+    await expect(messageToggle).toHaveAttribute('aria-controls', contentId)
     await expect(page.getByText(/Showing the first 200,000/)).toBeVisible()
     await save('long-message')
+    const transcript = page.getByRole('region', { name: 'Recent messages' })
+    for (let i = 0; i < 8; i++) await transcript.press('PageDown')
+    await expect(messageToggle).toBeInViewport()
+    await expect(page.getByRole('button', { name: 'Back to Message Start' })).toBeInViewport()
+    await save('long-message-deep')
+    await page.getByRole('button', { name: 'Back to Message Start' }).click()
+    await expect(messageToggle).toBeFocused()
+    for (let i = 0; i < 8; i++) await transcript.press('PageDown')
+    await messageToggle.click()
+    await expect(messageToggle).toHaveText('Show More')
+    await expect(messageToggle).toBeFocused()
+    await expect(page.getByText(/Showing the first 6,000/)).toBeInViewport()
+    await save('long-message-collapsed')
+    for (const width of [1000, 999, 760]) {
+      await application.evaluate(({ BrowserWindow }, width) => {
+        BrowserWindow.getAllWindows()[0].setContentSize(width, width === 760 ? 448 : 600)
+      }, width)
+      if (width < 1000) await page.getByRole('option', { name: /^Fixture Codex long/ }).click()
+      await expect(titleToggle).toBeVisible()
+      geometry = await titleGeometry()
+      expect(geometry.height).toBeLessThanOrEqual(geometry.lineHeight * 2 + 1)
+      await titleToggle.click()
+      await expect(titleToggle).toBeFocused()
+      await titleToggle.press('Space')
+      await messageToggle.click()
+      for (let i = 0; i < 4; i++) await transcript.press('PageDown')
+      await expect(messageToggle).toBeInViewport()
+      await messageToggle.click()
+      await expect(messageToggle).toBeFocused()
+      expect(
+        await page.evaluate(
+          () =>
+            globalThis.window.document.documentElement.scrollWidth - globalThis.window.innerWidth
+        )
+      ).toBe(0)
+      await save(`long-content-${width}`)
+      if (width < 1000) {
+        await page.keyboard.press('Escape')
+        await expect(page.getByRole('listbox')).toBeFocused()
+        await save(`long-content-${width}-back`)
+      }
+    }
+    await application.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0].setSize(1100, 720)
+    })
     evidence.actions.push({
-      action: 'All Sessions; hostile detail; long detail; Show Full Message'
+      action:
+        'All Sessions; hostile detail; long title; Show More; deep scroll; Collapse Message; 1000/999/minimum; Escape'
     })
     await close()
 

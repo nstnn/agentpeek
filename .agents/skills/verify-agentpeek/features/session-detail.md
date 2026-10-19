@@ -7,7 +7,8 @@ Wide selection shows the session header and recent exchange. Narrow click/Return
 - `detail-messages`: immediate header, last 20 messages, Latest exchange, times and tool summaries.
 - `detail-loading`: loading, partial, empty, failed and Try Again states.
 - `detail-markdown`: GFM, literal HTML, image alt text and safe web-link dispatch.
-- `detail-long-message`: 6,000-character preview and expansion up to 200,000, with notices.
+- `detail-title`: two-line initial title with the full accessible heading and width-aware Show Full Title / Show Less Title.
+- `detail-long-message`: reversible 6,000-character preview and expansion up to 200,000, truthful cap notices, stable focus and reachable scroll controls.
 - `detail-actions`: Open, Mark Read, Pin/Unpin and Copy Session ID.
 - `detail-read`: loaded visible detail plus focus; viewing never clears waiting.
 - `detail-navigation`: narrow click/Return, Back, Escape and Session > Back restore row/focus.
@@ -18,7 +19,7 @@ Wide selection shows the session header and recent exchange. Narrow click/Return
 
 - Select a row in any view; wide detail appears immediately.
 - Narrow: arrows select; click or Return opens detail.
-- Use header actions, Show Full Message, Try Again or Session/context menus.
+- Use header actions, Show Full Title / Show Less Title, Show More / Collapse Message, Back to Message Start, Try Again or Session/context menus.
 - Return with Back, Escape or Session > Back (Command-[).
 
 ## Driving it with agentpeek.mjs
@@ -31,7 +32,8 @@ Preconditions:
 
 - **Open.** `click --role option --name "<observed name>"`; `aria detail-open`; `screenshot detail-open`. Check header/path tooltip, actions, times, partial notice and tool summaries. Read-only `eval "document.querySelector('.latest-divider').getBoundingClientRect().top-document.querySelector('.transcript').getBoundingClientRect().top"` establishes initial alignment; older messages remain above it.
 - **Markdown.** Select the hostile row; capture. HTML is literal, images show alt text, tables/code work and unsafe schemes have no link. `eval "({elements:document.querySelector('.transcript').querySelectorAll('img,script,iframe,object,embed,video,audio,source,style,link').length,network:performance.getEntriesByType('resource').filter(r=>/^https?:/.test(r.name)).length})"` returns zeros. Browser opening requires separate authorization; contract tests verify exact URL dispatch.
-- **Long text.** Capture the 6,000-character notice; `click --role button --name "Show Full Message"`; capture the 200,000-character notice and Open-tool guidance. Code blocks scroll sideways without page overflow.
+- **Title (`detail-title`).** Select the synthetic long row at default/minimum size and content widths 999/1000. Save aria/PNG and read-only heading bounds/line-height: initial height is at most two lines while its accessible name contains the full title. `click --role button --name "Show Full Title"`, then `key Space` on Show Less Title: full text appears, then contracts, with the same button focused and accurate aria-expanded/aria-controls. Short titles have no disclosure. Repeat with unbroken/Unicode synthetic titles and after changing the selected title through the copied fixture; resize narrow/wide to check overflow controls recompute. The header scrolls independently so status/actions remain reachable.
+- **Long text (`detail-long-message`).** Capture the 6,000-character notice and pre-expansion 200,000 cap/Open-tool guidance on the 211,200-character fixture. `click --role button --name "Show More"`; capture the 200,000-character notice, same focused toggle, stable controlled content and aria-expanded=true. Focus Recent messages with `click --role region --name "Recent messages"`, then `key PageDown` repeatedly; sticky Collapse Message and Back to Message Start remain visible. Click Back to Message Start and capture the local start with Collapse focused; scroll deep again, click Collapse Message, and capture the 6,000 preview at its useful local start, with the same focused toggle. Repeat expansion/collapse using Enter/Space, multiple long messages and a live synthetic update, then select another session and return: unrelated disclosure resets. Boundary lengths 5999/6000/6001/199999/200000/200001/211200 have component regressions. Code blocks scroll sideways without page overflow.
 - **Read/live.** Select running detail; `blur`; capture; append a reply/completion only to the copied synthetic rollout. Capture unread attention, selected key and transcript scroll via read-only eval. `focus` clears unread without changing selection or scroll. `blur` is native window blur, not a physical app switch.
 - **Error/waiting.** Select error and waiting rows; capture callouts. Acknowledged errors retain their detail and quoted Codex error/Claude terminal explanation. Viewing waiting leaves it waiting.
 - **Retry.** Remove read permission from a copied synthetic rollout; select/capture failure. Restore permission; inspect the tree; `click --role button --name "Try Again"`; capture loaded messages and focus on Recent messages. Reconciliation may recover automatically. A known missing transcript uses Reload Sessions instead.
@@ -48,4 +50,5 @@ Preconditions:
 - Last seen in AgentPeek is snapshot membership observation, not proof of a fresh filesystem read. Missing membership freezes that time; unknown provenance remains Unknown.
 - Conversation/error text is on-demand memory only, never snapshot/state data. Evidence is synthetic only.
 - Loading/request races have component tests; fast real reads may finish before a screenshot.
+- Title overflow and sticky-control geometry require a real renderer; mocked component dimensions cannot prove layout. Expanded text still obeys 200,000 characters and never loads full history.
 - DOM/AX labels do not establish VoiceOver speech, physical resizing, external activation or packaged behavior.

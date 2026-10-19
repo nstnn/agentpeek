@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX } from 'react'
 import type { RecentMessages, Session, SessionMessage } from '../../core/session'
 import type { AgentPeekApi } from '../../shared/api'
 import { rowStatus, sessionTitle, toolName, workspaceName } from './session-display'
@@ -9,8 +9,47 @@ import { ReloadSessions } from './session-panels'
 
 const PREVIEW_LIMIT = 6000
 const FULL_LIMIT = 200_000
-type Loaded = { revision: string; sourceEpoch: number; result: RecentMessages }
+type MessageEntry = { key: number; message: SessionMessage }
+type Loaded = {
+  revision: string
+  sourceEpoch: number
+  result: RecentMessages
+  entries: MessageEntry[]
+}
 const NOT_FOUND = { kind: 'not-found' } as const
+
+// The bounded tail can drop timestamp siblings. Match surviving content before matching a
+// uniquely updated timestamp, so neither disclosure nor focus migrates to a different message.
+function messageEntries(previous: MessageEntry[], messages: SessionMessage[]): MessageEntry[] {
+  const remaining = new Set(previous)
+  const sameTimestamp = (a: SessionMessage, b: SessionMessage) => a.kind === b.kind && a.at === b.at
+  const sameContent = (a: SessionMessage, b: SessionMessage) =>
+    sameTimestamp(a, b) &&
+    (a.kind === 'tool-calls'
+      ? b.kind === 'tool-calls' && a.count === b.count && a.names.join('\0') === b.names.join('\0')
+      : b.kind !== 'tool-calls' && a.text === b.text)
+  const matches = messages.map((message) => {
+    const candidates = previous.filter((entry) => sameContent(entry.message, message))
+    const count = messages.filter((other) => sameContent(other, message)).length
+    // Repeated identical entries keep order on append, and retain the suffix on tail eviction.
+    const match = candidates
+      .slice(Math.max(0, candidates.length - count))
+      .find((entry) => remaining.has(entry))
+    if (match) remaining.delete(match)
+    return match
+  })
+  let nextKey = Math.max(0, ...previous.map((entry) => entry.key)) + 1
+  return messages.map((message, index) => {
+    let match = matches[index]
+    if (!match) {
+      const candidates = [...remaining].filter((entry) => sameTimestamp(entry.message, message))
+      const pending = messages.filter((other, i) => !matches[i] && sameTimestamp(other, message))
+      if (candidates.length === 1 && pending.length === 1) match = candidates[0]
+    }
+    if (match) remaining.delete(match)
+    return { key: match?.key ?? nextKey++, message }
+  })
+}
 
 export function SessionDetail({
   session,
@@ -52,7 +91,19 @@ export function SessionDetail({
     if (!visible || missing) return
     let active = true
     const receive = (result: RecentMessages) => {
-      if (active) setLoaded({ revision, sourceEpoch, result })
+      if (active)
+        setLoaded((previous) => ({
+          revision,
+          sourceEpoch,
+          result,
+          entries:
+            result.kind === 'messages'
+              ? messageEntries(
+                  previous?.sourceEpoch === sourceEpoch ? previous.entries : [],
+                  result.messages
+                )
+              : []
+        }))
     }
     void api.getMessages({ tool, id }, 20).then(receive, () => receive({ kind: 'unreadable' }))
     return () => {
@@ -135,6 +186,7 @@ export function SessionDetail({
     : detailStatus(session)
   const openName = tool === 'codex' ? 'Open Codex' : 'Open Claude'
   const messages = result?.kind === 'messages' ? result.messages : []
+  const entries = result?.kind === 'messages' ? loaded!.entries : []
   let lastPrompt = -1
   messages.forEach((message, index) => {
     if (message.kind === 'prompt') lastPrompt = index
@@ -145,7 +197,7 @@ export function SessionDetail({
   return (
     <>
       <header className="detail-header">
-        <h2>{sessionTitle(session)}</h2>
+        <DetailTitle title={sessionTitle(session)} />
         <p className="detail-meta" title={session.summary.workspacePath ?? 'No folder'}>
           {toolName(tool)} · {workspaceName(session)}
         </p>
@@ -273,10 +325,8 @@ export function SessionDetail({
               <p className="partial-notice">Showing the last {messages.length} messages</p>
             )}
             {messages.length === 0 && <p className="message-state">No recent messages.</p>}
-            {messages.map((message, index) => (
-              <div
-                key={`${message.kind}:${message.at}:${messages.slice(0, index).filter((m) => m.kind === message.kind && m.at === message.at).length}`}
-              >
+            {entries.map(({ key, message }, index) => (
+              <div key={key}>
                 {index === (lastPrompt < 0 ? 0 : lastPrompt) && (
                   <div className="latest-divider" ref={latest}>
                     Latest exchange
@@ -300,6 +350,48 @@ export function SessionDetail({
         )}
       </div>
     </>
+  )
+}
+
+function DetailTitle({ title }: { title: string }): JSX.Element {
+  const id = useId()
+  const heading = useRef<HTMLHeadingElement>(null)
+  const toggle = useRef<HTMLButtonElement>(null)
+  const [expandedTitle, setExpandedTitle] = useState<string | null>(null)
+  const expanded = expandedTitle === title
+  const [overflows, setOverflows] = useState(false)
+  useLayoutEffect(() => {
+    const element = heading.current
+    if (!element) return
+    const measure = () => {
+      const needed = element.scrollHeight > parseFloat(getComputedStyle(element).lineHeight) * 2 + 1
+      if (!needed && document.activeElement === toggle.current)
+        element.focus({ preventScroll: true })
+      if (!needed) setExpandedTitle(null)
+      setOverflows(needed)
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    measure()
+    return () => observer.disconnect()
+  }, [title])
+  return (
+    <div className="detail-title">
+      <h2 id={id} ref={heading} tabIndex={-1} className={expanded ? undefined : 'title-preview'}>
+        {title}
+      </h2>
+      {overflows && (
+        <button
+          type="button"
+          ref={toggle}
+          aria-expanded={expanded}
+          aria-controls={id}
+          onClick={() => setExpandedTitle(expanded ? null : title)}
+        >
+          {expanded ? 'Show Less Title' : 'Show Full Title'}
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -346,31 +438,73 @@ function MessageText({
   markdown: boolean
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false)
+  const id = useId()
+  const noticeId = useId()
+  const block = useRef<HTMLDivElement>(null)
+  const toggle = useRef<HTMLButtonElement>(null)
+  const reposition = useRef(false)
+  const returnToStart = () => {
+    const element = block.current
+    const scroller = element?.closest<HTMLElement>('.transcript')
+    if (element && scroller)
+      scroller.scrollTop +=
+        element.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 8
+    toggle.current?.focus({ preventScroll: true })
+  }
+  useLayoutEffect(() => {
+    if (reposition.current) {
+      reposition.current = false
+      returnToStart()
+    }
+  }, [expanded])
   const limit = expanded ? FULL_LIMIT : PREVIEW_LIMIT
   const shortened = text.length > limit
+  const capped = text.length > FULL_LIMIT
   return (
-    <>
-      {markdown ? (
-        <SafeMarkdown text={text.slice(0, limit)} onLink={onLink} />
-      ) : (
-        <div className="prompt-text">{text.slice(0, limit)}</div>
+    <div className="message-text" ref={block}>
+      {text.length > PREVIEW_LIMIT && (
+        <div className="message-controls">
+          <button
+            type="button"
+            ref={toggle}
+            aria-expanded={expanded}
+            aria-controls={id}
+            aria-describedby={noticeId}
+            onClick={() => {
+              reposition.current = true
+              setExpanded((value) => !value)
+            }}
+          >
+            {expanded ? 'Collapse Message' : 'Show More'}
+          </button>
+          {expanded && (
+            <button type="button" onClick={returnToStart}>
+              Back to Message Start
+            </button>
+          )}
+        </div>
       )}
-      {shortened && (
-        <p className="truncation-notice">
-          Showing the first {limit.toLocaleString('en-US')} of {text.length.toLocaleString('en-US')}{' '}
-          characters.
+      {text.length > PREVIEW_LIMIT && (
+        <p className="truncation-notice" id={noticeId}>
+          {shortened
+            ? `Showing the first ${limit.toLocaleString('en-US')} of ${text.length.toLocaleString('en-US')} characters.`
+            : `Showing all ${text.length.toLocaleString('en-US')} characters.`}
+          {capped && (
+            <>
+              {' '}
+              {!expanded && 'Expansion is limited to 200,000 characters. '}
+              Open {tool === 'codex' ? 'Codex' : 'Claude'} to read the rest.
+            </>
+          )}
         </p>
       )}
-      {!expanded && shortened && (
-        <button type="button" onClick={() => setExpanded(true)}>
-          Show Full Message
-        </button>
-      )}
-      {expanded && shortened && (
-        <p className="truncation-notice">
-          Open {tool === 'codex' ? 'Codex' : 'Claude'} to read the rest.
-        </p>
-      )}
-    </>
+      <div id={id}>
+        {markdown ? (
+          <SafeMarkdown text={text.slice(0, limit)} onLink={onLink} />
+        ) : (
+          <div className="prompt-text">{text.slice(0, limit)}</div>
+        )}
+      </div>
+    </div>
   )
 }
