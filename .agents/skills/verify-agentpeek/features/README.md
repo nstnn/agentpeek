@@ -49,3 +49,5 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Session detail](./session-detail.md) covers messages, safe Markdown, long text, actions, focused read-on-view and narrow push/Back.
 
 - [Fixture regression](./fixture-regression.md) covers the synthetic generator/simulator and built-app Playwright smoke.
+
+- [Local macOS package](./local-package.md) covers the signed arm64 bundle, fuses, native About panel, Finder reopen, window sizes and shutdown.

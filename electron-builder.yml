@@ -1,0 +1,28 @@
+appId: com.nstnn.agentpeek
+productName: AgentPeek
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**
+  - '!out/**/*.map'
+asar: true
+npmRebuild: false
+publish: null
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+  enableEmbeddedAsarIntegrityValidation: true
+mac:
+  target:
+    - target: dir
+      arch: arm64
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  identity: '-'
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: false

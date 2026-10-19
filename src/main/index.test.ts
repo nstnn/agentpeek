@@ -22,6 +22,8 @@ function setup() {
   const app = Object.assign(new EventEmitter(), {
     enableSandbox: vi.fn(),
     isPackaged: false,
+    getVersion: () => '0.1.0',
+    setAboutPanelOptions: vi.fn(),
     getPath: () => '/synthetic/default-state',
     setPath: vi.fn(),
     requestSingleInstanceLock: vi.fn(() => true),

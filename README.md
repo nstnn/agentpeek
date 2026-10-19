@@ -45,6 +45,34 @@ AGENTPEEK_HOME=/absolute/path/to/synthetic-home AGENTPEEK_USER_DATA=/absolute/pa
 Fixture mode shows a persistent banner naming the synthetic home. Its process checks treat fixture
 tools and registry owners as alive; it never checks the user's running tools.
 
+## Package
+
+Build a local Apple Silicon app without launching it:
+
+```bash
+npm run package
+```
+
+The result is `dist/mac-arm64/AgentPeek.app`, versioned from `package.json`, with a placeholder
+icon and About panel. The bundle is ad-hoc signed with hardened runtime and the required Electron
+fuses: Node mode, `NODE_OPTIONS`, and the main-process inspector are disabled; code loads only
+from the integrity-checked `app.asar`. It has no updater, publishing, Developer ID signing, or
+notarization. This is a local build; the command does not install it into `/Applications`.
+
+Inspect the build without opening a window:
+
+```bash
+codesign --verify --deep --strict --verbose=2 dist/mac-arm64/AgentPeek.app
+codesign -dv --verbose=4 dist/mac-arm64/AgentPeek.app
+npx --no-install @electron/fuses read --app dist/mac-arm64/AgentPeek.app
+```
+
+The ad-hoc hardened runtime needs JIT and library-validation entitlements for Electron on arm64;
+these live in `build/entitlements.mac.plist`. The renderer's sandbox and process boundary still
+apply. Use the unpackaged `out/` build for Playwright and the verification helper, because the
+packaged app disables the inspector. Agent-run packaged checks need launch approval and both
+synthetic fixture overrides, just like development runs.
+
 ## Check
 
 | Command                     | What it does                                                                                        |

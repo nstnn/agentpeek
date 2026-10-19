@@ -9,7 +9,7 @@ AgentPeek has five native menus: AgentPeek, Edit, View, Session, and Window. Vie
 - `menu-session-unselected` disables Open Codex, Mark Read, Pin, Copy Session ID, and Back when no session is selected.
 - `menu-select-all` selects all of the window's text.
 - `menu-copy` copies the selected text to the clipboard.
-- `menu-about` opens the standard About panel.
+- `menu-about` opens the standard About panel with AgentPeek and the version from `package.json`.
 - `menu-devtools` opens the developer tools in development builds, and is absent in packaged builds.
 
 ## How to get to it (user POV)
