@@ -40,16 +40,24 @@ const UNKNOWN = {
   unreadable: "Can't read",
   unsupported: 'Unsupported format'
 }
-export function rowStatus(session: Session): { kind: string; label: string } {
+export function rowStatus(session: Session, missing = false): { kind: string; label: string } {
+  if (missing)
+    return { kind: 'unknown', label: `Unavailable — last known: ${rowStatus(session).label}` }
   const activity = session.activity
   if (activity.state === 'waiting') {
     const reason = WAITING[activity.waitingFor ?? '']
     return { kind: 'waiting', label: `Waiting for you${reason ? ` · ${reason}` : ''}` }
   }
-  if (session.attention.error) {
+  if (
+    session.attention.error ||
+    (session.lastReply?.isError && !session.lastReply.newerTurnStarted)
+  ) {
     const code = session.lastReply?.errorCode
     const label = code ? code.replaceAll('_', ' ').replace(/^./, (c) => c.toUpperCase()) : null
-    return { kind: 'error', label: `Error${label ? ` · ${label}` : ''}` }
+    return {
+      kind: 'error',
+      label: session.attention.error ? `Error${label ? ` · ${label}` : ''}` : 'Error · Read'
+    }
   }
   if (session.attention.newReply) return { kind: 'reply', label: 'New reply' }
   if (activity.state === 'unknown') {

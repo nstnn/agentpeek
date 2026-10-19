@@ -1,4 +1,4 @@
-import type { JSX } from 'react'
+import { useLayoutEffect, useRef, type JSX } from 'react'
 import type { AppSnapshot } from '../../shared/api'
 import { AGENT_TOOLS } from '../../core/tools'
 import type { ViewId } from '../../core/views'
@@ -70,7 +70,56 @@ export function Sidebar({
   )
 }
 
-export function SessionBanners({ snapshot }: { snapshot: AppSnapshot | null }): JSX.Element {
+export function ReloadSessions({
+  pending,
+  onReload
+}: {
+  pending: boolean
+  onReload: () => Promise<void>
+}): JSX.Element {
+  const button = useRef<HTMLButtonElement>(null)
+  useLayoutEffect(
+    () => () => {
+      if (document.activeElement !== button.current) return
+      // Source recovery may arrive after reload() completes. Restore focus when its control
+      // actually leaves the page, without stealing focus from a later user selection.
+      queueMicrotask(() => {
+        if (document.activeElement !== document.body) return
+        const target =
+          document.querySelector<HTMLElement>('.detail-pane:not([hidden]) .transcript') ??
+          document.querySelector<HTMLElement>('[role=listbox]:not([hidden])')
+        target?.focus({ preventScroll: true })
+      })
+    },
+    []
+  )
+  return (
+    <button
+      ref={button}
+      type="button"
+      aria-label="Reload Sessions"
+      aria-disabled={pending}
+      onClick={() => {
+        if (pending) return
+        void onReload()
+      }}
+    >
+      {pending ? 'Reloading…' : 'Reload Sessions'}
+    </button>
+  )
+}
+
+export function SessionBanners({
+  snapshot,
+  reloadPending,
+  reloadError,
+  onReload
+}: {
+  snapshot: AppSnapshot | null
+  reloadPending: boolean
+  reloadError: string | null
+  onReload: () => Promise<void>
+}): JSX.Element {
   return (
     <>
       {snapshot?.fixture && (
@@ -100,11 +149,13 @@ export function SessionBanners({ snapshot }: { snapshot: AppSnapshot | null }): 
         const health = snapshot?.health[tool]
         if (health?.state === 'no-access')
           return (
-            <p className="banner warning" key={tool}>
-              Can't read {toolName(tool)} files. AgentPeek doesn't have permission to read{' '}
-              {toolHome(tool)}. It only reads these files and never changes them. Choose View &gt;
-              Reload Sessions to try again.
-            </p>
+            <div className="banner warning source-warning" key={tool}>
+              <span>
+                Can't read {toolName(tool)} files. AgentPeek doesn't have permission to read{' '}
+                {toolHome(tool)}. It only reads these files and never changes them.
+              </span>{' '}
+              <ReloadSessions pending={reloadPending} onReload={onReload} />
+            </div>
           )
         if (health?.state === 'unsupported')
           return (
@@ -115,6 +166,11 @@ export function SessionBanners({ snapshot }: { snapshot: AppSnapshot | null }): 
           )
         return null
       })}
+      {reloadError && (
+        <p className="banner warning" role="status">
+          {reloadError}
+        </p>
+      )}
     </>
   )
 }

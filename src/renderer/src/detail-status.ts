@@ -33,7 +33,7 @@ export function detailStatus(session: Session): { kind: string; label: string; c
     const reason = (session.lastReply.errorCode ?? 'unknown error').replaceAll('_', ' ')
     return {
       kind: 'error',
-      label: `Error · ${reason.replace(/^./, (c) => c.toUpperCase())}`,
+      label: rowStatus(session).label,
       callout:
         session.key.tool === 'codex'
           ? 'Codex ended the turn with an error.'

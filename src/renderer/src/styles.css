@@ -80,6 +80,17 @@ button:focus-visible,
 .warning {
   background: var(--warning-bg);
 }
+.source-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.source-warning button {
+  flex: none;
+}
+button[aria-disabled='true'] {
+  opacity: 0.6;
+}
 .workspace {
   flex: 1;
   display: flex;
@@ -296,6 +307,11 @@ button:focus-visible,
 }
 .row-secondary {
   font-size: 12px;
+}
+.row-retained {
+  grid-column: 2;
+  font-size: 11.5px;
+  color: var(--secondary);
 }
 .row-meta {
   color: var(--secondary);

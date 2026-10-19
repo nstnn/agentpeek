@@ -6,6 +6,9 @@ interface Selection {
   session: Session
   group: SessionGroup['id']
   index: number
+  /** Snapshot observation only; never a claim that the source file was freshly read. */
+  lastSeenAt: number | null
+  sourceEpoch: number
 }
 export interface RendererState {
   snapshot: AppSnapshot | null
@@ -16,6 +19,9 @@ export interface RendererState {
   actionError: string | null
   narrow: boolean
   detailOpen: boolean
+  reloadPending: boolean
+  reloadError: string | null
+  reloadVersion: number
 }
 
 /** One subscription pair per mounted app. A pushed snapshot always wins over the initial request. */
@@ -28,7 +34,10 @@ export function createSessionsStore(api: AgentPeekApi) {
     selection: null,
     actionError: null,
     narrow: false,
-    detailOpen: false
+    detailOpen: false,
+    reloadPending: false,
+    reloadError: null,
+    reloadVersion: 0
   }
   const listeners = new Set<() => void>()
   let disconnect: (() => void) | null = null
@@ -69,7 +78,21 @@ export function createSessionsStore(api: AgentPeekApi) {
           emit({
             snapshot,
             failed: false,
-            selection: selected ? { ...selected, session: current ?? selected.session } : null
+            selection: selected
+              ? {
+                  ...selected,
+                  session: current ?? selected.session,
+                  lastSeenAt: current ? snapshot.takenAt : selected.lastSeenAt,
+                  sourceEpoch:
+                    selected.sourceEpoch +
+                    (Boolean(current) !==
+                    Boolean(
+                      state.snapshot?.sessions.some((s) => sameKey(s.key, selected.session.key))
+                    )
+                      ? 1
+                      : 0)
+                }
+              : null
           })
         }
         const offSnapshot = api.onSnapshot(receive)
@@ -124,6 +147,26 @@ export function createSessionsStore(api: AgentPeekApi) {
       emit({ detailOpen: false })
       sendDetailOpen(false)
     },
+    async reload(this: void) {
+      if (state.reloadPending) return
+      emit({ reloadPending: true, reloadError: null })
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        await Promise.race([
+          api.reload(),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error('reload timeout')), 10_000)
+          })
+        ])
+        // Only snapshots restore membership. Completion merely retries the current transcript.
+        emit({ reloadVersion: state.reloadVersion + 1 })
+      } catch {
+        emit({ reloadError: "Couldn't reload sessions. Check source access, then try again." })
+      } finally {
+        clearTimeout(timer)
+        emit({ reloadPending: false })
+      }
+    },
     select(this: void, session: Session, groups: SessionGroup[]) {
       if (state.selection && sameKey(state.selection.session.key, session.key)) return
       const group = groups.find((g) => g.sessions.some((s) => sameKey(s.key, session.key)))
@@ -132,7 +175,11 @@ export function createSessionsStore(api: AgentPeekApi) {
         selection: {
           session,
           group: group.id,
-          index: group.sessions.findIndex((s) => sameKey(s.key, session.key))
+          index: group.sessions.findIndex((s) => sameKey(s.key, session.key)),
+          lastSeenAt: state.snapshot?.sessions.some((s) => sameKey(s.key, session.key))
+            ? state.snapshot.takenAt
+            : null,
+          sourceEpoch: 0
         },
         actionError: null
       })
