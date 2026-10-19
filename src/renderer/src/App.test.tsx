@@ -56,7 +56,12 @@ describe('sessions interface', () => {
       expect(document.activeElement).toBe(list)
       expect(row.getAttribute('aria-selected')).toBe('true')
       expect(
-        screen.getByRole('button', { name: mode === 'insert' ? 'Active 1' : 'Active' })
+        screen.getByRole('button', {
+          name:
+            mode === 'insert'
+              ? 'Active, 1 session needs attention'
+              : 'Active, 0 sessions need attention'
+        })
       ).toBeTruthy()
     }
   )
@@ -74,7 +79,7 @@ describe('sessions interface', () => {
       'group-waiting',
       'group-running'
     ])
-    expect(screen.getByRole('button', { name: 'Active 1' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Active, 1 session needs attention' })).toBeTruthy()
     expect(screen.getByRole('listbox').getAttribute('aria-activedescendant')).toBeNull()
     expect(fake.api.markRead).not.toHaveBeenCalled()
     expect(screen.getByText(/Fixture data/).textContent).toContain('/synthetic/home')
@@ -133,7 +138,7 @@ describe('sessions interface', () => {
     list.focus()
     await userEvent.keyboard('{ArrowDown}{ArrowDown}')
     expect(fake.api.setSelection).toHaveBeenLastCalledWith({ tool: 'codex', id: 'b' })
-    screen.getByRole('button', { name: 'Active' }).focus()
+    screen.getByRole('button', { name: 'Active, 0 sessions need attention' }).focus()
     await userEvent.keyboard('{ArrowDown}')
     expect(screen.getByRole('heading', { name: 'Pinned', level: 1 })).toBeTruthy()
     expect(document.activeElement?.textContent).toContain('Pinned')
