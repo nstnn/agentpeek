@@ -143,7 +143,20 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
               hidden={state.narrow && state.detailOpen}
             />
           ) : (
-            <EmptyList state={state} onShowAll={() => store.setView('all')} />
+            <EmptyList
+              state={state}
+              unfilteredCount={contents.toolCounts.all}
+              onShowAll={() => {
+                store.setView('all')
+                document
+                  .querySelector<HTMLButtonElement>('.tool-filter [aria-checked=true]')
+                  ?.focus()
+              }}
+              onClearFilter={() => {
+                store.setFilter('all')
+                document.querySelector<HTMLButtonElement>('.tool-filter [role=radio]')?.focus()
+              }}
+            />
           )}
           {view === 'all' && (
             <p className="footnote">

@@ -22,11 +22,20 @@ export function Sidebar({
         {views.map((id) => {
           const count =
             id === 'active' ? (snapshot?.needsAttention ?? 0) : (snapshot?.groupCounts[id] ?? 0)
+          const label =
+            id === 'active'
+              ? `Active, ${count} ${count === 1 ? 'session needs' : 'sessions need'} attention`
+              : `${VIEW_NAMES[id]} ${count}`
           return (
             <button
               key={id}
               type="button"
-              aria-label={`${VIEW_NAMES[id]}${id !== 'active' || count > 0 ? ` ${count}` : ''}`}
+              aria-label={label}
+              title={
+                id === 'active'
+                  ? `${label}. Waiting, unread replies or errors across both tools. Running alone doesn't need attention.`
+                  : undefined
+              }
               aria-current={view === id ? 'page' : undefined}
               tabIndex={view === id ? 0 : -1}
               onClick={() => onView(id)}
@@ -177,14 +186,19 @@ export function SessionBanners({
 
 export function EmptyList({
   state,
-  onShowAll
+  unfilteredCount,
+  onShowAll,
+  onClearFilter
 }: {
   state: RendererState
+  unfilteredCount: number
   onShowAll: () => void
+  onClearFilter: () => void
 }): JSX.Element {
   const { snapshot, view, filter } = state
   let title: string
   let body: string
+  let action: { label: string; onClick: () => void } | undefined
   const health = filter === 'all' ? null : snapshot?.health[filter]
   const checking =
     !snapshot || AGENT_TOOLS.every((tool) => snapshot.health[tool].state === 'checking')
@@ -203,24 +217,39 @@ export function EmptyList({
   } else if (filter !== 'all' && health?.state === 'unsupported') {
     title = 'Unsupported format'
     body = `${toolName(filter)} ${health.toolVersion ?? '(unknown version)'} writes its files in a format AgentPeek doesn't recognize. Its sessions show as Unknown.`
+  } else if (filter !== 'all' && unfilteredCount > 0) {
+    const scope = view === 'pinned' ? 'pinned ' : view === 'active' ? 'active ' : ''
+    title = `No ${scope}${toolName(filter)} sessions`
+    body = `This view has sessions from other tools. Show all ${scope}sessions to see them.`
+    action = {
+      label:
+        view === 'pinned'
+          ? 'Show All Pinned'
+          : view === 'active'
+            ? 'Show All Active'
+            : 'Show All Sessions',
+      onClick: onClearFilter
+    }
   } else if (view === 'pinned') {
     title = 'No pinned sessions'
     body = 'Pin a session to keep it here (⇧⌘P).'
+    action = { label: 'Browse All Sessions', onClick: onShowAll }
   } else if (view === 'all' || snapshot?.sessions.length === 0) {
-    title = 'No sessions yet'
-    body =
-      'Start a conversation in Codex or Claude Code and it will show up here. AgentPeek lists sessions from the last 7 days.'
+    title = filter === 'all' ? 'No sessions yet' : `No ${toolName(filter)} sessions yet`
+    body = `Start a conversation in ${filter === 'all' ? 'Codex or Claude Code' : toolName(filter)} and it will show up here. AgentPeek lists sessions from the last 7 days.`
   } else {
     title = 'Nothing needs you right now'
-    body = 'No session is running, waiting for you, or has a new reply.'
+    body =
+      'No sessions are running, waiting, or have unread replies, errors or unconfirmed open turns.'
+    action = { label: 'Show All Sessions', onClick: onShowAll }
   }
   return (
     <div className="empty-list">
       <h2>{title}</h2>
       <p>{body}</p>
-      {title === 'Nothing needs you right now' && (
-        <button type="button" onClick={onShowAll}>
-          Show All Sessions
+      {action && (
+        <button type="button" onClick={action.onClick}>
+          {action.label}
         </button>
       )}
     </div>
