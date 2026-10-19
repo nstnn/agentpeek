@@ -13,6 +13,8 @@ node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs <command> [options]
 
 The helper talks to the window over the Chrome DevTools Protocol (CDP) and to the main process over the Node.js inspector, both on loopback ports that only this instance owns. It needs Node.js 22+ and `npm install` already run. Run it without arguments for the full command list.
 
+It also needs native macOS process inspection (`ps` and `lsof`) and permission to launch Electron. A restricted shell can block these. `launch` checks process inspection before starting anything; an inspection error means cleanup is unverified, never that no processes remain. Use an authorized native shell for the same isolated commands and retain failed-run evidence.
+
 The feature map in [`features/README.md`](features/README.md) lists what to verify and how. Read it before driving anything.
 
 ## Ground rules
@@ -42,8 +44,8 @@ It prints JSON with `runId`, `pid`, both ports, and both folders, and records th
 
 Isolation facts, observed on this Mac:
 
-- The own profile gives each run its own single-instance lock, so a verification run can sit beside the user's AgentPeek and beside other runs. The user's real profile at `~/Library/Application Support/AgentPeek/` stays untouched (`stop` reports `defaultProfileUnchanged`).
-- The app is unpackaged: macOS names the process and the first menu `Electron`, the View menu has Toggle Developer Tools, and the window may reload itself. A packaged build has neither; the packaging task, when it lands, needs its own check.
+- The own profile gives each run its own single-instance lock, so a verification run can sit beside the user's AgentPeek and beside other runs. Check the isolated paths with `doctor` and inspect `stop`'s default-profile mtime comparison (see Cleanup).
+- The helper launches the unpackaged app: macOS names the process and the first menu `Electron`, the View menu has Toggle Developer Tools, and the page can reload itself. The local package now exists and disables the main-process inspector. Follow [`features/local-package.md`](features/local-package.md) for its separate native checks; never attach this helper or Playwright to it.
 - **Fixture isolation is active.** The app requires both absolute overrides, uses the isolated profile before its single-instance lock, and reads only the synthetic home. `doctor` requires the snapshot's fixture flag and home plus the visible "Fixture data" banner. Never trust a run whose fixture check fails.
 
 ## Doctor
@@ -83,7 +85,7 @@ node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu
 | Click the window to bring it forward | `focus`                                                                                       | Brings AgentPeek to the front and makes its window key. Takes focus from the user's app.                                                                                                                                                                                          |
 | Release native window focus          | `blur`                                                                                        | Blurs only this isolated window for unread-on-focus tests; it does not physically switch apps.                                                                                                                                                                                    |
 | Open AgentPeek again                 | `relaunch`                                                                                    | Starts a second copy against the same profile and reports its exit code, whether the first instance survived, and whether its window took focus.                                                                                                                                  |
-| Wait for the app to quit             | `wait-exit --timeout 3000`                                                                    | Reports whether the recorded pid exited and how long it took. Exit 1 if it is still running.                                                                                                                                                                                      |
+| Wait for the app to quit             | `wait-exit --timeout 3000`                                                                    | Observes the recorded pid, profile processes and both debug ports without killing anything. `cleanExit: true` means all are gone before cleanup. Reports elapsed time from this command, not the app's exit code. Exit 1 if anything remains.                                     |
 | Read page state                      | `eval "<expression>"`                                                                         | Runs in the page, after the action. Code it starts (`eval()`, `fetch`, new scripts) meets the page's CSP. Observe with it; never use it to set state that a user would set through the interface.                                                                                 |
 | Read main-process state              | `main-eval "<expression>"`                                                                    | `require`, `electron`, `app`, `BrowserWindow`, and `Menu` are in scope, for example `main-eval "BrowserWindow.getAllWindows()[0].getBounds()"`. Observe with it; never drive features through it.                                                                                 |
 
@@ -108,7 +110,7 @@ Proof standards:
 
 - Exercise the user's path: `click`, `key`, `type`, `menu-click`, `focus`, `blur`, `relaunch`. A state you set with `eval` or `main-eval` proves nothing about the feature.
 - Capture the action and the resulting state: an `aria` or `menu` snapshot plus a `screenshot` before and after the action that changes something, with the action itself in `actions.jsonl`.
-- Check side effects, not only the screen: that the process exited (`wait-exit`), that a second copy exited with code 0 (`relaunch`), that files were or were not written (`stop` reports whether the real profile changed).
+- Check side effects, not only the screen: that all run processes and ports exited naturally (`wait-exit` with `cleanExit: true`), that a second copy exited with code 0 (`relaunch`), and the default-profile mtime comparison from `stop`. `stop` can kill residue, so its `clean: true` proves cleanup only.
 - Name artifacts after the feature and step, for example `main-window-initial.png`.
 - Your report lists the run id, the `doctor` result, each feature step with its command, observed result, and artifact names, the `stop` report, and anything you could not verify and why.
 - Evidence holds synthetic data only. Never commit it, and never copy it into the repository's tracked files.
@@ -120,6 +122,8 @@ node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs stop
 ```
 
 `stop` sends SIGTERM to the recorded pid after checking it is still this run's process (SIGKILL after 5 seconds), kills any leftover helper process whose command line holds this run's profile path, deletes the scratch folder, and prints a report. `clean: true` means no process is left, both ports are closed, and the scratch folder is gone. It is safe to run after the app already quit (for example after a lifecycle test), and it must run after every failed attempt too.
+
+`defaultProfileUnchanged` compares shallow modification times in the default AgentPeek profile; it is not a full content audit. Report a `false` result, which can also come from a concurrent user instance, without attributing the write from this check alone. Fixture paths must still pass `doctor` independently.
 
 `stop --all` does the same for every run recorded under `test-results/verify-agentpeek/`. Use it when a previous session may have left an instance running.
 

@@ -7,7 +7,7 @@ Opening AgentPeek shows one window titled AgentPeek with a sidebar, sessions lis
 - `window-open` shows exactly one window, titled AgentPeek, once its content has rendered.
 - `window-layout` shows Active and source health; an empty synthetic home says "No sessions yet".
 - `window-size` opens at 1100 × 720 points and refuses to shrink below 760 × 480.
-- `window-appearance` uses system colors, so the page is light in Light mode and dark in Dark mode.
+- `window-appearance` follows system appearance with paired Light and Dark palettes.
 
 ## How to get to it (user POV)
 
@@ -26,6 +26,7 @@ Preconditions:
 - **Layout.** Look at the window. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs aria main-window-initial` and `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs screenshot main-window-initial`. The tree holds `main "Sessions"`, `heading "Active" [level=1]`, sidebar view buttons and both sources. An empty home shows "No sessions yet". At the default width the detail placeholder says "No session selected".
 - **Default size.** Check the size the window opened at. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "BrowserWindow.getAllWindows()[0].getSize()"`. The result is `[1100, 720]`.
 - **Smallest size.** Try to make the window smaller than allowed. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "(BrowserWindow.getAllWindows()[0].setSize(400, 300), BrowserWindow.getAllWindows()[0].getSize())"`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs screenshot main-window-minimum`. The result is `[760, 480]`, and the screenshot shows a 170-point sidebar and list filling the remaining width; the detail is hidden. No horizontal page overflow or clipped controls.
+- **Layout boundary.** With a populated fixture and selected row, use `main-eval "BrowserWindow.getAllWindows()[0].setContentSize(1000, 600)"`, then repeat with `999`. Save aria/PNG and observe `eval "({width:innerWidth, overflow:document.documentElement.scrollWidth-innerWidth})"` at each width. At 1000 detail is beside the list; at 999 the list remains visible and Back is disabled until click/Return opens detail. Both have zero page overflow. Restore `setSize(1100, 720)` before other wide-layout recipes.
 - **Light appearance.** Force the light theme. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "electron.nativeTheme.themeSource = 'light'"`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs eval "matchMedia('(prefers-color-scheme: dark)').matches"` and `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs screenshot main-window-light`. The media query is `false` and the screenshot shows dark text on a light background.
 - **Dark appearance.** Force the dark theme. Run the same three commands with `'dark'` and the screenshot name `main-window-dark`. The media query is `true` and the screenshot shows light text on a dark background.
 - **Restore.** Return to the system theme. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "electron.nativeTheme.themeSource = 'system'"`. The result is `"system"`.

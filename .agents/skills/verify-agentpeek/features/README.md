@@ -11,10 +11,11 @@ This folder is the maintained source for verifying what a user of AgentPeek can 
 
 ## Driving conventions
 
-- Start every recipe from a fresh `launch` unless its preconditions say otherwise. Lifecycle recipes end the app; launch again before the next recipe.
+- Compatible recipes may share one health-checked run when their fixture, selection, size and theme preconditions hold. Reset those states through the documented controls between recipes. Launch a fresh run for an empty-home/bootstrap condition, after an unrecoverable failure, or after a lifecycle recipe ends the app. Never rebuild `out/` under a live helper run.
 - Find handles with `aria` (page roles and names) and `menu` (menu labels). Use them literally, including case and spacing.
 - Act through `click`, `key`, `type`, `menu-click`, `focus`, and `relaunch`. Observe through `aria`, `menu`, `eval`, `main-eval`, `screenshot`, and `wait-exit`.
 - Menu items need the window focused: run `focus` before `menu-click` when `menu-click` reports `window not focused`.
+- After a failed drive, run `doctor` before continuing. Restore a known UI state if the process is healthy but the page/menu is stuck. Expected CSP probe errors belong at the end of their run.
 - Never change the Mac's settings to reach a state. Use the overrides a feature file names instead, and report them as overrides.
 
 ## Proof and skip reporting
@@ -23,6 +24,7 @@ This folder is the maintained source for verifying what a user of AgentPeek can 
 - Record the feature file and sub-feature ID with every artifact name, for example `app-menu-reload.menu.txt`.
 - When a step cannot run, report the command you tried and the unmet precondition. Never report a skipped entry point as verified through a different one.
 - A step whose observed result differs from the recipe is a failure to report, not a recipe to rewrite. Change a recipe only when the product's intended behavior changed.
+- `wait-exit` observes natural shutdown before cleanup; require `cleanExit: true`. `stop` then removes scratch data and any residue. Its `clean: true` alone does not prove the app exited cleanly on its own.
 
 ## Feature entry contract
 
@@ -43,11 +45,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Single instance](./single-instance.md) covers opening AgentPeek while it is already open.
 - [Renderer lockdown](./renderer-lockdown.md) covers what the page can and cannot do: no Node.js, no navigation, no new windows, no remote loads, no permissions.
 - [Sessions connection](./sessions-connection.md) covers the live session total, fixture isolation, refresh, and clean service shutdown.
-
 - [Sessions list](./sessions-list.md) covers views, filtering, groups, selection, keyboard/context entry points, tool health and list notices.
-
 - [Session detail](./session-detail.md) covers messages, safe Markdown, long text, actions, focused read-on-view and narrow push/Back.
-
 - [Fixture regression](./fixture-regression.md) covers the synthetic generator/simulator and built-app Playwright smoke.
-
 - [Local macOS package](./local-package.md) covers the signed arm64 bundle, fuses, native About panel, Finder reopen, window sizes and shutdown.

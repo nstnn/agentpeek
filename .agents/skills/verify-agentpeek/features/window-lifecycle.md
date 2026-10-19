@@ -4,7 +4,7 @@ AgentPeek runs only while its window is open. Closing the window quits the app c
 
 ## Sub-features
 
-- `close-quits` closes the window and ends every AgentPeek process within about a second.
+- `close-quits` closes the window and ends the run's main and helper processes without cleanup killing them.
 - `quit-menu` ends AgentPeek from the first menu's Quit item.
 - `minimize-restore` minimizes the window and restores it when the user brings AgentPeek forward.
 
@@ -21,9 +21,9 @@ Preconditions:
 - A fresh run from `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs launch --label lifecycle`, and `doctor` prints `doctor: OK`. `close-quits` and `quit-menu` each end the app, so launch again before the next one.
 - The window is focused: `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs focus` prints `"windowFocused": true`.
 
-- **Close the window.** Choose Window > Close Window. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu-click "Window > Close Window"`, then at once `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs wait-exit --timeout 3000`. The click reports `"via": "performClose:"`, and wait-exit reports `"exited": true` with exit code 0.
-- **Nothing left behind.** Confirm no AgentPeek process survived. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs stop`. The report has `"clean": true`, `"leftoverProcesses": []`, and `"portsStillOpen": []`.
-- **Quit.** Launch and focus again, then choose AgentPeek > Quit AgentPeek. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu-click "AgentPeek > Quit AgentPeek"`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs wait-exit --timeout 3000` and `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs stop`. The click reports `"via": "terminate:"`, wait-exit reports `"exited": true`, and stop reports `"clean": true`.
+- **Close the window.** Choose Window > Close Window. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu-click "Window > Close Window"`, then at once `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs wait-exit --timeout 3000`. The click reports `"via": "performClose:"`; wait-exit reports `"exited": true`, `"cleanExit": true`, `"remainingProcesses": []` and `"portsStillOpen": []`. This is observed before any cleanup signal. The detached helper cannot recover the main app's exit code.
+- **Cleanup.** Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs stop`. Require `"clean": true` and retained evidence. This removes scratch data and can kill residue, so it does not replace the natural-exit check above.
+- **Quit.** Launch and focus again, then choose AgentPeek > Quit AgentPeek. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu-click "AgentPeek > Quit AgentPeek"`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs wait-exit --timeout 3000` and `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs stop`. The click reports `"via": "terminate:"`, wait-exit reports `"cleanExit": true` with no processes/ports left, and stop reports `"clean": true`.
 - **Minimize.** Launch and focus again, then choose Window > Minimize. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu-click "Window > Minimize"`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "BrowserWindow.getAllWindows()[0].isMinimized()"`. The click reports `"via": "performMiniaturize:"` and the check is `true`.
 - **Restore.** Bring AgentPeek back, as clicking it in the Dock does. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs focus`, then the same `isMinimized()` check. Focus reports `"windowFocused": true` and the check is `false`.
 
