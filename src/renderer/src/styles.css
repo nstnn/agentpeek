@@ -463,6 +463,15 @@ button[aria-disabled='true'] {
   font-size: 17px;
   line-height: 1.3;
 }
+.detail-header .title-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.detail-title > button {
+  margin: 2px 0 4px;
+}
 .detail-meta,
 .detail-status {
   margin: 4px 0;
@@ -547,6 +556,19 @@ button[aria-disabled='true'] {
 .message time {
   color: var(--secondary);
   font-size: 11px;
+}
+.message-controls {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 0;
+  background: var(--bg);
+}
+.prompt .message-controls {
+  background: var(--sidebar);
 }
 .prompt-text {
   white-space: pre-wrap;

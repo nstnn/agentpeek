@@ -165,13 +165,73 @@ describe('session detail', () => {
     }
   )
 
-  it('caps previews at 6000 and expanded text at 200000 with explicit notices', async () => {
+  it.each([5999, 6000, 6001, 199999, 200000, 200001, 211200])(
+    'keeps truthful, reversible message disclosure at %i characters',
+    async (length) => {
+      const f = mountDetail()
+      const text = 'x'.repeat(length)
+      f.api.getMessages.mockResolvedValue({
+        kind: 'messages',
+        hasOlder: false,
+        messages: [{ kind: 'reply', text, at: NOW }]
+      })
+      f.rerender(
+        <SessionDetail
+          {...f.props}
+          session={{
+            ...f.props.session,
+            summary: { ...f.props.session.summary, lastActivityAt: NOW }
+          }}
+        />
+      )
+      const region = await screen.findByRole('region', { name: 'Recent messages' })
+      await vi.waitFor(() => expect(region.querySelector('.markdown')).toBeTruthy())
+      expect(region.querySelector('.markdown')?.textContent?.length).toBe(Math.min(length, 6000))
+      if (length <= 6000) {
+        expect(screen.queryByRole('button', { name: 'Show More' })).toBeNull()
+        expect(region.querySelector('.truncation-notice')).toBeNull()
+        return
+      }
+      const toggle = screen.getByRole('button', { name: 'Show More' })
+      const controlled = document.getElementById(toggle.getAttribute('aria-controls')!)
+      expect(controlled?.textContent?.length).toBe(6000)
+      expect(toggle.getAttribute('aria-expanded')).toBe('false')
+      expect(region.textContent).toContain(
+        `Showing the first 6,000 of ${length.toLocaleString('en-US')} characters.`
+      )
+      expect(region.textContent?.includes('Expansion is limited to 200,000')).toBe(length > 200000)
+      expect(region.textContent?.includes('Open Codex to read the rest.')).toBe(length > 200000)
+      toggle.focus()
+      await userEvent.keyboard('{Enter}')
+      expect(screen.getByRole('button', { name: 'Collapse Message' })).toBe(toggle)
+      expect(document.activeElement).toBe(toggle)
+      expect(toggle.getAttribute('aria-expanded')).toBe('true')
+      expect(document.getElementById(toggle.getAttribute('aria-controls')!)).toBe(controlled)
+      expect(controlled?.textContent?.length).toBe(Math.min(length, 200000))
+      expect(region.textContent).toContain(
+        length > 200000
+          ? `Showing the first 200,000 of ${length.toLocaleString('en-US')} characters.`
+          : `Showing all ${length.toLocaleString('en-US')} characters.`
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'Back to Message Start' }))
+      expect(document.activeElement).toBe(toggle)
+      await userEvent.keyboard(' ')
+      expect(screen.getByRole('button', { name: 'Show More' })).toBe(toggle)
+      expect(document.activeElement).toBe(toggle)
+      expect(controlled?.textContent?.length).toBe(6000)
+    }
+  )
+
+  it('preserves independent message disclosures across live updates', async () => {
     const f = mountDetail()
-    const text = 'x'.repeat(200_001)
+    const messages = [
+      { kind: 'prompt' as const, text: 'p'.repeat(6001), at: NOW - 1000 },
+      { kind: 'reply' as const, text: 'r'.repeat(6001), at: NOW }
+    ]
     f.api.getMessages.mockResolvedValue({
       kind: 'messages',
       hasOlder: false,
-      messages: [{ kind: 'reply', text, at: NOW }]
+      messages
     })
     f.rerender(
       <SessionDetail
@@ -182,12 +242,166 @@ describe('session detail', () => {
         }}
       />
     )
-    await screen.findByText('Showing the first 6,000 of 200,001 characters.')
-    expect(screen.getByText('x'.repeat(6000))).toBeTruthy()
-    await userEvent.click(screen.getByRole('button', { name: 'Show Full Message' }))
-    expect(screen.getByText('Showing the first 200,000 of 200,001 characters.')).toBeTruthy()
-    expect(screen.getByText('Open Codex to read the rest.')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Show Full Message' })).toBeNull()
+    const toggles = await screen.findAllByRole('button', { name: 'Show More' })
+    await userEvent.click(toggles[0]!)
+    expect(screen.getAllByRole('button', { name: 'Show More' })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: 'Collapse Message' })).toHaveLength(1)
+    f.api.getMessages.mockResolvedValue({
+      kind: 'messages',
+      hasOlder: false,
+      messages: messages.map((message) => ({ ...message, text: message.text + ' live' }))
+    })
+    f.rerender(
+      <SessionDetail
+        {...f.props}
+        session={{
+          ...f.props.session,
+          summary: { ...f.props.session.summary, lastActivityAt: NOW + 1000 }
+        }}
+      />
+    )
+    await screen.findByText('Showing all 6,006 characters.')
+    expect(screen.getByRole('button', { name: 'Collapse Message' })).toBe(toggles[0])
+    expect(document.activeElement).toBe(toggles[0])
+    expect(screen.getByRole('button', { name: 'Show More' })).toBe(toggles[1])
+    await userEvent.click(toggles[1]!)
+    await userEvent.click(toggles[0]!)
+    expect(screen.getByRole('button', { name: 'Collapse Message' })).toBe(toggles[1])
+  })
+
+  it.each([0, 1])(
+    'keeps disclosure on its own timestamp sibling when the tail drops a message (expanded %i)',
+    async (expandedIndex) => {
+      const f = mountDetail()
+      const first = { kind: 'reply' as const, text: 'A'.repeat(7000), at: NOW }
+      const surviving = { kind: 'reply' as const, text: 'B'.repeat(7000), at: NOW }
+      f.api.getMessages.mockResolvedValue({
+        kind: 'messages',
+        hasOlder: false,
+        messages: [first, surviving]
+      })
+      const update = (at: number) =>
+        f.rerender(
+          <SessionDetail
+            {...f.props}
+            session={{
+              ...f.props.session,
+              summary: { ...f.props.session.summary, lastActivityAt: at }
+            }}
+          />
+        )
+      update(NOW)
+      const controls = await screen.findAllByRole('button', { name: 'Show More' })
+      await userEvent.click(controls[expandedIndex]!)
+      const survivorId = controls[1]!.getAttribute('aria-controls')
+      f.api.getMessages.mockResolvedValue({
+        kind: 'messages',
+        hasOlder: true,
+        messages: [surviving, { kind: 'reply', text: 'C'.repeat(7000), at: NOW + 1 }]
+      })
+      update(NOW + 1)
+      await screen.findByText('C'.repeat(6000))
+      const survivorText = document.getElementById(survivorId!)!
+      expect(survivorText.textContent?.length).toBe(expandedIndex === 1 ? 7000 : 6000)
+      const article = survivorText.closest('article')!
+      expect(
+        within(article).getByRole('button', {
+          name: expandedIndex === 1 ? 'Collapse Message' : 'Show More'
+        })
+      ).toBe(controls[1])
+      if (expandedIndex === 1) expect(document.activeElement).toBe(controls[1])
+      expect(screen.getByText('C'.repeat(6000))).toBeTruthy()
+    }
+  )
+
+  it('keeps the original disclosure and focus when an identical timestamp sibling is appended', async () => {
+    const f = mountDetail()
+    const message = {
+      kind: 'reply' as const,
+      text: 'Repeated synthetic reply. '.repeat(300),
+      at: NOW
+    }
+    f.api.getMessages.mockResolvedValue({ kind: 'messages', hasOlder: false, messages: [message] })
+    const update = (at: number) =>
+      f.rerender(
+        <SessionDetail
+          {...f.props}
+          session={{
+            ...f.props.session,
+            summary: { ...f.props.session.summary, lastActivityAt: at }
+          }}
+        />
+      )
+    update(NOW)
+    const toggle = await screen.findByRole('button', { name: 'Show More' })
+    await userEvent.click(toggle)
+    const original = toggle.closest('article')
+    f.api.getMessages.mockResolvedValue({
+      kind: 'messages',
+      hasOlder: false,
+      messages: [message, { ...message }]
+    })
+    update(NOW + 1)
+    await screen.findByRole('button', { name: 'Show More' })
+    const articles = screen
+      .getByRole('region', { name: 'Recent messages' })
+      .querySelectorAll('article')
+    expect(articles[0]).toBe(original)
+    expect(within(articles[0]!).getByRole('button', { name: 'Collapse Message' })).toBe(toggle)
+    expect(within(articles[1]!).getByRole('button', { name: 'Show More' })).toBeTruthy()
+    expect(document.activeElement).toBe(toggle)
+    f.api.getMessages.mockResolvedValue({
+      kind: 'messages',
+      hasOlder: true,
+      messages: [{ ...message }]
+    })
+    update(NOW + 2)
+    await vi.waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Collapse Message' })).toBeNull()
+    )
+    expect(screen.getByRole('button', { name: 'Show More' })).toBeTruthy()
+  })
+
+  it('recomputes title disclosure on resize and title replacement while retaining its accessible heading', async () => {
+    let notify!: () => void
+    vi.spyOn(window, 'ResizeObserver').mockImplementation(
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          notify = () => callback([], this)
+        }
+        observe = vi.fn()
+        unobserve = vi.fn()
+        disconnect = vi.fn()
+      }
+    )
+    const f = mountDetail()
+    const heading = screen.getByRole('heading', { name: 'Synthetic detail' })
+    expect(screen.queryByRole('button', { name: 'Show Full Title' })).toBeNull()
+    heading.style.lineHeight = '22px'
+    let height = 110
+    Object.defineProperty(heading, 'scrollHeight', { get: () => height })
+    act(notify)
+    const toggle = screen.getByRole('button', { name: 'Show Full Title' })
+    expect(toggle.getAttribute('aria-controls')).toBe(heading.id)
+    toggle.focus()
+    await userEvent.keyboard('{Enter}')
+    expect(screen.getByRole('button', { name: 'Show Less Title' })).toBe(toggle)
+    expect(document.activeElement).toBe(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    await userEvent.keyboard(' ')
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    height = 44
+    act(notify)
+    expect(screen.queryByRole('button', { name: 'Show Full Title' })).toBeNull()
+    expect(document.activeElement).toBe(heading)
+    f.rerender(
+      <SessionDetail
+        {...f.props}
+        session={{ ...f.props.session, summary: { ...f.props.session.summary, title: 'Updated' } }}
+      />
+    )
+    expect(screen.getByRole('heading', { name: 'Updated' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Show Full Title' })).toBeNull()
   })
 
   it('marks only successfully loaded, visible, focused replies, and waits for focus on a new reply', async () => {
@@ -375,6 +589,24 @@ describe('detail navigation and request lifetime', () => {
       await Promise.resolve()
     })
     expect(screen.queryByText('Stale synthetic response')).toBeNull()
+  })
+
+  it('resets message disclosure when selecting a different session and returning', async () => {
+    const f = mountApp()
+    f.api.getMessages.mockResolvedValue({
+      kind: 'messages',
+      hasOlder: false,
+      messages: [{ kind: 'reply', text: 'Synthetic long message. '.repeat(300), at: NOW }]
+    })
+    await userEvent.click(await screen.findByRole('option', { name: /Synthetic a/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Show More' }))
+    expect(screen.getByRole('button', { name: 'Collapse Message' })).toBeTruthy()
+    await userEvent.click(screen.getByRole('option', { name: /Synthetic b/ }))
+    expect(await screen.findByRole('button', { name: 'Show More' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Collapse Message' })).toBeNull()
+    await userEvent.click(screen.getByRole('option', { name: /Synthetic a/ }))
+    expect(await screen.findByRole('button', { name: 'Show More' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Collapse Message' })).toBeNull()
   })
 
   it('narrow arrows select without loading; Enter/click push detail and every Back path restores the selected row', async () => {
