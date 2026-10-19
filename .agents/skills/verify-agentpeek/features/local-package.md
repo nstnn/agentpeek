@@ -37,5 +37,6 @@ Preconditions:
 
 - On macOS, `cua.getApp` and later observations can launch a stopped app automatically, without fixture overrides. Never bind before the explicit isolated launch, and never observe through that app binding after it has quit. Use exact-path process checks for shutdown instead.
 - Native menu trees can renumber items between captures. Refresh with `disableDiffing: true`, derive the next action from that full tree, and avoid hidden extra captures between reading an index and clicking it. An emitted observation may return no value; use `emit: false` when saving it and display the same returned tree for the next decision.
+- Inspect saved native captures with `file` before naming them PNG or interpreting their dimensions. The native tool can return JPEG bytes; use the matching extension and record the actual pixel size. A capture can also be absent while a menu is open; retain the menu tree and report the missing image.
 - A fixture launch checks bundle usability and visible prompts only. TCC access to real tool folders remains a separate consented real-data check in TASK-016. Do not infer that access from synthetic data.
 - Do not flip fuses off, add inspector access, change macOS settings, or install into /Applications to make verification easier.

@@ -47,7 +47,8 @@ const USAGE = `Usage: node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs
                               Save the page as <name>.png in the run's evidence folder.
   relaunch [--run <id>]       Start a second copy against the same profile; report how it exits.
   wait-exit [--timeout <ms>] [--run <id>]
-                              Wait for the instance to exit by itself; report the time it took.
+                              Wait for the main pid, profile processes and debug ports to exit,
+                              without killing anything; report elapsed time, not an exit code.
   stop [--run <id> | --all]   Stop the instance(s) this helper started and delete their scratch
                               folders. Evidence stays in test-results/verify-agentpeek/<run>/.
 
@@ -57,6 +58,9 @@ const USAGE = `Usage: node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs
 // launch
 
 async function launch() {
+  // Fail before starting anything when process inspection is unavailable (e.g. a sandbox).
+  processesWithMarker('agentpeek-verification-preflight')
+  portOwner(1)
   const electronPath = resolveElectron()
   if (!flags['no-build']) {
     console.error('Building with `npm run build` (typecheck + electron-vite build)...')
@@ -610,16 +614,31 @@ async function waitExit() {
   const run = loadRun()
   const timeout = Number(flags.timeout ?? 5000)
   const started = Date.now()
-  while (isAlive(run.pid) && Date.now() - started < timeout) await sleep(50)
-  const exited = !isAlive(run.pid)
-  const result = { exited, elapsedMs: Date.now() - started }
+  let remainingProcesses
+  let portsStillOpen
+  let exited
+  do {
+    exited = !isAlive(run.pid)
+    remainingProcesses = processesWithMarker(run.userDataDir)
+    portsStillOpen = [run.cdpPort, run.inspectorPort].filter((p) => p && portOwner(p) !== null)
+    if (exited && remainingProcesses.length === 0 && portsStillOpen.length === 0) break
+    await sleep(50)
+  } while (Date.now() - started < timeout)
+  const cleanExit = exited && remainingProcesses.length === 0 && portsStillOpen.length === 0
+  const result = {
+    exited,
+    cleanExit,
+    remainingProcesses,
+    portsStillOpen,
+    elapsedMs: Date.now() - started
+  }
   if (exited) {
     run.status = 'exited'
     run.exitedAt = new Date().toISOString()
     writeRun(run)
   }
   printAndLog(run, 'wait-exit', { timeout }, result)
-  process.exit(exited ? 0 : 1)
+  process.exit(cleanExit ? 0 : 1)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -984,11 +1003,26 @@ function isOurs(run) {
 
 function processCommand(pid) {
   const ps = spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' })
+  if (
+    ps.error ||
+    (ps.status !== 0 && ps.status !== 1) ||
+    typeof ps.stdout !== 'string' ||
+    ps.stderr?.trim()
+  ) {
+    throw new Error(
+      'Cannot inspect processes with ps; native process access is required. Cleanup is unverified.'
+    )
+  }
   return ps.stdout.trim()
 }
 
 function processesWithMarker(marker) {
   const ps = spawnSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' })
+  if (ps.error || ps.status !== 0 || typeof ps.stdout !== 'string' || ps.stderr?.trim()) {
+    throw new Error(
+      'Cannot list processes with ps; native process access is required. Cleanup is unverified.'
+    )
+  }
   return ps.stdout
     .split('\n')
     .map((line) => /^\s*(\d+)\s+(.*)$/.exec(line))
@@ -1000,8 +1034,20 @@ function portOwner(port) {
   const lsof = spawnSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fp'], {
     encoding: 'utf8'
   })
+  if (
+    lsof.error ||
+    (lsof.status !== 0 && lsof.status !== 1) ||
+    typeof lsof.stdout !== 'string' ||
+    lsof.stderr?.trim()
+  ) {
+    throw new Error(
+      'Cannot inspect debug ports with lsof; native process access is required. Cleanup is unverified.'
+    )
+  }
   const match = /^p(\d+)$/m.exec(lsof.stdout)
-  return match ? Number(match[1]) : null
+  if (lsof.status === 0 && match) return Number(match[1])
+  if (lsof.status === 1 && lsof.stdout.trim() === '') return null
+  throw new Error('Unexpected lsof output; debug port state and cleanup are unverified.')
 }
 
 function newestMtime(dir, depth = 0) {

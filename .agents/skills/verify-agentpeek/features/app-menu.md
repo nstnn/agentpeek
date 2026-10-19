@@ -30,15 +30,15 @@ Preconditions:
 - **Select All.** Run `menu-click "Edit > Select All"`, then `eval "String(window.getSelection())"` and `screenshot app-menu-select-all`. The selection includes the fixture banner, sidebar, list heading, and current list content.
 - **Copy.** Only with the user's OK, because it replaces their clipboard. After Select All, run `menu-click "Edit > Copy"`, then `main-eval "electron.clipboard.readText()"`. The clipboard holds the same synthetic page text that was selected.
 - **About.** Choose AgentPeek > About AgentPeek. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu-click "AgentPeek > About AgentPeek"`. The click reports `"via": "orderFrontStandardAboutPanel:"`. The panel is native, so seeing it needs the user or a desktop-control tool; report it as unverified otherwise.
-- **Developer tools.** Choose View > Toggle Developer Tools. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu-click "View > Toggle Developer Tools"`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "BrowserWindow.getAllWindows()[0].webContents.isDevToolsOpened()"`. The click reports `"via": "click handler"` and the check is `true`. Choose the item again to close them.
+- **Developer tools.** Choose View > Toggle Developer Tools. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs menu-click "View > Toggle Developer Tools"`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "BrowserWindow.getAllWindows()[0].webContents.isDevToolsOpened()"`. Opening is asynchronous: repeat this read-only check for up to three seconds before treating `false` as a failure. The click reports `"via": "click handler"` and the settled check is `true`. Focus the app and choose the item again; the settled check becomes `false`.
 
 ## Gotchas
 
 - The menu bar draws the first menu as `Electron` in unpackaged builds, because macOS names it after the app bundle. `menu` and `menu-click` use the menu's own label, `AgentPeek`.
-- `key Meta+R` or `key Meta+W` never reaches the native menu. Shortcuts are proven by the accelerators in the `menu` listing plus `menu-click`, not by pressing keys.
+- `key Meta+R` or `key Meta+W` never reaches the native menu. The `menu` listing proves accelerator registration and `menu-click` proves the action's wiring. Actual shortcut dispatch needs native keyboard input; report it separately.
 - `menu-click` refuses to act unless the window is focused, as a real menu choice needs AgentPeek active. `focus` takes focus from the user's app.
 - The About panel takes focus from the window. Run `focus` before the next `menu-click`.
 - Toggle Developer Tools can take focus too. Run `focus` before choosing it again to close the tools.
 - Copy replaces the user's clipboard. Never read the clipboard before copying: it may hold the user's private text, and `main-eval` results go into `actions.jsonl`.
-- That Toggle Developer Tools is absent from packaged builds can only be verified once a packaged build exists.
+- Verify the absence of Toggle Developer Tools in the existing packaged build through local-package.md; the helper's unpackaged menu cannot prove it.
 - Select rows through the list (see sessions-list.md), then verify the selected target and enabled Session actions. Do not manufacture selection through eval. Detail buttons and narrow Back are covered in session-detail.md.
