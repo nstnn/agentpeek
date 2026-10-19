@@ -45,8 +45,7 @@ function updateMenu(): void {
         command: (command) => send(IPC.command, command),
         session: controller.selected(),
         actions: controller.actions(),
-        // TASK-013 must report that narrow detail actually replaced the list before enabling Back.
-        canGoBack: false
+        canGoBack: controller.canGoBack()
       })
     )
   )
@@ -112,6 +111,8 @@ if (!app.requestSingleInstanceLock()) {
         reload: () => lifecycle!.reload(),
         command: (command: MenuCommand) => send(IPC.command, command),
         updateMenu,
+        isNarrow: () => (mainWindow?.getContentSize()[0] ?? 1000) < 1000,
+        isFocused: () => mainWindow?.isFocused() ?? false,
         popup: (template) =>
           new Promise<void>((resolve) => {
             if (mainWindow && !quitting)
@@ -126,6 +127,7 @@ if (!app.requestSingleInstanceLock()) {
         controller
       })
       mainWindow.on('focus', () => lifecycle?.focus())
+      mainWindow.on('resize', updateMenu)
       mainWindow.webContents.on('did-start-navigation', (_event, _url, _inPlace, isMainFrame) => {
         if (isMainFrame) controller?.setSelection(null)
       })

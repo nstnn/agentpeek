@@ -42,6 +42,7 @@ const USAGE = `Usage: node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs
                               Choose a menu item the way the menu bar does. Refuses disabled or
                               hidden items, and needs the window focused (see focus).
   focus [--run <id>]          Bring the window to the front. Takes focus from the user's app.
+  blur [--run <id>]           Release this window's native focus, to test unread-on-focus behavior.
   screenshot <name> [--run <id>]
                               Save the page as <name>.png in the run's evidence folder.
   relaunch [--run <id>]       Start a second copy against the same profile; report how it exits.
@@ -550,6 +551,18 @@ async function focus() {
   ).catch(() => false)
   printAndLog(run, 'focus', {}, { windowFocused: focused })
   if (!focused) process.exit(1)
+}
+
+async function blur() {
+  const run = loadLiveRun()
+  await withMain(run, (s) => evaluate(s, mainExpression('BrowserWindow.getAllWindows()[0].blur()')))
+  const unfocused = await waitFor(
+    'the window to release focus',
+    3000,
+    async () => !(await withMain(run, (s) => evaluate(s, mainExpression(WINDOW_FOCUSED))))
+  ).catch(() => false)
+  printAndLog(run, 'blur', {}, { windowFocused: !unfocused })
+  if (!unfocused) process.exit(1)
 }
 
 async function relaunch() {
@@ -1152,6 +1165,9 @@ try {
       break
     case 'focus':
       await focus()
+      break
+    case 'blur':
+      await blur()
       break
     case 'relaunch':
       await relaunch()

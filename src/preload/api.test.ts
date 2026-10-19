@@ -25,6 +25,7 @@ describe('preload API', () => {
         'openLink',
         'reload',
         'setSelection',
+        'setDetailOpen',
         'showSessionMenu',
         'onCommand'
       ].sort()
@@ -43,6 +44,7 @@ describe('preload API', () => {
     await api.openLink('https://example.com')
     await api.reload()
     await api.setSelection(null)
+    await api.setDetailOpen(true)
     await api.showSessionMenu(key)
     expect(transport.invoke.mock.calls).toEqual([
       [IPC.getSnapshot],
@@ -54,6 +56,7 @@ describe('preload API', () => {
       [IPC.openLink, 'https://example.com'],
       [IPC.reload],
       [IPC.setSelection, null],
+      [IPC.setDetailOpen, true],
       [IPC.showSessionMenu, key]
     ])
   })

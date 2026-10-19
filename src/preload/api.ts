@@ -25,12 +25,14 @@ export function createPreloadApi(transport: PreloadTransport): AgentPeekApi {
     onSnapshot: (callback: (snapshot: AppSnapshot) => void) => subscribe(IPC.snapshot, callback),
     getMessages: (key, limit) => invoke(IPC.getMessages, key, limit),
     setPinned: (key, pinned) => invoke(IPC.setPinned, key, pinned),
-    markRead: (key) => invoke(IPC.markRead, key),
+    markRead: (key, cursor) =>
+      cursor === undefined ? invoke(IPC.markRead, key) : invoke(IPC.markRead, key, cursor),
     openTool: (tool) => invoke(IPC.openTool, tool),
     copySessionId: (key) => invoke(IPC.copySessionId, key),
     openLink: (url) => invoke(IPC.openLink, url),
     reload: () => invoke(IPC.reload),
     setSelection: (key) => invoke(IPC.setSelection, key),
+    setDetailOpen: (open) => invoke(IPC.setDetailOpen, open),
     showSessionMenu: (key) => invoke(IPC.showSessionMenu, key),
     onCommand: (callback: (command: MenuCommand) => void) => subscribe(IPC.command, callback)
   }

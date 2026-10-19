@@ -1,0 +1,48 @@
+# Session detail
+
+Wide selection shows the session header and recent exchange. Narrow click/Return replaces the list with detail and Back. A loaded visible detail marks its current reply/error read when the native window is focused.
+
+## Sub-features
+
+- `detail-messages`: immediate header, last 20 messages, Latest exchange, times and tool summaries.
+- `detail-loading`: loading, partial, empty, failed and Try Again states.
+- `detail-markdown`: GFM, literal HTML, image alt text and safe web-link dispatch.
+- `detail-long-message`: 6,000-character preview and expansion up to 200,000, with notices.
+- `detail-actions`: Open, Mark Read, Pin/Unpin and Copy Session ID.
+- `detail-read`: loaded visible detail plus focus; viewing never clears waiting.
+- `detail-navigation`: narrow click/Return, Back, Escape and Session > Back restore row/focus.
+- `detail-live`: refresh preserves focus/scroll and discards stale requests.
+
+## How to get to it (user POV)
+
+- Select a row in any view; wide detail appears immediately.
+- Narrow: arrows select; click or Return opens detail.
+- Use header actions, Show Full Message, Try Again or Session/context menus.
+- Return with Back, Escape or Session > Back (Command-[).
+
+## Driving it with agentpeek.mjs
+
+Preconditions:
+
+- User approval for this task's launches; current built app, synthetic home, passing doctor.
+- Synthetic running/waiting/error sessions, more than 20 messages, long and hostile Markdown.
+- Commands abbreviate `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs`. Obtain literal names with `aria`. Save before/after aria and PNG for every transition.
+
+- **Open.** `click --role option --name "<observed name>"`; `aria detail-open`; `screenshot detail-open`. Check header/path tooltip, actions, times, partial notice and tool summaries. Read-only `eval "document.querySelector('.latest-divider').getBoundingClientRect().top-document.querySelector('.transcript').getBoundingClientRect().top"` establishes initial alignment; older messages remain above it.
+- **Markdown.** Select the hostile row; capture. HTML is literal, images show alt text, tables/code work and unsafe schemes have no link. `eval "({elements:document.querySelector('.transcript').querySelectorAll('img,script,iframe,object,embed,video,audio,source,style,link').length,network:performance.getEntriesByType('resource').filter(r=>/^https?:/.test(r.name)).length})"` returns zeros. Browser opening requires separate authorization; contract tests verify exact URL dispatch.
+- **Long text.** Capture the 6,000-character notice; `click --role button --name "Show Full Message"`; capture the 200,000-character notice and Open-tool guidance. Code blocks scroll sideways without page overflow.
+- **Read/live.** Select running detail; `blur`; capture; append a reply/completion only to the copied synthetic rollout. Capture unread attention, selected key and transcript scroll via read-only eval. `focus` clears unread without changing selection or scroll. `blur` is native window blur, not a physical app switch.
+- **Error/waiting.** Select error and waiting rows; capture callouts. Acknowledged errors retain their detail and quoted Codex error/Claude terminal explanation. Viewing waiting leaves it waiting.
+- **Retry.** Remove read permission from a copied synthetic rollout; select/capture failure. Restore permission; inspect the tree; `click --role button --name "Try Again"`; capture loaded messages. Reconciliation may recover automatically.
+- **Actions.** Click Pin; capture Unpin/count; then Unpin. Contract tests verify ID/tool/URL and stale targets. Actual clipboard and external activation need separate authorization/reporting.
+- **Narrow.** `main-eval "BrowserWindow.getAllWindows()[0].setSize(760,480)"` stands in for resizing. Capture list/menu: Back disabled. Arrows then `key Enter` open detail with Back focused; capture menu: Back enabled. Test `key Escape`, `menu-click "Session > Back"`, and `click --role button --name "‹ <view name>"`: same selected row and listbox focus. Read-only `eval "document.documentElement.scrollWidth-innerWidth"` returns zero.
+- **Cleanup.** Use main-window.md for app-only Light/Dark overrides, restore system, doctor, Window > Close Window, wait-exit, stop. Retain clean/defaultProfileUnchanged results.
+
+## Gotchas
+
+- Hidden narrow detail never loads or marks read; width alone never enables Back.
+- Automatic read carries the loaded cursor; main rejects a newer reply.
+- Terminal errors remain in detail after acknowledgement until a newer turn starts.
+- Conversation/error text is on-demand memory only, never snapshot/state data. Evidence is synthetic only.
+- Loading/request races have component tests; fast real reads may finish before a screenshot.
+- DOM/AX labels do not establish VoiceOver speech, physical resizing, external activation or packaged behavior.

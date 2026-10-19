@@ -33,6 +33,6 @@ Preconditions:
 ## Gotchas
 
 - File watchers can deliver the fixture change before Reload Sessions. A changed count alone does not prove the menu refreshed; also compare snapshot timestamps around the real menu action.
-- Do not use eval to choose a session or invoke its actions. Drive list selection through click/keys and menus; see sessions-list.md. Detail entry points remain TASK-013.
+- Do not use eval to choose a session or invoke its actions. Drive list selection through click/keys and menus; see sessions-list.md. Detail entry points are covered in session-detail.md.
 - Wake wiring has a synthetic lifecycle test. A real system sleep/wake remains Not tested unless actually observed; never put the user's Mac to sleep for an unattended check.
 - Fixture process checks always report alive and never inspect the user's running tools. They do not prove real process liveness or missing-tool activation.

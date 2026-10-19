@@ -15,12 +15,13 @@ export interface AgentPeekApi {
   onSnapshot(callback: (snapshot: AppSnapshot) => void): () => void
   getMessages(key: SessionKey, limit: number): Promise<RecentMessages>
   setPinned(key: SessionKey, pinned: boolean): Promise<boolean>
-  markRead(key: SessionKey): Promise<boolean>
+  markRead(key: SessionKey, expectedCursor?: string): Promise<boolean>
   openTool(tool: AgentTool): Promise<boolean>
   copySessionId(key: SessionKey): Promise<boolean>
   openLink(url: string): Promise<boolean>
   reload(): Promise<void>
   setSelection(key: SessionKey | null): Promise<void>
+  setDetailOpen(open: boolean): Promise<void>
   showSessionMenu(key: SessionKey): Promise<void>
   onCommand(callback: (command: MenuCommand) => void): () => void
 }

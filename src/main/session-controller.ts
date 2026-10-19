@@ -14,9 +14,12 @@ export function createSessionController(options: {
   command: (command: MenuCommand) => void
   updateMenu: () => void
   popup: (template: MenuItemConstructorOptions[]) => void | Promise<void>
+  isNarrow?: () => boolean
+  isFocused?: () => boolean
 }) {
   const { service, system } = options
   let selection: SessionKey | null = null
+  let detailOpen = false
   const find = (key: SessionKey | null) =>
     key === null
       ? null
@@ -55,8 +58,14 @@ export function createSessionController(options: {
     actions: () => actions(selection),
     setSelection: (key: SessionKey | null) => {
       selection = find(key)?.key ?? null
+      if (key === null) detailOpen = false
       options.updateMenu()
     },
+    setDetailOpen: (open: boolean) => {
+      detailOpen = open && selection !== null && options.isNarrow?.() === true
+      options.updateMenu()
+    },
+    canGoBack: () => detailOpen && options.isNarrow?.() === true,
     publish() {
       selection = find(selection)?.key ?? null
       options.updateMenu()
@@ -66,7 +75,16 @@ export function createSessionController(options: {
         ? Promise.resolve({ kind: 'not-found' } as const)
         : service.recentMessages(key, limit),
     setPinned: (key: SessionKey, pinned: boolean) => service.setPinned(key, pinned),
-    markRead: (key: SessionKey) => service.markRead(key),
+    markRead: (key: SessionKey, expectedCursor?: string) => {
+      const session = find(key)
+      if (
+        !session ||
+        (expectedCursor !== undefined && options.isFocused?.() === false) ||
+        (expectedCursor !== undefined && session.lastReply?.cursor !== expectedCursor)
+      )
+        return false
+      return service.markRead(key)
+    },
     openTool: (tool: SessionKey['tool']) => system.openTool(tool),
     copySessionId: async (key: SessionKey) => {
       const session = find(key)

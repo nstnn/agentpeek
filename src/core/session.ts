@@ -159,6 +159,12 @@ export type SessionMessage =
 
 /** Recent conversation text, returned only on request and never included in a snapshot. */
 export type RecentMessages =
-  | { kind: 'messages'; messages: SessionMessage[]; hasOlder: boolean }
+  | {
+      kind: 'messages'
+      messages: SessionMessage[]
+      hasOlder: boolean
+      /** Codex's latest terminal error, read only for the detail. Never in facts or snapshots. */
+      error?: { cursor: string; message: string }
+    }
   | { kind: 'not-found' }
   | { kind: 'unreadable' }

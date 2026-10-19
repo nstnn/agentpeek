@@ -2,12 +2,17 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import type { AppSnapshot } from '../../shared/api'
 
 /** Keep the selected row at the same viewport position when earlier groups change size. */
-export function useListAnchor(selectedId: string | null, snapshot: AppSnapshot | null) {
+export function useListAnchor(
+  selectedId: string | null,
+  snapshot: AppSnapshot | null,
+  hidden = false
+) {
   const list = useRef<HTMLDivElement>(null)
   const head = useRef<HTMLDivElement>(null)
   const tail = useRef<HTMLDivElement>(null)
   const anchor = useRef<{ key: string; offset: number; snapshot: AppSnapshot | null } | null>(null)
   const remember = useCallback(() => {
+    if (hidden) return
     const container = list.current
     const row = selectedId && document.getElementById(`session-${selectedId}`)
     anchor.current =
@@ -18,9 +23,10 @@ export function useListAnchor(selectedId: string | null, snapshot: AppSnapshot |
             snapshot
           }
         : null
-  }, [selectedId, snapshot])
+  }, [selectedId, snapshot, hidden])
 
   useLayoutEffect(() => {
+    if (hidden) return
     const container = list.current
     const before = head.current
     const after = tail.current

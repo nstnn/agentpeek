@@ -1,9 +1,12 @@
-import { useEffect, useState, useSyncExternalStore, type JSX } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type JSX } from 'react'
+import { sessionKeyToString } from '../../core/session'
+import { flushSync } from 'react-dom'
 import { buildView } from '../../core/views'
 import { createSessionsStore, displayedGroups, sameKey, type SessionsStore } from './sessions-store'
 import { VIEW_NAMES } from './session-display'
 import { Sidebar, SessionBanners, EmptyList } from './session-panels'
 import { SessionList } from './SessionList'
+import { SessionDetail } from './SessionDetail'
 
 export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.Element {
   const [store] = useState(() => suppliedStore ?? createSessionsStore(window.agentpeek))
@@ -12,6 +15,22 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
   const [now, setNow] = useState(Date.now)
   const [firstLaunchDismissed, dismissFirstLaunch] = useState(false)
   const [windowFocused, setWindowFocused] = useState(() => document.hasFocus())
+  const wasDetailOpen = useRef(false)
+  useLayoutEffect(() => {
+    const media = window.matchMedia('(max-width: 999px)')
+    const update = () => store.setNarrow(media.matches)
+    const change = () => flushSync(update)
+    update()
+    media.addEventListener('change', change)
+    return () => media.removeEventListener('change', change)
+  }, [store])
+  useLayoutEffect(() => {
+    if (state.detailOpen && !wasDetailOpen.current)
+      document.querySelector<HTMLButtonElement>('.detail-back')?.focus()
+    if (!state.detailOpen && wasDetailOpen.current)
+      document.querySelector<HTMLElement>('[role=listbox]')?.focus({ preventScroll: true })
+    wasDetailOpen.current = state.detailOpen
+  }, [state.detailOpen])
   useEffect(() => {
     const focus = () => setWindowFocused(true)
     const blur = () => setWindowFocused(false)
@@ -36,12 +55,26 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
   const unknown = sessions.filter((s) => s.activity.state === 'unknown').length
   const selected = state.selection?.session
   const missing = selected && !snapshot?.sessions.some((s) => sameKey(s.key, selected.key))
+  const detailVisible = !state.narrow || state.detailOpen
   return (
-    <div className="app-shell" data-window-focused={windowFocused}>
+    <div
+      className="app-shell"
+      data-window-focused={windowFocused}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && state.detailOpen) {
+          event.preventDefault()
+          store.back()
+        }
+      }}
+    >
       <SessionBanners snapshot={snapshot} />
       <div className="workspace">
         <Sidebar snapshot={snapshot} view={view} onView={store.setView} />
-        <main className="sessions-pane" aria-label="Sessions">
+        <main
+          className="sessions-pane"
+          aria-label="Sessions"
+          hidden={state.narrow && state.detailOpen}
+        >
           <header className="list-header">
             <h1>{VIEW_NAMES[view]}</h1>
             <p className="summary">
@@ -97,7 +130,13 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
             </p>
           )}
           {groups.length > 0 ? (
-            <SessionList groups={groups} state={state} store={store} now={now} />
+            <SessionList
+              groups={groups}
+              state={state}
+              store={store}
+              now={now}
+              hidden={state.narrow && state.detailOpen}
+            />
           ) : (
             <EmptyList state={state} onShowAll={() => store.setView('all')} />
           )}
@@ -108,15 +147,28 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
             </p>
           )}
         </main>
-        <aside className="detail-placeholder" aria-label="Session detail">
-          <h2>{selected ? 'Session detail comes next' : 'No session selected'}</h2>
-          <p>
-            {selected
-              ? missing
-                ? 'This session is no longer available.'
-                : 'The latest exchange will be available here in a future update.'
-              : 'Select a session to see its latest exchange.'}
-          </p>
+        <aside className="detail-pane" aria-label="Session detail" hidden={!detailVisible}>
+          {state.narrow && state.detailOpen && (
+            <button className="detail-back" type="button" onClick={store.back}>
+              ‹ {VIEW_NAMES[view]}
+            </button>
+          )}
+          {selected ? (
+            <SessionDetail
+              key={sessionKeyToString(selected.key)}
+              session={selected}
+              api={window.agentpeek}
+              visible={detailVisible}
+              focused={windowFocused}
+              missing={!!missing}
+              confirmedAt={snapshot?.takenAt ?? now}
+            />
+          ) : (
+            <div className="detail-placeholder">
+              <h2>No session selected</h2>
+              <p>Select a session to see its latest exchange.</p>
+            </div>
+          )}
         </aside>
       </div>
     </div>

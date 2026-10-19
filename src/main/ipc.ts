@@ -94,7 +94,18 @@ export function registerSessionIpc(options: {
     (a) => a.length === 2 && isKey(a[0]) && typeof a[1] === 'boolean',
     c.setPinned
   )
-  register(IPC.markRead, key, c.markRead)
+  register(
+    IPC.markRead,
+    (a) =>
+      key(a) ||
+      (a.length === 2 &&
+        isKey(a[0]) &&
+        typeof a[1] === 'string' &&
+        a[1].length > 0 &&
+        a[1].length <= 4096 &&
+        !/\p{Cc}/u.test(a[1])),
+    c.markRead
+  )
   register(IPC.openTool, (a) => a.length === 1 && isAgentTool(a[0]), c.openTool)
   register(IPC.copySessionId, key, c.copySessionId)
   register(IPC.openLink, (a) => a.length === 1 && isWebLink(a[0]), c.openLink)
@@ -105,6 +116,7 @@ export function registerSessionIpc(options: {
     c.setSelection
   )
   register(IPC.showSessionMenu, key, c.showSessionMenu)
+  register(IPC.setDetailOpen, (a) => a.length === 1 && typeof a[0] === 'boolean', c.setDetailOpen)
   return () => {
     for (const channel of channels) ipc.removeHandler(channel)
   }
