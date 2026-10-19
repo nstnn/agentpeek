@@ -85,6 +85,10 @@ if (!app.requestSingleInstanceLock()) {
     .whenReady()
     .then(async () => {
       if (quitting) return
+      app.setAboutPanelOptions({
+        applicationName: 'AgentPeek',
+        applicationVersion: app.getVersion()
+      })
       denyAllPermissions(session.defaultSession)
       opening = openSessionsService({
         ...paths,

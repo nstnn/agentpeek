@@ -11,7 +11,7 @@ Opening AgentPeek shows one window titled AgentPeek with a sidebar, sessions lis
 
 ## How to get to it (user POV)
 
-- Open AgentPeek. In development that is `npm start` after `npm run build`, or `npm run dev`; a packaged build does not exist yet.
+- Open AgentPeek. In development that is `npm start` after `npm run build`, or `npm run dev`; the local packaged build is `dist/mac-arm64/AgentPeek.app` (see local-package.md for isolated native checks).
 - Drag a window corner to resize it.
 - Switch the Mac between Light and Dark appearance in System Settings.
 
