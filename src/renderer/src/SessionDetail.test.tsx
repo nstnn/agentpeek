@@ -28,6 +28,7 @@ function mountDetail(change: Partial<Session> = {}, focused = true) {
     api: fake.api,
     visible: true,
     focused,
+    canAutoRead: () => true,
     missing: false,
     lastSeenAt: NOW,
     sourceEpoch: 0,
@@ -39,6 +40,21 @@ function mountDetail(change: Partial<Session> = {}, focused = true) {
 }
 
 describe('session detail', () => {
+  it('keeps loaded inactive/unsynchronized content unread until its activation is eligible', async () => {
+    const f = mountDetail({
+      lastReply: reply(),
+      attention: { waiting: false, error: false, newReply: true }
+    })
+    const eligible = vi.fn(() => false)
+    f.rerender(<SessionDetail {...f.props} canAutoRead={eligible} />)
+    await screen.findByText('Synthetic prompt')
+    expect(f.api.markRead).not.toHaveBeenCalled()
+    eligible.mockReturnValue(true)
+    f.rerender(<SessionDetail {...f.props} canAutoRead={() => eligible()} />)
+    await vi.waitFor(() =>
+      expect(f.api.markRead).toHaveBeenCalledWith(f.props.session.key, 'reply')
+    )
+  })
   it('preserves the transcript scroll offset when a bounded-tail update shortens its scroll range', async () => {
     const f = mountDetail()
     await screen.findByText('Synthetic prompt')

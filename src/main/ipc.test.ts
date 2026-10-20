@@ -16,6 +16,8 @@ const requests: [string, unknown[]][] = [
   [IPC.openLink, ['https://example.com/path?q=1']],
   [IPC.reload, []],
   [IPC.setSelection, [key]],
+  [IPC.setSelection, [key, { secondPaneOpen: true }]],
+  [IPC.setSelection, [null, { secondPaneOpen: true }]],
   [IPC.setDetailOpen, [true]],
   [IPC.showSessionMenu, [key]]
 ]
@@ -84,6 +86,22 @@ function setup() {
 }
 
 describe('IPC trust boundary', () => {
+  it.each([
+    undefined,
+    null,
+    true,
+    [],
+    {},
+    { secondPaneOpen: 1 },
+    { secondPaneOpen: true, extra: false },
+    { secondPaneOpen: false, path: '/synthetic' }
+  ])('rejects malformed presentation metadata before any action: %j', async (metadata) => {
+    const s = setup()
+    await expect(s.invoke(IPC.setSelection, [key, metadata])).rejects.toThrow(
+      'Invalid AgentPeek request'
+    )
+    s.expectNoEffects()
+  })
   it.each(requests)('accepts the own page and valid arguments: %s', async (channel, args) => {
     const { invoke } = setup()
     await expect(invoke(channel, args)).resolves.not.toThrow()

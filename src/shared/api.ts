@@ -7,7 +7,17 @@ export interface AppSnapshot extends SessionsSnapshot {
   readonly fixtureHome: string | null
 }
 
-export type MenuCommand = 'view:active' | 'view:pinned' | 'view:all' | 'back'
+export type MenuCommand =
+  | 'view:active'
+  | 'view:pinned'
+  | 'view:all'
+  | 'back'
+  | { type: 'open-secondary'; key: SessionKey }
+  | { type: 'close-secondary' }
+
+export interface SelectionPresentation {
+  readonly secondPaneOpen: boolean
+}
 
 /** The renderer's entire capability surface. Only plain values cross the bridge. */
 export interface AgentPeekApi {
@@ -20,7 +30,7 @@ export interface AgentPeekApi {
   copySessionId(key: SessionKey): Promise<boolean>
   openLink(url: string): Promise<boolean>
   reload(): Promise<void>
-  setSelection(key: SessionKey | null): Promise<void>
+  setSelection(key: SessionKey | null, presentation?: SelectionPresentation): Promise<void>
   setDetailOpen(open: boolean): Promise<void>
   showSessionMenu(key: SessionKey): Promise<void>
   onCommand(callback: (command: MenuCommand) => void): () => void

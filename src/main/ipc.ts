@@ -112,7 +112,16 @@ export function registerSessionIpc(options: {
   register(IPC.reload, none, c.reload)
   register(
     IPC.setSelection,
-    (a) => a.length === 1 && (a[0] === null || isKey(a[0])),
+    (a) =>
+      (a.length === 1 ||
+        (a.length === 2 &&
+          typeof a[1] === 'object' &&
+          a[1] !== null &&
+          !Array.isArray(a[1]) &&
+          Object.keys(a[1]).length === 1 &&
+          Object.hasOwn(a[1], 'secondPaneOpen') &&
+          typeof (a[1] as Record<string, unknown>).secondPaneOpen === 'boolean')) &&
+      (a[0] === null || isKey(a[0])),
     c.setSelection
   )
   register(IPC.showSessionMenu, key, c.showSessionMenu)

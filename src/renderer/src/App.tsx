@@ -178,6 +178,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
               api={window.agentpeek}
               visible={detailVisible}
               focused={windowFocused}
+              canAutoRead={() => store.canAutoRead('main', selected.key, state.targetGeneration)}
               missing={!!missing}
               lastSeenAt={state.selection?.lastSeenAt ?? null}
               sourceEpoch={state.selection?.sourceEpoch ?? 0}

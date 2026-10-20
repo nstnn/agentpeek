@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { MenuItemConstructorOptions } from 'electron'
 import { createSessionController } from './session-controller'
 import { testService, testSession, testSystem } from './test-support'
 
@@ -12,12 +13,76 @@ function setup() {
     reload: service.reconcile,
     command: vi.fn(),
     updateMenu: vi.fn(),
-    popup: vi.fn()
+    popup: vi.fn<(template: MenuItemConstructorOptions[]) => void | Promise<void>>(),
+    isFocused: () => true
   }
   return { ...options, controller: createSessionController(options) }
 }
 
 describe('session controller', () => {
+  it('rejects delayed automatic reads for an inactive key while explicit row reads remain valid', () => {
+    const s = setup()
+    const a = testSession({
+      lastReply: {
+        cursor: 'a',
+        completedAt: 1,
+        isError: false,
+        errorCode: null,
+        newerTurnStarted: false
+      }
+    })
+    const b = testSession({ key: { tool: 'claude', id: 'second' } })
+    s.service.snapshot.mockReturnValue({ ...s.service.snapshot(), sessions: [a, b] })
+    expect(s.controller.markRead(a.key, 'a')).toBe(false)
+    s.controller.setSelection(a.key)
+    expect(s.controller.markRead(a.key, 'a')).toBe(true)
+    s.service.markRead.mockClear()
+    s.controller.setSelection(b.key)
+    expect(s.controller.markRead(a.key, 'a')).toBe(false)
+    expect(s.service.markRead).not.toHaveBeenCalled()
+    expect(s.controller.markRead(a.key)).toBe(true)
+    s.controller.setSelection(null, { secondPaneOpen: true })
+    expect(s.controller.markRead(a.key, 'a')).toBe(false)
+  })
+  it('keeps native callbacks current and context callbacks bound to their explicit row', async () => {
+    const s = setup()
+    const a = testSession()
+    const b = testSession({ key: { tool: 'claude', id: 'second' } })
+    s.service.snapshot.mockReturnValue({ ...s.service.snapshot(), sessions: [a, b] })
+    s.controller.setSelection(a.key)
+    const native = s.controller.actions()
+    await s.controller.showSessionMenu(a.key)
+    const context = s.popup.mock.calls[0]![0].find((item) => item.id === 'session-open-secondary')!
+    s.controller.setSelection(b.key)
+    native.openSecondary()
+    context.click!(null as never, null as never, null as never)
+    expect(s.command.mock.calls).toEqual([
+      [{ type: 'open-secondary', key: b.key }],
+      [{ type: 'open-secondary', key: a.key }]
+    ])
+    s.command.mockClear()
+    s.service.snapshot.mockReturnValue({ ...s.service.snapshot(), sessions: [b] })
+    context.click!(null as never, null as never, null as never)
+    expect(s.command).not.toHaveBeenCalled()
+    s.controller.setSelection(null)
+    native.openSecondary()
+    expect(s.command).not.toHaveBeenCalled()
+  })
+  it('keeps Close Second enabled through browsing/source loss and rechecks late close callbacks', () => {
+    const s = setup()
+    s.controller.setSelection(testSession().key, { secondPaneOpen: true })
+    const actions = s.controller.actions()
+    s.service.snapshot.mockReturnValue({ ...s.service.snapshot(), sessions: [] })
+    s.controller.publish()
+    s.controller.setSelection(null)
+    expect(s.controller.canCloseSecondary()).toBe(true)
+    actions.closeSecondary()
+    expect(s.command).toHaveBeenCalledWith({ type: 'close-secondary' })
+    s.controller.setSelection(null, { secondPaneOpen: false })
+    s.command.mockClear()
+    actions.closeSecondary()
+    expect(s.command).not.toHaveBeenCalled()
+  })
   it('rejects automatic acknowledgement if native focus was lost before IPC arrived', () => {
     const s = setup()
     const current = testSession({
@@ -36,16 +101,13 @@ describe('session controller', () => {
     controller.markRead(current.key)
     expect(s.service.markRead).toHaveBeenCalledWith(current.key)
   })
-  it('enables Back only for an actual narrow detail and keeps Back usable after the session disappears', () => {
+  it('uses replacement navigation for Back independently of width, target and source availability', () => {
     const s = setup()
-    const isNarrow = vi.fn(() => false)
-    const controller = createSessionController({ ...s, isNarrow })
+    const controller = s.controller
     controller.setSelection(testSession().key)
-    controller.setDetailOpen(true)
-    expect(controller.canGoBack()).toBe(false)
-    isNarrow.mockReturnValue(true)
     expect(controller.canGoBack()).toBe(false)
     controller.setDetailOpen(true)
+    controller.setSelection(null)
     expect(controller.canGoBack()).toBe(true)
     s.service.snapshot.mockReturnValue({ ...s.service.snapshot(), sessions: [] })
     controller.publish()
@@ -67,6 +129,7 @@ describe('session controller', () => {
     s.service.snapshot.mockReturnValue({ ...s.service.snapshot(), sessions: [current] })
     expect(s.controller.markRead(current.key, 'old')).toBe(false)
     expect(s.service.markRead).not.toHaveBeenCalled()
+    s.controller.setSelection(current.key)
     s.controller.markRead(current.key, 'new')
     expect(s.service.markRead).toHaveBeenCalledWith(current.key)
   })
@@ -124,7 +187,7 @@ describe('session controller', () => {
     expect(popup).not.toHaveBeenCalled()
     await controller.showSessionMenu(testSession().key)
     expect(popup).toHaveBeenCalledOnce()
-    expect(popup.mock.calls[0]?.[0]).toHaveLength(4)
+    expect(popup.mock.calls[0]?.[0]).toHaveLength(5)
   })
   it('keeps the context invocation pending until the native popup is dismissed', async () => {
     const { controller, popup } = setup()

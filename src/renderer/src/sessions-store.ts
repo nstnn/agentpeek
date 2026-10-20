@@ -21,6 +21,8 @@ export interface RendererState {
   secondarySelection: Selection | null
   /** Null while browsing; source loss retains the pane identity, not a valid action target. */
   activePane: PaneId | null
+  targetGeneration: number
+  targetReady: boolean
   actionError: string | null
   narrow: boolean
   detailOpen: boolean
@@ -39,6 +41,8 @@ export function createSessionsStore(api: AgentPeekApi) {
     selection: null,
     secondarySelection: null,
     activePane: null,
+    targetGeneration: 0,
+    targetReady: false,
     actionError: null,
     narrow: false,
     detailOpen: false,
@@ -48,18 +52,44 @@ export function createSessionsStore(api: AgentPeekApi) {
   }
   const listeners = new Set<() => void>()
   let disconnect: (() => void) | null = null
+  // The single-pane renderer presents only Main. The split composition will publish both.
+  let visiblePanes: readonly PaneId[] = ['main']
+  let targetSignature = ''
+  const targetKey = (): SessionKey | null => {
+    if (!state.activePane || !visiblePanes.includes(state.activePane)) return null
+    if (state.narrow && !state.detailOpen) return null
+    const selected = state.activePane === 'main' ? state.selection : state.secondarySelection
+    return (
+      state.snapshot?.sessions.find((s) => selected && sameKey(s.key, selected.session.key))?.key ??
+      null
+    )
+  }
   const emit = (change: Partial<RendererState>) => {
     state = { ...state, ...change }
+    const key = targetKey()
+    const selected = state.activePane === 'main' ? state.selection : state.secondarySelection
+    const signature = JSON.stringify([
+      state.activePane,
+      key,
+      selected?.sourceEpoch,
+      visiblePanes,
+      !!state.secondarySelection
+    ])
+    if (signature !== targetSignature) {
+      targetSignature = signature
+      const generation = state.targetGeneration + 1
+      state = { ...state, targetGeneration: generation, targetReady: false }
+      void api.setSelection(key, { secondPaneOpen: !!state.secondarySelection }).then(
+        () => {
+          if (generation === state.targetGeneration) emit({ targetReady: key !== null })
+        },
+        () => {
+          if (generation === state.targetGeneration)
+            emit({ actionError: "Couldn't select session. Try again." })
+        }
+      )
+    }
     for (const listener of listeners) listener()
-  }
-  const sendSelection = (key: SessionKey | null) => {
-    void api
-      .setSelection(key)
-      .catch(() => emit({ actionError: "Couldn't select session. Try again." }))
-  }
-  const clearSelection = () => {
-    sendSelection(null)
-    return null
   }
   const sendDetailOpen = (open: boolean) => {
     void api
@@ -77,13 +107,6 @@ export function createSessionsStore(api: AgentPeekApi) {
           received = true
           if (!active) return
           const selection = reconcileSelection(state.selection, state.snapshot, snapshot)
-          if (
-            selection &&
-            snapshot.sessions.some((s) => sameKey(s.key, selection.session.key)) &&
-            !state.snapshot?.sessions.some((s) => sameKey(s.key, selection.session.key))
-          ) {
-            sendSelection(selection.session.key)
-          }
           emit({
             snapshot,
             failed: false,
@@ -97,8 +120,11 @@ export function createSessionsStore(api: AgentPeekApi) {
         }
         const offSnapshot = api.onSnapshot(receive)
         const offCommand = api.onCommand((command) => {
-          if (command.startsWith('view:')) store.setView(command.slice(5) as ViewId)
-          if (command === 'back') store.back()
+          if (typeof command === 'string') {
+            if (command.startsWith('view:')) store.setView(command.slice(5) as ViewId)
+            if (command === 'back') store.back()
+          } else if (command.type === 'open-secondary') store.openSecondary(command.key)
+          else if (command.type === 'close-secondary') store.closeSecondary()
         })
         void api
           .getSnapshot()
@@ -112,6 +138,9 @@ export function createSessionsStore(api: AgentPeekApi) {
           active = false
           offSnapshot()
           offCommand()
+          state = { ...state, targetGeneration: state.targetGeneration + 1, targetReady: false }
+          targetSignature = ''
+          void api.setSelection(null, { secondPaneOpen: false }).catch(() => undefined)
         }
       }
       return () => {
@@ -126,7 +155,7 @@ export function createSessionsStore(api: AgentPeekApi) {
       sendDetailOpen(false)
       emit({
         view,
-        selection: clearSelection(),
+        selection: null,
         activePane: null,
         detailOpen: false,
         actionError: null
@@ -136,7 +165,7 @@ export function createSessionsStore(api: AgentPeekApi) {
       sendDetailOpen(false)
       emit({
         filter,
-        selection: clearSelection(),
+        selection: null,
         activePane: null,
         detailOpen: false,
         actionError: null
@@ -147,6 +176,7 @@ export function createSessionsStore(api: AgentPeekApi) {
       // Split reading/browse intent survives resizing; its layout is wired in the renderer card.
       if (state.secondarySelection) {
         emit({ narrow, detailOpen: narrow && state.activePane !== null })
+        sendDetailOpen(state.detailOpen)
         return
       }
       sendDetailOpen(false)
@@ -167,7 +197,7 @@ export function createSessionsStore(api: AgentPeekApi) {
       emit({ detailOpen: false, activePane: null })
       sendDetailOpen(false)
     },
-    // Store-only placement for now: native targeting and visible split controls follow in cards 2-4.
+    // Placement is available through native commands; visual composition follows in card 3.
     openSecondary(this: void, key: SessionKey) {
       const snapshot = state.snapshot
       if (!snapshot) return
@@ -184,6 +214,7 @@ export function createSessionsStore(api: AgentPeekApi) {
         detailOpen: state.narrow || state.detailOpen,
         actionError: null
       })
+      sendDetailOpen(state.detailOpen)
     },
     closeSecondary(this: void) {
       if (!state.secondarySelection) return
@@ -192,10 +223,27 @@ export function createSessionsStore(api: AgentPeekApi) {
         activePane: state.selection && (!state.narrow || state.detailOpen) ? 'main' : null,
         detailOpen: !!state.selection && state.detailOpen
       })
+      sendDetailOpen(state.detailOpen)
     },
     activatePane(this: void, pane: PaneId) {
       if (!(pane === 'main' ? state.selection : state.secondarySelection)) return
       emit({ activePane: pane, detailOpen: state.narrow || state.detailOpen })
+      sendDetailOpen(state.detailOpen)
+    },
+    setVisiblePanes(this: void, panes: readonly PaneId[]) {
+      if (visiblePanes.join() === panes.join()) return
+      visiblePanes = [...panes]
+      emit({})
+    },
+    canAutoRead(this: void, pane: PaneId, key: SessionKey, generation: number): boolean {
+      const target = targetKey()
+      return (
+        state.targetReady &&
+        state.targetGeneration === generation &&
+        state.activePane === pane &&
+        target !== null &&
+        sameKey(target, key)
+      )
     },
     async reload(this: void) {
       if (state.reloadPending) return
@@ -221,7 +269,8 @@ export function createSessionsStore(api: AgentPeekApi) {
       const browsingSplit = state.secondarySelection && state.activePane === null
       const activePane = !browsingSplit && (!state.narrow || state.detailOpen) ? 'main' : null
       if (state.selection && sameKey(state.selection.session.key, session.key)) {
-        if (state.activePane !== activePane) emit({ activePane })
+        if (!state.targetReady) targetSignature = ''
+        emit({ activePane })
         return
       }
       const group = groups.find((g) => g.sessions.some((s) => sameKey(s.key, session.key)))
@@ -239,7 +288,6 @@ export function createSessionsStore(api: AgentPeekApi) {
         activePane,
         actionError: null
       })
-      sendSelection(session.key)
     },
     reportActionError(this: void) {
       emit({ actionError: "Couldn't open the session menu. Try again." })
