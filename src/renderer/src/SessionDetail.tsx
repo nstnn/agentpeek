@@ -90,6 +90,7 @@ export function SessionDetail({
   const retryFocused = useRef(false)
   const positioned = useRef(false)
   const scrollPosition = useRef(0)
+  const scrollSize = useRef({ width: 0, height: 0 })
   const seen = useRef<string | null>(null)
   const revision = `${session.summary.lastActivityAt}:${session.lastReply?.cursor ?? ''}:${sourceEpoch}:${reloadVersion}`
   const { tool, id } = session.key
@@ -152,6 +153,21 @@ export function SessionDetail({
       }
     }
     positioned.current = true
+    if (scroller)
+      scrollSize.current = { width: scroller.clientWidth, height: scroller.clientHeight }
+    // Reflow can shorten the scroll range even without a new message or a
+    // visibility change. Reserve space before the browser publishes its clamped
+    // scroll event, so widening a pane cannot overwrite the user's offset.
+    const observer = new ResizeObserver(() => {
+      if (!scroller || !bottom.current || !scroller.clientHeight) return
+      const shortage = scrollPosition.current - (scroller.scrollHeight - scroller.clientHeight)
+      if (shortage > 0)
+        bottom.current.style.height = `${(parseFloat(bottom.current.style.height) || 0) + shortage}px`
+      scroller.scrollTop = scrollPosition.current
+      scrollSize.current = { width: scroller.clientWidth, height: scroller.clientHeight }
+    })
+    if (scroller) observer.observe(scroller)
+    return () => observer.disconnect()
   }, [visible, result])
 
   useEffect(() => {
@@ -305,7 +321,17 @@ export function SessionDetail({
         ref={transcript}
         aria-live="off"
         onScroll={(event) => {
-          scrollPosition.current = event.currentTarget.scrollTop
+          const scroller = event.currentTarget
+          const size = scrollSize.current
+          // Chromium can deliver the resize-induced clamp before ResizeObserver.
+          // Let the observer restore it before accepting another user offset.
+          if (
+            !visible ||
+            (size.width > 0 &&
+              (size.width !== scroller.clientWidth || size.height !== scroller.clientHeight))
+          )
+            return
+          scrollPosition.current = scroller.scrollTop
         }}
       >
         {!result ? (
@@ -386,10 +412,10 @@ function DetailTitle({ title }: { title: string }): JSX.Element {
     const element = heading.current
     if (!element) return
     const measure = () => {
+      if (element.closest('[hidden]')) return
       const needed = element.scrollHeight > parseFloat(getComputedStyle(element).lineHeight) * 2 + 1
       if (!needed && document.activeElement === toggle.current)
         element.focus({ preventScroll: true })
-      if (!needed) setExpandedTitle(null)
       setOverflows(needed)
     }
     const observer = new ResizeObserver(measure)

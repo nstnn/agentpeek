@@ -14,7 +14,7 @@ function mount(initial = snapshot()) {
 }
 
 describe('sessions interface', () => {
-  it('waits for the current target sync, ignores stale completion, and keeps prepared Second unread', async () => {
+  it('waits for current target sync, ignores stale completion and keeps inactive Main updates unread', async () => {
     const unread = (id: string) =>
       session(id, {
         lastReply: {
@@ -58,9 +58,11 @@ describe('sessions interface', () => {
       await Promise.resolve()
     })
     act(() => f.push(snapshot([a, { ...b, lastReply: { ...b.lastReply!, cursor: 'b-new' } }])))
-    await screen.findByText('No recent messages.')
-    expect(f.api.markRead).not.toHaveBeenCalled()
-    expect(f.api.getMessages.mock.calls.map(([key]) => key.id)).toEqual(['b'])
+    await within(screen.getByRole('complementary', { name: 'Second pane' })).findByText(
+      'No recent messages.'
+    )
+    expect(f.api.markRead.mock.calls).toEqual([[a.key, 'a']])
+    expect(f.api.getMessages.mock.calls.map(([key]) => key.id)).toEqual(['a', 'b'])
   })
   it.each(['insert', 'remove'])(
     'anchors the selected row when an earlier group is %s-ed',
@@ -261,7 +263,7 @@ describe('sessions interface', () => {
     expect(fake.offCommand).toHaveBeenCalledOnce()
   })
 
-  it('keeps prepared Second hidden below the roomy boundary until compact navigation ships', async () => {
+  it('presents two details and replacement navigation in the middle split band', async () => {
     const a = session('a')
     const b = session('b')
     const f = mount(snapshot([a, b]))
@@ -271,10 +273,12 @@ describe('sessions interface', () => {
     act(() => f.store.openSecondary(b.key))
     expect(screen.getAllByRole('complementary', { name: 'Main pane' })).toHaveLength(1)
     expect(screen.getByRole('heading', { name: 'Synthetic a' })).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: 'Synthetic b' })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Synthetic b' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Open in Second Pane' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Close Second Pane' })).toBeNull()
-    expect(f.api.getMessages).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Close Second Pane' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Show Sessions' })).toBeTruthy()
+    expect(screen.queryByRole('listbox')).toBeNull()
+    await vi.waitFor(() => expect(f.api.getMessages).toHaveBeenCalledWith(b.key, 20))
   })
 
   it.each([

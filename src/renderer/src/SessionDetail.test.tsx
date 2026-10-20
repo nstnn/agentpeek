@@ -40,6 +40,52 @@ function mountDetail(change: Partial<Session> = {}, focused = true) {
 }
 
 describe('session detail', () => {
+  it('preserves scroll after width reflow and ignores hidden scroll events', async () => {
+    let resize!: () => void
+    vi.spyOn(window, 'ResizeObserver').mockImplementation(
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          this.observe = (element: Element) => {
+            if (element.classList.contains('transcript')) resize = () => callback([], this)
+          }
+        }
+        observe: (element: Element) => void
+        unobserve = vi.fn()
+        disconnect = vi.fn()
+      }
+    )
+    const f = mountDetail()
+    await screen.findByText('Synthetic prompt')
+    const region = screen.getByRole('region')
+    const bottom = region.lastElementChild as HTMLElement
+    let contentHeight = 600
+    let width = 400
+    let scroll = 0
+    Object.defineProperty(region, 'clientHeight', { value: 200 })
+    Object.defineProperty(region, 'clientWidth', { get: () => width })
+    Object.defineProperty(region, 'scrollHeight', {
+      get: () => contentHeight + (parseFloat(bottom.style.height) || 0)
+    })
+    Object.defineProperty(region, 'scrollTop', {
+      get: () => Math.min(scroll, region.scrollHeight - region.clientHeight),
+      set: (value: number) => {
+        scroll = value
+      }
+    })
+    act(resize)
+    region.scrollTop = 350
+    fireEvent.scroll(region)
+    contentHeight = 250
+    width = 800
+    fireEvent.scroll(region)
+    act(resize)
+    fireEvent.scroll(region)
+    expect(region.scrollTop).toBe(350)
+    f.rerender(<SessionDetail {...f.props} visible={false} />)
+    fireEvent.scroll(region, { target: { scrollTop: 0 } })
+    f.rerender(<SessionDetail {...f.props} visible />)
+    expect(region.scrollTop).toBe(350)
+  })
   it('keeps loaded inactive/unsynchronized content unread until its activation is eligible', async () => {
     const f = mountDetail({
       lastReply: reply(),
@@ -435,9 +481,11 @@ describe('session detail', () => {
     vi.spyOn(window, 'ResizeObserver').mockImplementation(
       class {
         constructor(callback: ResizeObserverCallback) {
-          notify = () => callback([], this)
+          this.observe = (element: Element) => {
+            if (element.tagName === 'H2') notify = () => callback([], this)
+          }
         }
-        observe = vi.fn()
+        observe: (element: Element) => void
         unobserve = vi.fn()
         disconnect = vi.fn()
       }
@@ -458,6 +506,20 @@ describe('session detail', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
     await userEvent.keyboard(' ')
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    await userEvent.keyboard('{Enter}')
+    f.container.hidden = true
+    height = 0
+    act(notify)
+    f.container.hidden = false
+    height = 44
+    act(notify)
+    expect(screen.queryByRole('button', { name: 'Show Less Title' })).toBeNull()
+    height = 110
+    act(notify)
+    expect(
+      screen.getByRole('button', { name: 'Show Less Title' }).getAttribute('aria-expanded')
+    ).toBe('true')
+    await userEvent.click(screen.getByRole('button', { name: 'Show Less Title' }))
     height = 44
     act(notify)
     expect(screen.queryByRole('button', { name: 'Show Full Title' })).toBeNull()

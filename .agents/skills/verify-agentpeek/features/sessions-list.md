@@ -67,3 +67,4 @@ Preconditions:
 - Native popup pixels/actions are outside this helper's reach. A page screenshot and a pending popup promise prove only the row's entry/highlight, not native menu rendering.
 - Live updates have aria-live off. AX labels and keyboard behavior can be checked here; actual VoiceOver speech remains a separate platform check.
 - See session-detail.md for transcript loading, focused read-on-view and narrow activation/Back.
+- In compact split browsing, arrows change Main's selected row without loading hidden content; Enter/click returns to Main reading. Explicit secondary placement returns to Second. Show Sessions restores this shared list, views, filters and source health; Return to Sessions resumes the remembered pane. Resizing while browsing keeps details hidden, including at roomy widths.

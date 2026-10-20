@@ -26,6 +26,9 @@ export interface RendererState {
   targetReady: boolean
   actionError: string | null
   narrow: boolean
+  roomy: boolean
+  splitBrowsing: boolean
+  returnPane: PaneId
   detailOpen: boolean
   reloadPending: boolean
   reloadError: string | null
@@ -47,6 +50,9 @@ export function createSessionsStore(api: AgentPeekApi) {
     targetReady: false,
     actionError: null,
     narrow: false,
+    roomy: true,
+    splitBrowsing: false,
+    returnPane: 'main',
     detailOpen: false,
     reloadPending: false,
     reloadError: null,
@@ -58,6 +64,7 @@ export function createSessionsStore(api: AgentPeekApi) {
   let visiblePanes: readonly PaneId[] = ['main']
   let targetSignature = ''
   const targetKey = (): SessionKey | null => {
+    if (state.secondarySelection && state.splitBrowsing) return null
     if (!state.activePane || !visiblePanes.includes(state.activePane)) return null
     if (state.narrow && !state.detailOpen) return null
     const selected = state.activePane === 'main' ? state.selection : state.secondarySelection
@@ -159,6 +166,8 @@ export function createSessionsStore(api: AgentPeekApi) {
         view,
         selection: null,
         activePane: null,
+        splitBrowsing: !!state.secondarySelection,
+        returnPane: state.activePane ?? state.returnPane,
         detailOpen: false,
         actionError: null
       })
@@ -169,35 +178,66 @@ export function createSessionsStore(api: AgentPeekApi) {
         filter,
         selection: null,
         activePane: null,
+        splitBrowsing: !!state.secondarySelection,
+        returnPane: state.activePane ?? state.returnPane,
         detailOpen: false,
         actionError: null
       })
     },
     setNarrow(this: void, narrow: boolean) {
-      if (state.narrow === narrow) return
-      // Split reading/browse intent survives resizing; its layout is wired in the renderer card.
+      store.setLayout(narrow, !narrow)
+    },
+    setLayout(this: void, narrow: boolean, roomy: boolean) {
+      if (state.narrow === narrow && state.roomy === roomy) return
       if (state.secondarySelection) {
-        emit({ narrow, detailOpen: narrow && state.activePane !== null })
+        emit({ narrow, roomy, detailOpen: !roomy && !state.splitBrowsing })
         sendDetailOpen(state.detailOpen)
         return
       }
+      if (state.narrow === narrow) {
+        emit({ roomy })
+        return
+      }
       sendDetailOpen(false)
-      emit({ narrow, detailOpen: false, activePane: !narrow && state.selection ? 'main' : null })
+      emit({
+        narrow,
+        roomy,
+        detailOpen: false,
+        activePane: !narrow && state.selection ? 'main' : null
+      })
     },
     activate(this: void, session: Session, groups: SessionGroup[]) {
       store.select(session, groups)
       if (!state.selection || !sameKey(state.selection.session.key, session.key)) return
-      if (state.narrow) {
-        emit({ detailOpen: true, activePane: 'main' })
-        sendDetailOpen(true)
+      if (state.secondarySelection || state.narrow) {
+        emit({
+          detailOpen: state.secondarySelection ? !state.roomy : true,
+          splitBrowsing: false,
+          activePane: 'main'
+        })
+        sendDetailOpen(state.detailOpen)
       } else if (state.activePane !== 'main') {
         emit({ activePane: 'main' })
       }
     },
     back(this: void) {
       if (!state.detailOpen) return
-      emit({ detailOpen: false, activePane: null })
+      store.showSessions()
+    },
+    showSessions(this: void) {
+      emit({
+        detailOpen: false,
+        splitBrowsing: !!state.secondarySelection,
+        returnPane: state.activePane ?? state.returnPane,
+        activePane: null
+      })
       sendDetailOpen(false)
+    },
+    returnToSessions(this: void) {
+      if (!state.secondarySelection || !state.splitBrowsing) return
+      const pane = state.returnPane === 'main' && state.selection ? 'main' : 'second'
+      emit({ splitBrowsing: false, activePane: pane, detailOpen: !state.roomy })
+      sendDetailOpen(state.detailOpen)
     },
     openSecondary(this: void, key: SessionKey) {
       const snapshot = state.snapshot
@@ -213,7 +253,8 @@ export function createSessionsStore(api: AgentPeekApi) {
             ? existing
             : { session, group: 'all', index, lastSeenAt: snapshot.takenAt, sourceEpoch: 0 },
         activePane: 'second',
-        detailOpen: state.narrow || state.detailOpen,
+        splitBrowsing: false,
+        detailOpen: !state.roomy,
         actionError: null
       })
       sendDetailOpen(state.detailOpen)
@@ -222,14 +263,19 @@ export function createSessionsStore(api: AgentPeekApi) {
       if (!state.secondarySelection) return
       emit({
         secondarySelection: null,
+        splitBrowsing: false,
         activePane: state.selection && (!state.narrow || state.detailOpen) ? 'main' : null,
-        detailOpen: !!state.selection && state.detailOpen
+        detailOpen: !!state.selection && state.narrow && state.detailOpen
       })
       sendDetailOpen(state.detailOpen)
     },
     activatePane(this: void, pane: PaneId) {
       if (!(pane === 'main' ? state.selection : state.secondarySelection)) return
-      emit({ activePane: pane, detailOpen: state.narrow || state.detailOpen })
+      emit({
+        activePane: pane,
+        splitBrowsing: false,
+        detailOpen: state.secondarySelection ? !state.roomy : state.narrow || state.detailOpen
+      })
       sendDetailOpen(state.detailOpen)
     },
     setVisiblePanes(this: void, panes: readonly PaneId[]) {
@@ -268,7 +314,7 @@ export function createSessionsStore(api: AgentPeekApi) {
       }
     },
     select(this: void, session: Session, groups: SessionGroup[]) {
-      const browsingSplit = state.secondarySelection && state.activePane === null
+      const browsingSplit = state.secondarySelection && state.splitBrowsing
       const activePane = !browsingSplit && (!state.narrow || state.detailOpen) ? 'main' : null
       if (state.selection && sameKey(state.selection.session.key, session.key)) {
         if (!state.targetReady) targetSignature = ''
