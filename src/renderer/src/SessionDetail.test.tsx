@@ -604,7 +604,16 @@ describe('session detail', () => {
 describe('detail navigation and request lifetime', () => {
   it('switches responsive visibility immediately at the width breakpoint', async () => {
     const media = { matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }
-    vi.spyOn(window, 'matchMedia').mockReturnValue(media as unknown as MediaQueryList)
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query) =>
+        (query.includes('max-width')
+          ? media
+          : {
+              matches: false,
+              addEventListener: vi.fn(),
+              removeEventListener: vi.fn()
+            }) as unknown as MediaQueryList
+    )
     const fake = fakeApi(snapshot([session('a')]))
     Object.defineProperty(window, 'agentpeek', { value: fake.api, configurable: true })
     const store = createSessionsStore(fake.api)

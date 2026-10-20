@@ -56,6 +56,8 @@ export function SessionDetail({
   api,
   visible,
   focused,
+  paneLabel,
+  onOpenSecondary,
   canAutoRead,
   missing,
   lastSeenAt,
@@ -68,6 +70,8 @@ export function SessionDetail({
   api: AgentPeekApi
   visible: boolean
   focused: boolean
+  paneLabel?: string
+  onOpenSecondary?: () => void
   canAutoRead: () => boolean
   missing: boolean
   lastSeenAt: number | null
@@ -234,6 +238,11 @@ export function SessionDetail({
           </div>
         )}
         <div className="detail-actions">
+          {onOpenSecondary && (
+            <button type="button" disabled={missing} onClick={onOpenSecondary}>
+              Open in Second Pane
+            </button>
+          )}
           <button
             type="button"
             disabled={missing}
@@ -291,7 +300,7 @@ export function SessionDetail({
       <div
         className="transcript"
         role="region"
-        aria-label="Recent messages"
+        aria-label={paneLabel ? `${paneLabel} recent messages` : 'Recent messages'}
         tabIndex={0}
         ref={transcript}
         aria-live="off"

@@ -112,12 +112,16 @@ export function SessionList({
             const title = sessionTitle(session)
             const time = relativeTime(session.summary.lastActivityAt, now)
             const active = id === selectedId
+            const inSecond =
+              !!state.secondarySelection &&
+              sameKey(state.secondarySelection.session.key, session.key) &&
+              counts.some((g) => g.sessions.some((s) => sameKey(s.key, session.key)))
             const retained =
               active &&
               !counts
                 .find((g) => g.id === group.id)
                 ?.sessions.some((s) => sameKey(s.key, session.key))
-            const label = `${title}, ${toolName(session.key.tool)}, ${workspaceName(session)}, ${status.label}, ${time}${session.pinned ? ', pinned' : ''}${retained ? ', kept here while selected' : ''}`
+            const label = `${title}, ${toolName(session.key.tool)}, ${workspaceName(session)}, ${status.label}, ${time}${session.pinned ? ', pinned' : ''}${retained ? ', kept here while selected' : ''}${inSecond ? ', Second pane' : ''}`
             return (
               <div
                 key={id}
@@ -171,6 +175,7 @@ export function SessionList({
                   </span>
                 </div>
                 {retained && <span className="row-retained">Kept here while selected.</span>}
+                {inSecond && <span className="row-second">Second pane</span>}
               </div>
             )
           })}

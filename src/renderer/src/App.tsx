@@ -15,7 +15,26 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
   const [now, setNow] = useState(Date.now)
   const [firstLaunchDismissed, dismissFirstLaunch] = useState(false)
   const [windowFocused, setWindowFocused] = useState(() => document.hasFocus())
+  const [roomy, setRoomy] = useState(() => window.matchMedia('(min-width: 1300px)').matches)
+  const mainPane = useRef<HTMLElement>(null)
+  const secondPane = useRef<HTMLElement>(null)
+  const navigation = useRef<HTMLElement>(null)
+  const previousSecond = useRef<string | null>(null)
+  const previousPlacement = useRef(0)
+  const wasSecondVisible = useRef(false)
   const wasDetailOpen = useRef(false)
+  const split = !!state.secondarySelection
+  const detailVisible = !state.narrow || state.detailOpen
+  // Compact split navigation is delivered separately. Until then, only the roomy
+  // composition presents Second; hidden details retain state without requesting text.
+  const secondVisible = split && roomy && detailVisible
+  useLayoutEffect(() => {
+    const media = window.matchMedia('(min-width: 1300px)')
+    const change = () => setRoomy(media.matches)
+    change()
+    media.addEventListener('change', change)
+    return () => media.removeEventListener('change', change)
+  }, [])
   useLayoutEffect(() => {
     const media = window.matchMedia('(max-width: 999px)')
     const update = () => store.setNarrow(media.matches)
@@ -26,11 +45,42 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
   }, [store])
   useLayoutEffect(() => {
     if (state.detailOpen && !wasDetailOpen.current)
-      document.querySelector<HTMLButtonElement>('.detail-back')?.focus()
+      mainPane.current?.querySelector<HTMLButtonElement>('.detail-back')?.focus()
     if (!state.detailOpen && wasDetailOpen.current)
-      document.querySelector<HTMLElement>('[role=listbox]')?.focus({ preventScroll: true })
+      navigation.current
+        ?.querySelector<HTMLElement>('[role=listbox]')
+        ?.focus({ preventScroll: true })
     wasDetailOpen.current = state.detailOpen
   }, [state.detailOpen])
+  useLayoutEffect(() => {
+    store.setVisiblePanes(detailVisible ? (secondVisible ? ['main', 'second'] : ['main']) : [])
+  }, [store, detailVisible, secondVisible])
+  const secondKey = state.secondarySelection
+    ? sessionKeyToString(state.secondarySelection.session.key)
+    : null
+  useLayoutEffect(() => {
+    const placed = previousPlacement.current !== state.secondaryOpenVersion
+    const revealed = secondVisible && !wasSecondVisible.current
+    if (secondKey && secondVisible && state.activePane === 'second' && (placed || revealed)) {
+      // Placement (including reopening the same key) focuses the region, while
+      // ordinary snapshots and focus within its controls leave focus untouched.
+      if (!secondPane.current?.contains(document.activeElement))
+        secondPane.current?.focus({ preventScroll: true })
+    } else if (previousSecond.current && !secondKey) {
+      if (state.selection && detailVisible) mainPane.current?.focus({ preventScroll: true })
+      else navigation.current?.querySelector<HTMLElement>('[role=listbox]')?.focus()
+    }
+    previousSecond.current = secondKey
+    previousPlacement.current = state.secondaryOpenVersion
+    wasSecondVisible.current = secondVisible
+  }, [
+    secondKey,
+    secondVisible,
+    state.activePane,
+    state.secondaryOpenVersion,
+    state.selection,
+    detailVisible
+  ])
   useEffect(() => {
     const focus = () => setWindowFocused(true)
     const blur = () => setWindowFocused(false)
@@ -53,9 +103,6 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
   ).length
   const running = sessions.filter((s) => s.activity.state === 'running').length
   const unknown = sessions.filter((s) => s.activity.state === 'unknown').length
-  const selected = state.selection?.session
-  const missing = selected && !snapshot?.sessions.some((s) => sameKey(s.key, selected.key))
-  const detailVisible = !state.narrow || state.detailOpen
   return (
     <div
       className="app-shell"
@@ -73,10 +120,11 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
         reloadError={state.reloadError}
         onReload={store.reload}
       />
-      <div className="workspace">
+      <div className={`workspace${secondVisible ? ' split-workspace' : ''}`}>
         <Sidebar snapshot={snapshot} view={view} onView={store.setView} />
         <main
           className="sessions-pane"
+          ref={navigation}
           aria-label="Sessions"
           hidden={state.narrow && state.detailOpen}
         >
@@ -165,34 +213,72 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
             </p>
           )}
         </main>
-        <aside className="detail-pane" aria-label="Session detail" hidden={!detailVisible}>
-          {state.narrow && state.detailOpen && (
-            <button className="detail-back" type="button" onClick={store.back}>
-              ‹ {VIEW_NAMES[view]}
-            </button>
-          )}
-          {selected ? (
-            <SessionDetail
-              key={sessionKeyToString(selected.key)}
-              session={selected}
-              api={window.agentpeek}
-              visible={detailVisible}
-              focused={windowFocused}
-              canAutoRead={() => store.canAutoRead('main', selected.key, state.targetGeneration)}
-              missing={!!missing}
-              lastSeenAt={state.selection?.lastSeenAt ?? null}
-              sourceEpoch={state.selection?.sourceEpoch ?? 0}
-              reloadPending={state.reloadPending}
-              reloadVersion={state.reloadVersion}
-              onReload={store.reload}
-            />
-          ) : (
-            <div className="detail-placeholder">
-              <h2>No session selected</h2>
-              <p>Select a session to see its latest exchange.</p>
-            </div>
-          )}
-        </aside>
+        {(['main', 'second'] as const).map((pane) => {
+          const selection = pane === 'main' ? state.selection : state.secondarySelection
+          if (pane === 'second' && !selection) return null
+          const selected = selection?.session
+          const visible = pane === 'main' ? detailVisible : secondVisible
+          const label = pane === 'main' ? 'Main pane' : 'Second pane'
+          const activate = () => {
+            if (visible && state.activePane !== pane) store.activatePane(pane)
+          }
+          return (
+            <aside
+              key={pane}
+              ref={pane === 'main' ? mainPane : secondPane}
+              className="detail-pane"
+              aria-label={split ? label : 'Session detail'}
+              data-pane={pane}
+              data-active={state.activePane === pane}
+              tabIndex={-1}
+              hidden={!visible}
+              onPointerDownCapture={activate}
+              onFocusCapture={activate}
+            >
+              {pane === 'main' && state.narrow && state.detailOpen && (
+                <button className="detail-back" type="button" onClick={store.back}>
+                  ‹ {VIEW_NAMES[view]}
+                </button>
+              )}
+              {split && (
+                <div className="pane-toolbar">
+                  <span>{label}</span>
+                  <span className="pane-active">{state.activePane === pane ? 'Active' : ''}</span>
+                  {pane === 'second' && (
+                    <button type="button" onClick={store.closeSecondary}>
+                      Close Second Pane
+                    </button>
+                  )}
+                </div>
+              )}
+              {selected ? (
+                <SessionDetail
+                  key={`${pane}:${sessionKeyToString(selected.key)}`}
+                  session={selected}
+                  api={window.agentpeek}
+                  visible={visible}
+                  focused={windowFocused}
+                  paneLabel={split ? label : undefined}
+                  onOpenSecondary={
+                    pane === 'main' ? () => store.openSecondary(selected.key) : undefined
+                  }
+                  canAutoRead={() => store.canAutoRead(pane, selected.key, state.targetGeneration)}
+                  missing={!snapshot?.sessions.some((s) => sameKey(s.key, selected.key))}
+                  lastSeenAt={selection.lastSeenAt}
+                  sourceEpoch={selection.sourceEpoch}
+                  reloadPending={state.reloadPending}
+                  reloadVersion={state.reloadVersion}
+                  onReload={store.reload}
+                />
+              ) : (
+                <div className="detail-placeholder">
+                  <h2>No session selected</h2>
+                  <p>Select a session to see its latest exchange.</p>
+                </div>
+              )}
+            </aside>
+          )
+        })}
       </div>
     </div>
   )
