@@ -57,7 +57,6 @@ export function SessionDetail({
   visible,
   focused,
   paneLabel,
-  onOpenSecondary,
   canAutoRead,
   missing,
   lastSeenAt,
@@ -71,7 +70,6 @@ export function SessionDetail({
   visible: boolean
   focused: boolean
   paneLabel?: string
-  onOpenSecondary?: () => void
   canAutoRead: () => boolean
   missing: boolean
   lastSeenAt: number | null
@@ -254,11 +252,6 @@ export function SessionDetail({
           </div>
         )}
         <div className="detail-actions">
-          {onOpenSecondary && (
-            <button type="button" disabled={missing} onClick={onOpenSecondary}>
-              Open in Second Pane
-            </button>
-          )}
           <button
             type="button"
             disabled={missing}

@@ -58,7 +58,7 @@ describe('sessions interface', () => {
       await Promise.resolve()
     })
     act(() => f.push(snapshot([a, { ...b, lastReply: { ...b.lastReply!, cursor: 'b-new' } }])))
-    await within(screen.getByRole('complementary', { name: 'Second pane' })).findByText(
+    await within(screen.getByRole('complementary', { name: 'Right pane' })).findByText(
       'No recent messages.'
     )
     expect(f.api.markRead.mock.calls).toEqual([[a.key, 'a']])
@@ -271,11 +271,11 @@ describe('sessions interface', () => {
     await screen.findByText('No recent messages.')
     f.api.getMessages.mockClear()
     act(() => f.store.openSecondary(b.key))
-    expect(screen.getAllByRole('complementary', { name: 'Main pane' })).toHaveLength(1)
+    expect(screen.getAllByRole('complementary', { name: 'Left pane' })).toHaveLength(1)
     expect(screen.getByRole('heading', { name: 'Synthetic a' })).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'Synthetic b' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Open in Second Pane' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Close Second Pane' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Open in Second Pane' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Close Right Pane' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Show Sessions' })).toBeTruthy()
     expect(screen.queryByRole('listbox')).toBeNull()
     await vi.waitFor(() => expect(f.api.getMessages).toHaveBeenCalledWith(b.key, 20))

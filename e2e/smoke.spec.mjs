@@ -22,6 +22,74 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     await page.screenshot({ path: info.outputPath(`${name}.png`) })
     await writeFile(info.outputPath(`${name}.aria.txt`), await page.locator('body').ariaSnapshot())
   }
+  const dragSession = async (source, target, name, cancel = false) => {
+    await application.evaluate(({ app, BrowserWindow }) => {
+      app.focus({ steal: true })
+      BrowserWindow.getAllWindows()[0].focus()
+    })
+    await expect
+      .poll(() =>
+        application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFocused())
+      )
+      .toBe(true)
+    const cdp = await page.context().newCDPSession(page)
+    await source.scrollIntoViewIfNeeded()
+    const box = await source.boundingBox()
+    if (!box) throw new Error('drag source is hidden')
+    let data
+    cdp.on('Input.dragIntercepted', (event) => {
+      data = event.data
+    })
+    await cdp.send('Input.setInterceptDrags', { enabled: true })
+    try {
+      const origin = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+      await cdp.send('Input.dispatchMouseEvent', { ...origin, type: 'mouseMoved', button: 'none' })
+      await cdp.send('Input.dispatchMouseEvent', {
+        ...origin,
+        type: 'mousePressed',
+        button: 'left',
+        buttons: 1,
+        clickCount: 1
+      })
+      for (let i = 1; i <= 6; i++) {
+        await cdp.send('Input.dispatchMouseEvent', {
+          x: origin.x + i * 10,
+          y: origin.y + 2,
+          type: 'mouseMoved',
+          button: 'left',
+          buttons: 1
+        })
+      }
+      await expect.poll(() => !!data).toBe(true)
+      const destination = await target.boundingBox()
+      if (!destination) throw new Error('drag target is hidden')
+      const point = {
+        x: destination.x + destination.width / 2,
+        y: destination.y + destination.height / 2,
+        data
+      }
+      await cdp.send('Input.dispatchDragEvent', { ...point, type: 'dragEnter' })
+      await cdp.send('Input.dispatchDragEvent', { ...point, type: 'dragOver' })
+      await save(`${name}-hover`)
+      if (cancel) {
+        await page.keyboard.press('Escape')
+        await cdp.send('Input.dispatchDragEvent', { ...point, type: 'dragCancel' })
+      } else await cdp.send('Input.dispatchDragEvent', { ...point, type: 'drop' })
+      evidence.actions.push({ action: 'drag', name, cancel })
+    } finally {
+      await cdp.send('Input.cancelDragging').catch(() => undefined)
+      await cdp.send('Input.setInterceptDrags', { enabled: false }).catch(() => undefined)
+      await cdp.send('Input.dispatchMouseEvent', {
+        x: box.x + box.width / 2,
+        y: box.y + box.height / 2,
+        type: 'mouseReleased',
+        button: 'left',
+        buttons: 0,
+        clickCount: 1
+      })
+      await cdp.detach()
+    }
+  }
   const audit = async () => {
     const requests = await application.evaluate(() => globalThis.agentpeekSmokeAudit)
     evidence.requests.push(...requests)
@@ -208,15 +276,20 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
         'All Sessions; hostile detail; long title; Show More; deep scroll; Collapse Message; 1000/999/minimum; Escape'
     })
 
-    // Keep B in Second while ordinary list selection moves Main from A to C.
+    // Open with a row drag; explicitly activate the destination before ordinary selection.
     await application.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0].setContentSize(1440, 688)
     })
     const main = page.locator('[data-pane=main]')
     const second = page.locator('[data-pane=second]')
     await page.getByRole('option', { name: /^Fixture Codex complete,/ }).click()
-    await main.getByRole('button', { name: 'Open in Second Pane' }).click()
+    await dragSession(
+      page.getByRole('option', { name: /^Fixture Codex complete,/ }),
+      page.getByRole('region', { name: 'Drop in Right Pane' }),
+      'split-open-drag'
+    )
     await expect(second).toBeFocused()
+    await main.getByRole('region').click()
     await page.getByRole('option', { name: /^Fixture Codex long/ }).click()
     await expect(main.getByRole('heading', { level: 2 })).toContainText('Fixture Codex long')
     await expect(second.getByRole('heading', { level: 2 })).toHaveText('Fixture Codex complete')
@@ -224,6 +297,42 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     await expect(page.getByRole('option', { selected: true })).toHaveCount(1)
     await save('split-a-b')
 
+    const busyRow = page.getByRole('option', { name: /^Fixture Claude busy,/ })
+    await dragSession(
+      busyRow,
+      page.getByRole('region', { name: 'Drop in Left Pane' }),
+      'split-cancel-drag',
+      true
+    )
+    await expect(main.getByRole('heading', { level: 2 })).toContainText('Fixture Codex long')
+    await expect(second.getByRole('heading', { level: 2 })).toHaveText('Fixture Codex complete')
+    await second.getByRole('region').click()
+    await busyRow.click()
+    await expect(second.getByRole('heading', { level: 2 })).toHaveText('Fixture Claude busy')
+    await expect(main.getByRole('heading', { level: 2 })).toContainText('Fixture Codex long')
+    await dragSession(
+      page.getByRole('option', { name: /^Fixture Codex complete,/ }),
+      page.getByRole('region', { name: 'Drop in Right Pane' }),
+      'split-replace-right'
+    )
+    await dragSession(
+      busyRow,
+      page.getByRole('region', { name: 'Drop in Left Pane' }),
+      'split-replace-left'
+    )
+    await expect(main.getByRole('heading', { level: 2 })).toHaveText('Fixture Claude busy')
+    await main.getByRole('region').click()
+    await page.getByRole('option', { name: /^Fixture Codex long/ }).click()
+    await expect(main.getByRole('heading', { level: 2 })).toContainText('Fixture Codex long')
+    await application.evaluate(({ app, BrowserWindow }) => {
+      app.focus({ steal: true })
+      BrowserWindow.getAllWindows()[0].focus()
+    })
+    await expect
+      .poll(() =>
+        application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFocused())
+      )
+      .toBe(true)
     const replyState = () =>
       page.evaluate(async () => {
         const { sessions } = await globalThis.window.agentpeek.getSnapshot()
@@ -233,7 +342,7 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     const previousReply = await replyState()
     await simulate(fixture.home, 'codex-reply')
     await expect.poll(replyState).toMatchObject({ newReply: true })
-    await expect(second.getByRole('region', { name: 'Second pane recent messages' })).toContainText(
+    await expect(second.getByRole('region', { name: 'Right pane recent messages' })).toContainText(
       'Synthetic newer reply.'
     )
     const unreadReply = await replyState()
@@ -244,7 +353,7 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     await expect(second.getByRole('heading', { level: 2 })).toHaveText('Fixture Codex complete')
     expect(await replyState()).toEqual(unreadReply)
     await save('split-c-b')
-    await second.getByRole('region', { name: 'Second pane recent messages' }).click()
+    await second.getByRole('region', { name: 'Right pane recent messages' }).click()
     await expect(second).toHaveAttribute('data-active', 'true')
     await expect.poll(replyState).toEqual({ ...unreadReply, newReply: false })
     await save('split-active-read')
@@ -254,7 +363,7 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     })
     await expect(main).toBeHidden()
     await expect(second).toBeVisible()
-    await expect(page.getByRole('radio', { name: 'Second pane', exact: true })).toHaveAttribute(
+    await expect(page.getByRole('radio', { name: 'Right pane', exact: true })).toHaveAttribute(
       'aria-checked',
       'true'
     )
@@ -263,17 +372,25 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     await expect(main).toBeHidden()
     await expect(second).toBeHidden()
     await save('split-compact-back')
+    await dragSession(
+      busyRow,
+      page.getByRole('region', { name: 'Drop in Left Pane' }),
+      'split-compact-cancel',
+      true
+    )
+    await expect(main).toBeHidden()
+    await expect(second).toBeHidden()
     await simulate(fixture.home, 'codex-reply')
     await expect.poll(replyState).toMatchObject({ newReply: true })
     const hiddenReply = await replyState()
     await page.getByRole('button', { name: 'Return to Sessions', exact: true }).click()
     await expect(second).toBeFocused()
     await expect.poll(replyState).toEqual({ ...hiddenReply, newReply: false })
-    await page.getByRole('radio', { name: 'Main pane', exact: true }).click()
+    await page.getByRole('radio', { name: 'Left pane', exact: true }).click()
     await expect(main).toBeVisible()
     await expect(second).toBeHidden()
     await save('split-compact-main')
-    await page.getByRole('button', { name: 'Close Second Pane', exact: true }).click()
+    await page.getByRole('button', { name: 'Close Right Pane', exact: true }).click()
     await expect(second).toHaveCount(0)
     await expect(main.getByRole('heading', { level: 2 })).toHaveText('Fixture Claude busy')
     await expect(main.getByRole('button', { name: '‹ All Sessions' })).toBeFocused()
@@ -287,7 +404,9 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     })
     // Reopen before quitting: the second launch must start in the single-pane layout.
     await page.getByRole('option', { name: /^Fixture Claude busy,/ }).click()
-    await main.getByRole('button', { name: 'Open in Second Pane' }).click()
+    await application.evaluate(({ Menu }) =>
+      Menu.getApplicationMenu().getMenuItemById('session-open-secondary').click()
+    )
     await close()
 
     await launch()
@@ -302,6 +421,39 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     await save('pin-after-relaunch')
     evidence.actions.push({ action: 'relaunch; Pinned', persisted: true })
     await close()
+  } catch (error) {
+    if (application && page) {
+      evidence.failureObservation = {
+        native: await application
+          .evaluate(({ BrowserWindow, Menu }) => ({
+            windows: BrowserWindow.getAllWindows().map((w) => ({
+              focused: w.isFocused(),
+              visible: w.isVisible()
+            })),
+            markReadEnabled: Menu.getApplicationMenu().getMenuItemById('session-mark-read').enabled
+          }))
+          .catch(() => null),
+        renderer: await page
+          .evaluate(() => ({
+            documentFocused: globalThis.window.document.hasFocus(),
+            windowFocused:
+              globalThis.window.document.querySelector('.app-shell')?.dataset.windowFocused,
+            activeElement: globalThis.window.document.activeElement?.getAttribute('aria-label'),
+            panes: Array.from(globalThis.window.document.querySelectorAll('[data-pane]')).map(
+              (p) => ({
+                pane: p.dataset.pane,
+                active: p.dataset.active,
+                hidden: p.hidden,
+                title: p.querySelector('h2')?.textContent,
+                loading: !!p.querySelector('.message-state'),
+                transcript: !!p.querySelector('.transcript')
+              })
+            )
+          }))
+          .catch(() => null)
+      }
+    }
+    throw error
   } finally {
     try {
       if (application) await application.close().catch(() => undefined)

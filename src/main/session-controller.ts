@@ -46,6 +46,10 @@ export function createSessionController(options: {
         const session = find(target())
         if (session) void system.copyText(session.key.id).catch(() => undefined)
       },
+      openPrimary: () => {
+        const session = find(target())
+        if (session) options.command({ type: 'open-primary', key: session.key })
+      },
       openSecondary: () => {
         const session = find(target())
         if (session) options.command({ type: 'open-secondary', key: session.key })
@@ -114,7 +118,7 @@ export function createSessionController(options: {
           buildSessionMenu(
             session,
             actions(() => key),
-            { context: true }
+            { context: true, canCloseSecondary: secondPaneOpen }
           )
         )
     }

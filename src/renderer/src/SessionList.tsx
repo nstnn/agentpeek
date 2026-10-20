@@ -19,18 +19,22 @@ export function SessionList({
   state,
   store,
   now,
-  hidden = false
+  hidden = false,
+  onSessionDrag,
+  onSessionDragEnd
 }: {
   groups: SessionGroup[]
   state: RendererState
   store: SessionsStore
   now: number
   hidden?: boolean
+  onSessionDrag: (session: Session) => void
+  onSessionDragEnd: () => void
 }): JSX.Element {
   const [contextKey, setContextKey] = useState<string | null>(null)
   const rows = groups.flatMap((g) => g.sessions)
   const counts = buildView(state.snapshot?.sessions ?? [], state.view, state.filter).groups
-  const selected = state.selection?.session
+  const selected = state.listSelection?.session
   const selectedId = selected ? sessionKeyToString(selected.key) : null
   const {
     list,
@@ -121,7 +125,7 @@ export function SessionList({
               !counts
                 .find((g) => g.id === group.id)
                 ?.sessions.some((s) => sameKey(s.key, session.key))
-            const label = `${title}, ${toolName(session.key.tool)}, ${workspaceName(session)}, ${status.label}, ${time}${session.pinned ? ', pinned' : ''}${retained ? ', kept here while selected' : ''}${inSecond ? ', Second pane' : ''}`
+            const label = `${title}, ${toolName(session.key.tool)}, ${workspaceName(session)}, ${status.label}, ${time}${session.pinned ? ', pinned' : ''}${retained ? ', kept here while selected' : ''}${inSecond ? ', Right pane' : ''}`
             return (
               <div
                 key={id}
@@ -130,12 +134,22 @@ export function SessionList({
                 aria-selected={active}
                 aria-label={label}
                 className={`session-row${active ? ' selected' : ''}${contextKey === id ? ' context-open' : ''}`}
-                onMouseDown={(event) => {
-                  if (event.button === 0) event.preventDefault()
+                draggable={!missing}
+                onDragStart={(event) => {
+                  if (missing) {
+                    event.preventDefault()
+                    return
+                  }
+                  event.dataTransfer.effectAllowed = 'copy'
+                  event.dataTransfer.setData('application/x-agentpeek-session', id)
+                  // Live regrouping can detach the origin before dragend reaches React's root.
+                  event.currentTarget.addEventListener('dragend', onSessionDragEnd, { once: true })
+                  // Paint and install drop targets before the native drag loop takes over.
+                  flushSync(() => onSessionDrag(session))
                 }}
                 onClick={() => {
                   store.activate(session, groups)
-                  list.current?.focus()
+                  if (!list.current?.closest('[hidden]')) list.current?.focus()
                 }}
                 onContextMenu={(event) => {
                   event.preventDefault()
@@ -175,7 +189,7 @@ export function SessionList({
                   </span>
                 </div>
                 {retained && <span className="row-retained">Kept here while selected.</span>}
-                {inSecond && <span className="row-second">Second pane</span>}
+                {inSecond && <span className="row-second">Right pane</span>}
               </div>
             )
           })}

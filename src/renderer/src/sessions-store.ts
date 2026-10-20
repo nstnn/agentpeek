@@ -19,7 +19,8 @@ export interface RendererState {
   filter: ToolFilter
   selection: Selection | null
   secondarySelection: Selection | null
-  secondaryOpenVersion: number
+  placementVersion: number
+  listSelection: Selection | null
   /** Null while browsing; source loss retains the pane identity, not a valid action target. */
   activePane: PaneId | null
   targetGeneration: number
@@ -44,7 +45,8 @@ export function createSessionsStore(api: AgentPeekApi) {
     filter: 'all',
     selection: null,
     secondarySelection: null,
-    secondaryOpenVersion: 0,
+    placementVersion: 0,
+    listSelection: null,
     activePane: null,
     targetGeneration: 0,
     targetReady: false,
@@ -105,6 +107,22 @@ export function createSessionsStore(api: AgentPeekApi) {
       .setDetailOpen(open)
       .catch(() => emit({ actionError: "Couldn't update Back. Try again." }))
   }
+  // Focusing a retained pane must not reinsert its row after a view/filter change.
+  const cursorForPane = (selected: Selection | null): Selection | null => {
+    if (!selected) return null
+    if (state.listSelection && sameKey(state.listSelection.session.key, selected.session.key))
+      return state.listSelection
+    const group = buildView(state.snapshot?.sessions ?? [], state.view, state.filter).groups.find(
+      (g) => g.sessions.some((s) => sameKey(s.key, selected.session.key))
+    )
+    return group
+      ? {
+          ...selected,
+          group: group.id,
+          index: group.sessions.findIndex((s) => sameKey(s.key, selected.session.key))
+        }
+      : null
+  }
   const store = {
     getSnapshot: () => state,
     subscribe(this: void, listener: () => void) {
@@ -120,6 +138,7 @@ export function createSessionsStore(api: AgentPeekApi) {
             snapshot,
             failed: false,
             selection,
+            listSelection: reconcileSelection(state.listSelection, state.snapshot, snapshot),
             secondarySelection: reconcileSelection(
               state.secondarySelection,
               state.snapshot,
@@ -132,7 +151,8 @@ export function createSessionsStore(api: AgentPeekApi) {
           if (typeof command === 'string') {
             if (command.startsWith('view:')) store.setView(command.slice(5) as ViewId)
             if (command === 'back') store.back()
-          } else if (command.type === 'open-secondary') store.openSecondary(command.key)
+          } else if (command.type === 'open-primary') store.openPane('main', command.key)
+          else if (command.type === 'open-secondary') store.openSecondary(command.key)
           else if (command.type === 'close-secondary') store.closeSecondary()
         })
         void api
@@ -164,7 +184,8 @@ export function createSessionsStore(api: AgentPeekApi) {
       sendDetailOpen(false)
       emit({
         view,
-        selection: null,
+        selection: state.secondarySelection ? state.selection : null,
+        listSelection: null,
         activePane: null,
         splitBrowsing: !!state.secondarySelection,
         returnPane: state.activePane ?? state.returnPane,
@@ -176,7 +197,8 @@ export function createSessionsStore(api: AgentPeekApi) {
       sendDetailOpen(false)
       emit({
         filter,
-        selection: null,
+        selection: state.secondarySelection ? state.selection : null,
+        listSelection: null,
         activePane: null,
         splitBrowsing: !!state.secondarySelection,
         returnPane: state.activePane ?? state.returnPane,
@@ -207,18 +229,22 @@ export function createSessionsStore(api: AgentPeekApi) {
       })
     },
     activate(this: void, session: Session, groups: SessionGroup[]) {
+      const pane = state.secondarySelection ? (state.activePane ?? state.returnPane) : 'main'
       store.select(session, groups)
-      if (!state.selection || !sameKey(state.selection.session.key, session.key)) return
-      if (state.secondarySelection || state.narrow) {
-        emit({
-          detailOpen: state.secondarySelection ? !state.roomy : true,
-          splitBrowsing: false,
-          activePane: 'main'
-        })
-        sendDetailOpen(state.detailOpen)
-      } else if (state.activePane !== 'main') {
-        emit({ activePane: 'main' })
-      }
+      const selected = state.listSelection
+      if (!selected || !sameKey(selected.session.key, session.key)) return
+      const existing = pane === 'main' ? state.selection : state.secondarySelection
+      const placed = existing && sameKey(existing.session.key, session.key) ? existing : selected
+      emit({
+        ...(pane === 'main' ? { selection: placed } : { secondarySelection: placed }),
+        listSelection: selected,
+        activePane: pane,
+        returnPane: pane,
+        splitBrowsing: false,
+        detailOpen: state.secondarySelection ? !state.roomy : state.narrow,
+        actionError: null
+      })
+      sendDetailOpen(state.detailOpen)
     },
     back(this: void) {
       if (!state.detailOpen) return
@@ -236,25 +262,44 @@ export function createSessionsStore(api: AgentPeekApi) {
     returnToSessions(this: void) {
       if (!state.secondarySelection || !state.splitBrowsing) return
       const pane = state.returnPane === 'main' && state.selection ? 'main' : 'second'
-      emit({ splitBrowsing: false, activePane: pane, detailOpen: !state.roomy })
+      emit({
+        splitBrowsing: false,
+        activePane: pane,
+        listSelection: cursorForPane(pane === 'main' ? state.selection : state.secondarySelection),
+        detailOpen: !state.roomy
+      })
       sendDetailOpen(state.detailOpen)
     },
     openSecondary(this: void, key: SessionKey) {
+      store.openPane('second', key)
+    },
+    openPane(this: void, pane: PaneId, key: SessionKey) {
       const snapshot = state.snapshot
       if (!snapshot) return
+      const groups = buildView(snapshot.sessions, state.view, state.filter).groups
+      const group = groups.find((g) => g.sessions.some((s) => sameKey(s.key, key)))
       const index = snapshot.sessions.findIndex((s) => sameKey(s.key, key))
       const session = snapshot.sessions[index]
       if (!session) return
-      const existing = state.secondarySelection
+      const existing = pane === 'main' ? state.selection : state.secondarySelection
+      const selected =
+        existing && sameKey(existing.session.key, key)
+          ? existing
+          : {
+              session,
+              group: group?.id ?? 'all',
+              index: group ? group.sessions.findIndex((s) => sameKey(s.key, key)) : index,
+              lastSeenAt: snapshot.takenAt,
+              sourceEpoch: 0
+            }
       emit({
-        secondaryOpenVersion: state.secondaryOpenVersion + 1,
-        secondarySelection:
-          existing && sameKey(existing.session.key, key)
-            ? existing
-            : { session, group: 'all', index, lastSeenAt: snapshot.takenAt, sourceEpoch: 0 },
-        activePane: 'second',
+        ...(pane === 'main' ? { selection: selected } : { secondarySelection: selected }),
+        placementVersion: state.placementVersion + 1,
+        listSelection: cursorForPane(selected),
+        activePane: pane,
+        returnPane: pane,
         splitBrowsing: false,
-        detailOpen: !state.roomy,
+        detailOpen: pane === 'second' || state.secondarySelection ? !state.roomy : state.narrow,
         actionError: null
       })
       sendDetailOpen(state.detailOpen)
@@ -263,6 +308,8 @@ export function createSessionsStore(api: AgentPeekApi) {
       if (!state.secondarySelection) return
       emit({
         secondarySelection: null,
+        listSelection: cursorForPane(state.selection),
+        returnPane: 'main',
         splitBrowsing: false,
         activePane: state.selection && (!state.narrow || state.detailOpen) ? 'main' : null,
         detailOpen: !!state.selection && state.narrow && state.detailOpen
@@ -273,6 +320,8 @@ export function createSessionsStore(api: AgentPeekApi) {
       if (!(pane === 'main' ? state.selection : state.secondarySelection)) return
       emit({
         activePane: pane,
+        returnPane: pane,
+        listSelection: cursorForPane(pane === 'main' ? state.selection : state.secondarySelection),
         splitBrowsing: false,
         detailOpen: state.secondarySelection ? !state.roomy : state.narrow || state.detailOpen
       })
@@ -314,25 +363,39 @@ export function createSessionsStore(api: AgentPeekApi) {
       }
     },
     select(this: void, session: Session, groups: SessionGroup[]) {
-      const browsingSplit = state.secondarySelection && state.splitBrowsing
-      const activePane = !browsingSplit && (!state.narrow || state.detailOpen) ? 'main' : null
-      if (state.selection && sameKey(state.selection.session.key, session.key)) {
-        if (!state.targetReady) targetSignature = ''
-        emit({ activePane })
-        return
-      }
+      const pane = state.secondarySelection ? (state.activePane ?? state.returnPane) : 'main'
+      const browsingSplit = !!state.secondarySelection && state.splitBrowsing
+      const activePane = !browsingSplit && (!state.narrow || state.detailOpen) ? pane : null
       const group = groups.find((g) => g.sessions.some((s) => sameKey(s.key, session.key)))
       if (!group) return
+      const existing = pane === 'main' ? state.selection : state.secondarySelection
+      const selected =
+        existing && sameKey(existing.session.key, session.key)
+          ? existing
+          : {
+              session,
+              group: group.id,
+              index: group.sessions.findIndex((s) => sameKey(s.key, session.key)),
+              lastSeenAt: state.snapshot?.sessions.some((s) => sameKey(s.key, session.key))
+                ? state.snapshot.takenAt
+                : null,
+              sourceEpoch: 0
+            }
+      if (!state.targetReady && activePane) targetSignature = ''
       emit({
-        selection: {
-          session,
-          group: group.id,
-          index: group.sessions.findIndex((s) => sameKey(s.key, session.key)),
-          lastSeenAt: state.snapshot?.sessions.some((s) => sameKey(s.key, session.key))
-            ? state.snapshot.takenAt
-            : null,
-          sourceEpoch: 0
-        },
+        ...(!browsingSplit
+          ? pane === 'main'
+            ? { selection: selected }
+            : { secondarySelection: selected }
+          : {}),
+        listSelection:
+          state.listSelection && sameKey(state.listSelection.session.key, session.key)
+            ? state.listSelection
+            : {
+                ...selected,
+                group: group.id,
+                index: group.sessions.findIndex((s) => sameKey(s.key, session.key))
+              },
         activePane,
         actionError: null
       })
@@ -366,7 +429,7 @@ function reconcileSelection(
 /** Keep the selected row's group and slot, even if it leaves the view or source. Counts stay live. */
 export function displayedGroups(state: RendererState): SessionGroup[] {
   const groups = buildView(state.snapshot?.sessions ?? [], state.view, state.filter).groups
-  const anchor = state.selection
+  const anchor = state.listSelection
   if (!anchor) return groups
   for (const group of groups)
     group.sessions = group.sessions.filter((s) => !sameKey(s.key, anchor.session.key))

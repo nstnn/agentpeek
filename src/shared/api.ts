@@ -12,6 +12,7 @@ export type MenuCommand =
   | 'view:pinned'
   | 'view:all'
   | 'back'
+  | { type: 'open-primary'; key: SessionKey }
   | { type: 'open-secondary'; key: SessionKey }
   | { type: 'close-secondary' }
 

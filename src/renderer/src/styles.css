@@ -756,3 +756,58 @@ button[aria-disabled='true'] {
   color: var(--red);
   font-size: 12px;
 }
+
+/* Placement previews exist only during an in-app session drag. */
+.workspace {
+  position: relative;
+}
+.session-row[draggable='true'] {
+  cursor: grab;
+}
+.session-row[draggable='true']:active {
+  cursor: grabbing;
+}
+.session-drop-targets {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+  z-index: 5;
+  pointer-events: none;
+  gap: 8px;
+  padding: 8px;
+}
+.session-drop-target {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  border: 2px dashed var(--accent);
+  border-radius: 8px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.session-drop-target > * {
+  pointer-events: none;
+}
+.session-drop-target.drag-over {
+  border-style: solid;
+  background: var(--info-bg);
+}
+.session-drop-target small {
+  color: var(--secondary);
+}
+.detail-pane[data-active='true'] > .pane-toolbar {
+  background: var(--info-bg);
+}
+
+.list-destination {
+  margin: 3px 0;
+  color: var(--accent);
+  font-size: 12px;
+}

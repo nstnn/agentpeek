@@ -27,16 +27,17 @@ function mount(sessions = [session('a'), session('b'), session('c'), session('d'
   const store = createSessionsStore(f.api)
   return { ...f, store, ...render(<App store={store} />) }
 }
-const pane = (name: 'Main' | 'Second') =>
-  screen.getByRole('complementary', { name: `${name} pane` })
-const messages = (name: 'Main' | 'Second') =>
+const pane = (name: 'Left' | 'Right') => screen.getByRole('complementary', { name: `${name} pane` })
+const messages = (name: 'Left' | 'Right') =>
   within(pane(name)).getByRole('region', { name: `${name} pane recent messages` })
 async function choose(id: string) {
   await userEvent.click(await screen.findByRole('option', { name: new RegExp(`Synthetic ${id},`) }))
 }
-async function keepMain() {
-  await userEvent.click(screen.getByRole('button', { name: 'Open in Second Pane' }))
-  await within(pane('Second')).findByRole('button', { name: 'Show More' })
+async function keepMain(f: ReturnType<typeof mount>) {
+  act(() =>
+    f.command({ type: 'open-secondary', key: f.store.getSnapshot().selection!.session.key })
+  )
+  await within(pane('Right')).findByRole('button', { name: 'Show More' })
 }
 const unread = (id: string, error = false): Session =>
   session(id, {
@@ -54,27 +55,28 @@ describe('roomy split session composition', () => {
   it('keeps slot-local identity, scroll and disclosures across selection, replacement and close', async () => {
     const f = mount()
     await choose('a')
-    await keepMain()
-    await userEvent.click(within(pane('Second')).getByRole('button', { name: 'Show More' }))
-    const secondMessages = messages('Second')
+    await keepMain(f)
+    await userEvent.click(within(pane('Right')).getByRole('button', { name: 'Show More' }))
+    const secondMessages = messages('Right')
     fireEvent.keyDown(secondMessages, { key: 'PageDown' })
     fireEvent.scroll(secondMessages, { target: { scrollTop: 81 } })
+    fireEvent.pointerDown(pane('Left'))
     await choose('c')
-    await within(pane('Main')).findByRole('button', { name: 'Show More' })
-    expect(messages('Second')).toBe(secondMessages)
+    await within(pane('Left')).findByRole('button', { name: 'Show More' })
+    expect(messages('Right')).toBe(secondMessages)
     expect(secondMessages.scrollTop).toBe(81)
-    expect(within(pane('Second')).getByRole('button', { name: 'Collapse Message' })).toBeTruthy()
-    await userEvent.click(within(pane('Main')).getByRole('button', { name: 'Show More' }))
-    const mainMessages = messages('Main')
+    expect(within(pane('Right')).getByRole('button', { name: 'Collapse Message' })).toBeTruthy()
+    await userEvent.click(within(pane('Left')).getByRole('button', { name: 'Show More' }))
+    const mainMessages = messages('Left')
     fireEvent.keyDown(mainMessages, { key: 'PageDown' })
     fireEvent.scroll(mainMessages, { target: { scrollTop: 42 } })
     act(() => f.command({ type: 'open-secondary', key: session('d').key }))
-    await within(pane('Second')).findByRole('heading', { name: 'Synthetic d' })
-    expect(messages('Main')).toBe(mainMessages)
+    await within(pane('Right')).findByRole('heading', { name: 'Synthetic d' })
+    expect(messages('Left')).toBe(mainMessages)
     expect(mainMessages.scrollTop).toBe(42)
-    expect(within(pane('Main')).getByRole('button', { name: 'Collapse Message' })).toBeTruthy()
-    await userEvent.click(screen.getByRole('button', { name: 'Close Second Pane' }))
-    expect(screen.queryByRole('complementary', { name: 'Second pane' })).toBeNull()
+    expect(within(pane('Left')).getByRole('button', { name: 'Collapse Message' })).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: 'Close Right Pane' }))
+    expect(screen.queryByRole('complementary', { name: 'Right pane' })).toBeNull()
     expect(screen.getByRole('region', { name: 'Recent messages' })).toBe(mainMessages)
     expect(mainMessages.scrollTop).toBe(42)
     expect(document.activeElement).toBe(
@@ -86,22 +88,22 @@ describe('roomy split session composition', () => {
   it('reopens the same Second without reloading, uses distinct controls and keeps one list selection', async () => {
     const f = mount()
     await choose('a')
-    await keepMain()
-    await userEvent.click(within(pane('Second')).getByRole('button', { name: 'Show More' }))
-    const secondMessages = messages('Second')
+    await keepMain(f)
+    await userEvent.click(within(pane('Right')).getByRole('button', { name: 'Show More' }))
+    const secondMessages = messages('Right')
     const controlled = screen
       .getAllByRole('button', { name: /Show More|Collapse Message/ })
       .map((button) => button.getAttribute('aria-controls'))
     expect(new Set(controlled).size).toBe(2)
     controlled.forEach((id) => expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1))
     expect(screen.getAllByRole('option', { selected: true })).toHaveLength(1)
-    expect(screen.getByRole('option', { name: /Synthetic a.*Second pane/ })).toBeTruthy()
+    expect(screen.getByRole('option', { name: /Synthetic a.*Right pane/ })).toBeTruthy()
     await choose('a')
     f.api.getMessages.mockClear()
     act(() => f.command({ type: 'open-secondary', key: session('a').key }))
-    expect(messages('Second')).toBe(secondMessages)
-    expect(within(pane('Second')).getByRole('button', { name: 'Collapse Message' })).toBeTruthy()
-    expect(document.activeElement).toBe(pane('Second'))
+    expect(messages('Right')).toBe(secondMessages)
+    expect(within(pane('Right')).getByRole('button', { name: 'Collapse Message' })).toBeTruthy()
+    expect(document.activeElement).toBe(pane('Right'))
     expect(f.api.getMessages).not.toHaveBeenCalled()
   })
 
@@ -111,26 +113,27 @@ describe('roomy split session composition', () => {
     const f = mount([a, b])
     fireEvent.focus(window)
     await choose('a')
-    await keepMain()
+    await keepMain(f)
+    fireEvent.pointerDown(pane('Left'))
     await choose('b')
-    await within(pane('Main')).findByRole('button', { name: 'Show More' })
+    await within(pane('Left')).findByRole('button', { name: 'Show More' })
     f.api.markRead.mockClear()
     const updated = { ...a, lastReply: { ...a.lastReply!, cursor: 'a-new' } }
     act(() => f.push(snapshot([updated, b])))
     await vi.waitFor(() => expect(f.api.getMessages).toHaveBeenCalledTimes(4))
     expect(f.api.markRead).not.toHaveBeenCalled()
-    const text = within(pane('Second')).getByText(/a synthetic line/)
+    const text = within(pane('Right')).getByText(/a synthetic line/)
     fireEvent.pointerDown(text)
     await vi.waitFor(() => expect(f.api.markRead.mock.calls).toEqual([[a.key, 'a-new']]))
     expect(f.api.setSelection).toHaveBeenLastCalledWith(a.key, { secondPaneOpen: true })
-    await userEvent.click(within(pane('Main')).getByRole('button', { name: 'Pin' }))
+    await userEvent.click(within(pane('Left')).getByRole('button', { name: 'Pin' }))
     expect(f.api.setPinned).toHaveBeenLastCalledWith(b.key, true)
     expect(f.api.setSelection).toHaveBeenLastCalledWith(b.key, { secondPaneOpen: true })
-    act(() => within(pane('Second')).getByRole('button', { name: 'Pin' }).focus())
+    act(() => within(pane('Right')).getByRole('button', { name: 'Pin' }).focus())
     await vi.waitFor(() =>
       expect(f.api.setSelection).toHaveBeenLastCalledWith(a.key, { secondPaneOpen: true })
     )
-    expect(document.activeElement).toBe(within(pane('Second')).getByRole('button', { name: 'Pin' }))
+    expect(document.activeElement).toBe(within(pane('Right')).getByRole('button', { name: 'Pin' }))
   })
 
   it('isolates source recovery, late results, loading failures and waiting semantics', async () => {
@@ -141,8 +144,8 @@ describe('roomy split session composition', () => {
     })
     const f = mount([session('a'), waiting])
     await choose('b')
-    await keepMain()
-    const secondMessages = messages('Second')
+    await keepMain(f)
+    const secondMessages = messages('Right')
     fireEvent.scroll(secondMessages, { target: { scrollTop: 29 } })
     let finish!: (result: RecentMessages) => void
     f.api.getMessages.mockImplementationOnce(
@@ -151,9 +154,10 @@ describe('roomy split session composition', () => {
           finish = resolve
         })
     )
+    fireEvent.pointerDown(pane('Left'))
     await choose('a')
-    expect(within(pane('Main')).getByText('Loading messages…')).toBeTruthy()
-    const lastSeen = within(pane('Main')).getByText(/Last seen in AgentPeek/).textContent
+    expect(within(pane('Left')).getByText('Loading messages…')).toBeTruthy()
+    const lastSeen = within(pane('Left')).getByText(/Last seen in AgentPeek/).textContent
     act(() => f.push(snapshot([waiting], { takenAt: NOW + 1000 })))
     act(() =>
       finish({
@@ -163,30 +167,35 @@ describe('roomy split session composition', () => {
       })
     )
     expect(screen.queryByText('Stale hidden data')).toBeNull()
-    expect(within(pane('Main')).getByText(/Last seen in AgentPeek/).textContent).toBe(lastSeen)
+    expect(within(pane('Left')).getByText(/Last seen in AgentPeek/).textContent).toBe(lastSeen)
     f.api.getMessages.mockResolvedValueOnce({ kind: 'unreadable' })
     act(() => f.push(snapshot([session('a'), waiting], { takenAt: NOW + 2000 })))
-    await within(pane('Main')).findByRole('button', { name: 'Try Again' })
-    expect(messages('Second')).toBe(secondMessages)
+    await within(pane('Left')).findByRole('button', { name: 'Try Again' })
+    expect(messages('Right')).toBe(secondMessages)
     expect(secondMessages.scrollTop).toBe(29)
-    expect(within(pane('Second')).getByText('Waiting for you · Permission prompt')).toBeTruthy()
+    expect(within(pane('Right')).getByText('Waiting for you · Permission prompt')).toBeTruthy()
     expect(f.api.markRead).not.toHaveBeenCalled()
   })
 
   it('retains Second across filters without inserting it or marking an anchored filtered row', async () => {
     const f = mount([session('a'), session('b', { key: { tool: 'claude', id: 'b' } })])
     await choose('a')
-    await keepMain()
-    const secondMessages = messages('Second')
+    await keepMain(f)
+    const secondMessages = messages('Right')
     await userEvent.click(screen.getByRole('radio', { name: 'Claude Code 1' }))
     expect(screen.getAllByRole('option')).toHaveLength(1)
-    expect(screen.queryByRole('option', { name: /Second pane/ })).toBeNull()
-    expect(screen.queryByRole('complementary', { name: 'Second pane' })).toBeNull()
+    expect(screen.queryByRole('option', { name: /Right pane/ })).toBeNull()
+    expect(screen.queryByRole('complementary', { name: 'Right pane' })).toBeNull()
     expect(f.container.querySelector('[data-pane=second] .transcript')).toBe(secondMessages)
-    expect(f.store.getSnapshot().selection).toBeNull()
-    await choose('b')
+    expect(f.store.getSnapshot().selection?.session.key.id).toBe('a')
+    act(() =>
+      f.command({
+        type: 'open-primary',
+        key: session('b', { key: { tool: 'claude', id: 'b' } }).key
+      })
+    )
     expect(f.store.getSnapshot().activePane).toBe('main')
-    expect(messages('Second')).toBe(secondMessages)
+    expect(messages('Right')).toBe(secondMessages)
     act(() =>
       f.command({
         type: 'open-secondary',
@@ -196,6 +205,118 @@ describe('roomy split session composition', () => {
     act(() => f.push(snapshot([session('a')])))
     expect(
       screen.getByRole('option', { name: /Synthetic b/ }).getAttribute('aria-label')
-    ).not.toContain('Second pane')
+    ).not.toContain('Right pane')
+  })
+})
+
+describe('session placement interactions', () => {
+  function dragOverOrDrop(type: 'dragover' | 'drop', target: HTMLElement, dataTransfer: object) {
+    const left =
+      target.getAttribute('aria-label') === 'Drop in Left Pane' || target.dataset.pane === 'main'
+    const event = new MouseEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      clientX: left ? 600 : 800,
+      clientY: 300
+    })
+    Object.defineProperty(event, 'dataTransfer', { value: dataTransfer })
+    fireEvent(target, event)
+  }
+  function startDrag(id: string) {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement
+    ) {
+      const left = this.getAttribute('data-drop-pane') === 'main'
+      return new DOMRect(left ? 500 : 700, 0, 200, 600)
+    })
+    const row = screen.getByRole('option', { name: new RegExp(`Synthetic ${id},`) })
+    const values = new Map<string, string>()
+    const dataTransfer = {
+      types: ['application/x-agentpeek-session'],
+      effectAllowed: 'copy',
+      dropEffect: 'copy',
+      setData: (type: string, value: string) => values.set(type, value),
+      getData: (type: string) => values.get(type) ?? ''
+    }
+    fireEvent.dragStart(row, { dataTransfer })
+    return { row, dataTransfer }
+  }
+
+  it('previews without selection/read changes, drops in either pane and preserves sibling state', async () => {
+    const f = mount()
+    await choose('a')
+    const original = screen.getByRole('region', { name: 'Recent messages' })
+    const drag = startDrag('b')
+    const right = screen.getByRole('region', { name: 'Drop in Right Pane' })
+    const generation = f.store.getSnapshot().targetGeneration
+    dragOverOrDrop('dragover', right, drag.dataTransfer)
+    expect(f.store.getSnapshot().targetGeneration).toBe(generation)
+    expect(f.store.getSnapshot().selection?.session.key.id).toBe('a')
+    expect(f.store.getSnapshot().secondarySelection).toBeNull()
+    dragOverOrDrop('drop', right, drag.dataTransfer)
+    fireEvent.dragEnd(drag.row)
+    await within(pane('Right')).findByRole('heading', { name: 'Synthetic b' })
+    expect(messages('Left')).toBe(original)
+    const sibling = messages('Right')
+    await userEvent.click(within(pane('Right')).getByRole('button', { name: 'Show More' }))
+    fireEvent.keyDown(sibling, { key: 'PageDown' })
+    fireEvent.scroll(sibling, { target: { scrollTop: 87 } })
+    const replacement = startDrag('c')
+    dragOverOrDrop('drop', pane('Left'), replacement.dataTransfer)
+    fireEvent.dragEnd(replacement.row)
+    await within(pane('Left')).findByRole('heading', { name: 'Synthetic c' })
+    expect(messages('Right')).toBe(sibling)
+    expect(sibling.scrollTop).toBe(87)
+    expect(within(pane('Right')).getByRole('button', { name: 'Collapse Message' })).toBeTruthy()
+    expect(f.store.getSnapshot().activePane).toBe('main')
+    await choose('d')
+    expect(f.store.getSnapshot().selection?.session.key.id).toBe('d')
+    fireEvent.pointerDown(pane('Right'))
+    await choose('a')
+    expect(f.store.getSnapshot().selection?.session.key.id).toBe('d')
+    expect(f.store.getSnapshot().secondarySelection?.session.key.id).toBe('a')
+    expect(screen.getAllByRole('option', { selected: true })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Open in Second Pane' })).toBeNull()
+  })
+
+  it('clears the preview when live regrouping detaches the drag origin before cancellation', async () => {
+    const f = mount()
+    await choose('a')
+    const drag = startDrag('b')
+    act(() => f.push(snapshot([session('a'), unread('b'), session('c')])))
+    expect(drag.row.isConnected).toBe(false)
+    expect(screen.getByRole('region', { name: 'Drop in Right Pane' })).toBeTruthy()
+    fireEvent.dragEnd(drag.row)
+    expect(screen.queryByRole('region', { name: 'Drop in Right Pane' })).toBeNull()
+    await choose('c')
+    expect(f.store.getSnapshot().selection?.session.key.id).toBe('c')
+  })
+
+  it('cancels with Escape or an outside drop without changing panes, and rejects stale source drops', async () => {
+    const f = mount()
+    await choose('a')
+    await keepMain(f)
+    const before = f.store.getSnapshot()
+    const drag = startDrag('b')
+    dragOverOrDrop(
+      'dragover',
+      screen.getByRole('region', { name: 'Drop in Left Pane' }),
+      drag.dataTransfer
+    )
+    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' })
+    fireEvent.dragEnd(drag.row)
+    expect(screen.queryByRole('region', { name: 'Drop in Left Pane' })).toBeNull()
+    expect(f.store.getSnapshot().selection).toBe(before.selection)
+    expect(f.store.getSnapshot().secondarySelection).toBe(before.secondarySelection)
+    const outside = startDrag('c')
+    fireEvent.drop(screen.getByRole('listbox'), { dataTransfer: outside.dataTransfer })
+    fireEvent.dragEnd(outside.row)
+    expect(f.store.getSnapshot().selection).toBe(before.selection)
+    startDrag('b')
+    act(() => f.push(snapshot([session('a'), session('c')])))
+    expect(screen.queryByRole('region', { name: 'Drop in Right Pane' })).toBeNull()
+    expect(f.store.getSnapshot().secondarySelection?.session.key.id).toBe('a')
+    await choose('c')
+    expect(f.store.getSnapshot().secondarySelection?.session.key.id).toBe('c')
   })
 })
