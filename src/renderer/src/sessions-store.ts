@@ -19,6 +19,7 @@ export interface RendererState {
   filter: ToolFilter
   selection: Selection | null
   secondarySelection: Selection | null
+  secondaryOpenVersion: number
   /** Null while browsing; source loss retains the pane identity, not a valid action target. */
   activePane: PaneId | null
   targetGeneration: number
@@ -40,6 +41,7 @@ export function createSessionsStore(api: AgentPeekApi) {
     filter: 'all',
     selection: null,
     secondarySelection: null,
+    secondaryOpenVersion: 0,
     activePane: null,
     targetGeneration: 0,
     targetReady: false,
@@ -52,7 +54,7 @@ export function createSessionsStore(api: AgentPeekApi) {
   }
   const listeners = new Set<() => void>()
   let disconnect: (() => void) | null = null
-  // The single-pane renderer presents only Main. The split composition will publish both.
+  // The renderer publishes only the panes its current layout actually presents.
   let visiblePanes: readonly PaneId[] = ['main']
   let targetSignature = ''
   const targetKey = (): SessionKey | null => {
@@ -197,7 +199,6 @@ export function createSessionsStore(api: AgentPeekApi) {
       emit({ detailOpen: false, activePane: null })
       sendDetailOpen(false)
     },
-    // Placement is available through native commands; visual composition follows in card 3.
     openSecondary(this: void, key: SessionKey) {
       const snapshot = state.snapshot
       if (!snapshot) return
@@ -206,6 +207,7 @@ export function createSessionsStore(api: AgentPeekApi) {
       if (!session) return
       const existing = state.secondarySelection
       emit({
+        secondaryOpenVersion: state.secondaryOpenVersion + 1,
         secondarySelection:
           existing && sameKey(existing.session.key, key)
             ? existing

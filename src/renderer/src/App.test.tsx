@@ -261,7 +261,7 @@ describe('sessions interface', () => {
     expect(fake.offCommand).toHaveBeenCalledOnce()
   })
 
-  it('keeps the optional second-slot model out of the single-pane interface', async () => {
+  it('keeps prepared Second hidden below the roomy boundary until compact navigation ships', async () => {
     const a = session('a')
     const b = session('b')
     const f = mount(snapshot([a, b]))
@@ -269,10 +269,11 @@ describe('sessions interface', () => {
     await screen.findByText('No recent messages.')
     f.api.getMessages.mockClear()
     act(() => f.store.openSecondary(b.key))
-    expect(screen.getAllByRole('complementary', { name: 'Session detail' })).toHaveLength(1)
+    expect(screen.getAllByRole('complementary', { name: 'Main pane' })).toHaveLength(1)
     expect(screen.getByRole('heading', { name: 'Synthetic a' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Synthetic b' })).toBeNull()
-    expect(screen.queryByRole('button', { name: /Second Pane/i })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Open in Second Pane' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Close Second Pane' })).toBeNull()
     expect(f.api.getMessages).not.toHaveBeenCalled()
   })
 

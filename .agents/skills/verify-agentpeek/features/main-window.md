@@ -39,4 +39,4 @@ Preconditions:
 - Do not assert the window's position. macOS places it, and it differs between runs.
 - `setSize` stands in for dragging a corner, which this harness cannot do. It proves the minimum size and the layout at that size, not the drag itself.
 - Never change the Mac's appearance setting. The `nativeTheme.themeSource` override is AgentPeek's own and ends when the app quits, but restore it before driving other features in the same run.
-- At widths of at least 1000 points, the sidebar is 190 points and list 420 points. Below that, sidebar is 170 points and detail is hidden. Click or Return opens detail in place with Back; see session-detail.md.
+- With split closed, at widths of at least 1000 points the sidebar is 190 points and list 420 points. Roomy split uses a 300-point shared list and equal detail panes; follow session-detail.md for that journey. Below that, sidebar is 170 points and detail is hidden. Click or Return opens detail in place with Back; see session-detail.md.

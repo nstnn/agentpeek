@@ -46,6 +46,6 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Renderer lockdown](./renderer-lockdown.md) covers what the page can and cannot do: no Node.js, no navigation, no new windows, no remote loads, no permissions.
 - [Sessions connection](./sessions-connection.md) covers the live session total, fixture isolation, refresh, and clean service shutdown.
 - [Sessions list](./sessions-list.md) covers views, filtering, groups, selection, keyboard/context entry points, tool health and list notices.
-- [Session detail](./session-detail.md) covers messages, safe Markdown, long text, actions, focused read-on-view and narrow push/Back.
+- [Session detail](./session-detail.md) covers messages, safe Markdown, long text, actions, focused read-on-view, roomy two-pane placement/activation/isolation and single-pane narrow push/Back. Compact split navigation remains Task 4.
 - [Fixture regression](./fixture-regression.md) covers the synthetic generator/simulator and built-app Playwright smoke.
 - [Local macOS package](./local-package.md) covers the signed arm64 bundle, fuses, native About panel, Finder reopen, window sizes and shutdown.
