@@ -1,4 +1,5 @@
 import { useState, type JSX } from 'react'
+import { flushSync } from 'react-dom'
 import { sessionKeyToString, type Session } from '../../core/session'
 import { buildView, type SessionGroup } from '../../core/views'
 import { sameKey, type RendererState, type SessionsStore } from './sessions-store'
@@ -38,8 +39,8 @@ export function SessionList({
     remember: rememberScroll
   } = useListAnchor(selectedId, state.snapshot, hidden)
   const openContextMenu = async (session: Session) => {
-    store.select(session, groups)
-    setContextKey(sessionKeyToString(session.key))
+    // Commit before the native popup can suspend renderer painting.
+    flushSync(() => setContextKey(sessionKeyToString(session.key)))
     try {
       await window.agentpeek.showSessionMenu(session.key)
     } catch {

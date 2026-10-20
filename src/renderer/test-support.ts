@@ -63,7 +63,7 @@ export function fakeApi(initial = snapshot()) {
     reload: vi.fn(() => Promise.resolve()),
     setSelection: vi.fn(() => Promise.resolve()),
     setDetailOpen: vi.fn(() => Promise.resolve()),
-    showSessionMenu: vi.fn(() => Promise.resolve())
+    showSessionMenu: vi.fn<AgentPeekApi['showSessionMenu']>(() => Promise.resolve())
   } satisfies AgentPeekApi
   return {
     api,
