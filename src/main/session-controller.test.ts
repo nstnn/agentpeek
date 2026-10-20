@@ -68,6 +68,26 @@ describe('session controller', () => {
     native.openSecondary()
     expect(s.command).not.toHaveBeenCalled()
   })
+  it('binds both placement targets to the context row and rechecks removed keys', async () => {
+    const s = setup()
+    const a = testSession()
+    const b = testSession({ key: { tool: 'claude', id: 'other' } })
+    s.service.snapshot.mockReturnValue({ ...s.service.snapshot(), sessions: [a, b] })
+    s.controller.setSelection(b.key, { secondPaneOpen: true })
+    await s.controller.showSessionMenu(a.key)
+    const items = s.popup.mock.calls[0]![0]
+    expect(items.slice(0, 2).map((item) => item.label)).toEqual([
+      'Open in Left Pane',
+      'Open in Right Pane'
+    ])
+    const left = items.find((item) => item.id === 'session-open-primary')!
+    left.click!(null as never, null as never, null as never)
+    expect(s.command).toHaveBeenLastCalledWith({ type: 'open-primary', key: a.key })
+    s.command.mockClear()
+    s.service.snapshot.mockReturnValue({ ...s.service.snapshot(), sessions: [b] })
+    left.click!(null as never, null as never, null as never)
+    expect(s.command).not.toHaveBeenCalled()
+  })
   it('keeps Close Second enabled through browsing/source loss and rechecks late close callbacks', () => {
     const s = setup()
     s.controller.setSelection(testSession().key, { secondPaneOpen: true })
@@ -187,7 +207,7 @@ describe('session controller', () => {
     expect(popup).not.toHaveBeenCalled()
     await controller.showSessionMenu(testSession().key)
     expect(popup).toHaveBeenCalledOnce()
-    expect(popup.mock.calls[0]?.[0]).toHaveLength(5)
+    expect(popup.mock.calls[0]?.[0]).toHaveLength(6)
   })
   it('keeps the context invocation pending until the native popup is dismissed', async () => {
     const { controller, popup } = setup()

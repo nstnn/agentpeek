@@ -10,15 +10,18 @@ actions, two session panes, keyboard navigation and a local macOS package. Autom
 built-app checks cover the implemented paths. VoiceOver speech, physical sleep/wake, external
 app/browser actions and a complete real-session comparison still need acceptance evidence.
 
-Use **Open in Second Pane** in the detail header, Session menu or a row's context menu to keep
-a session visible while ordinary list selection changes Main. Click or focus a pane to make it
-the Session menu's target. Only its successfully loaded, active visible reply/error is marked
-read while the window is focused; waiting still requires action in the tool.
+Right-click a session and choose **Open to the Right**, or drag its row into the right-side
+preview to split the view. Once split, the context menu and drag previews can replace either
+**Left pane** or **Right pane**. Clicking or focusing a pane makes it active; ordinary row
+clicks open in that pane. The list names the destination, and the active pane has a labeled
+accent header. Escape or an outside drop cancels a drag without changing either session.
+Only a successfully loaded, active visible reply/error is marked read while the window is
+focused; waiting still requires action in the tool.
 
 At 1300+ content pixels the shared list and both panes appear together. At 1000–1299,
 **Show Sessions** opens the list and **Return to Sessions** resumes reading; below 1000,
-**Main pane** and **Second pane** select one detail at a time. Each pane keeps its own scroll
-and disclosures across browsing and resizing. **Close Second Pane** restores the single-pane
+**Left pane** and **Right pane** select one detail at a time. Each pane keeps its own scroll
+and disclosures across browsing and resizing. **Close Right Pane** restores the single-pane
 layout. The layout and selected sessions reset when the app quits or reloads.
 
 ## Requirements

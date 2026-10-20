@@ -33,6 +33,8 @@ const USAGE = `Usage: node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs
                               \`BrowserWindow\`, and \`Menu\` are in scope. For observing state.
   click (--role <r> --name <n> | --selector <css>) [--nth <i>] [--run <id>]
                               Real mouse click at the element's center.
+  drag --source <css> --target <css> --name <evidence-name> [--cancel] [--run <id>]
+                              Drag a real row to an observed target; save hover ARIA/PNG, then drop or Escape.
   key <combo> [--run <id>]    Key press sent to the page, e.g. Escape, ArrowDown, Meta+A.
                               It never reaches the native menu; use menu-click for menu shortcuts.
   type <text> [--run <id>]    Insert text at the focused element.
@@ -373,6 +375,109 @@ async function click() {
     run,
     'click',
     { role: flags.role, name: flags.name, selector: flags.selector, nth },
+    result
+  )
+}
+
+// Intercept Chromium's actual drag payload after pointer input; never fabricate a session key.
+async function drag() {
+  const run = loadLiveRun()
+  if (!(await withMain(run, (s) => evaluate(s, mainExpression(WINDOW_FOCUSED))))) {
+    printAndLog(run, 'drag', {}, { dragged: false, reason: 'window not focused; run focus first' })
+    process.exitCode = 1
+    return
+  }
+  if (!flags.source || !flags.target || !flags.name)
+    throw new Error('drag needs --source, --target and --name')
+  const result = await withPage(run, async (s) => {
+    const point = async (selector) => {
+      const { root } = await s.send('DOM.getDocument', { depth: 0 })
+      const { nodeId } = await s.send('DOM.querySelector', {
+        nodeId: root.nodeId,
+        selector: String(selector)
+      })
+      if (!nodeId) throw new Error(`no element for ${selector}`)
+      await s.send('DOM.scrollIntoViewIfNeeded', { nodeId })
+      const { model } = await s.send('DOM.getBoxModel', { nodeId })
+      const [x1, y1, , , x3, y3] = model.border
+      return { x: (x1 + x3) / 2, y: (y1 + y3) / 2 }
+    }
+    const source = await point(flags.source)
+    let payload
+    s.onEvent((event) => {
+      if (event.method === 'Input.dragIntercepted') payload = event.params.data
+    })
+    await s.send('Input.setInterceptDrags', { enabled: true })
+    try {
+      await s.send('Input.dispatchMouseEvent', { ...source, type: 'mouseMoved', button: 'none' })
+      await s.send('Input.dispatchMouseEvent', {
+        ...source,
+        type: 'mousePressed',
+        button: 'left',
+        buttons: 1,
+        clickCount: 1
+      })
+      for (let i = 1; i <= 6; i++) {
+        await s.send('Input.dispatchMouseEvent', {
+          x: source.x + i * 10,
+          y: source.y + 2,
+          type: 'mouseMoved',
+          button: 'left',
+          buttons: 1
+        })
+      }
+      await waitFor('row drag payload', 3000, () => !!payload)
+      const target = await point(flags.target)
+      await s.send('Input.dispatchDragEvent', { ...target, type: 'dragEnter', data: payload })
+      await s.send('Input.dispatchDragEvent', { ...target, type: 'dragOver', data: payload })
+      const name = safeName(String(flags.name))
+      const { data } = await s.send('Page.captureScreenshot', { format: 'png' })
+      fs.writeFileSync(path.join(run.evidenceDir, `${name}-hover.png`), Buffer.from(data, 'base64'))
+      await s.send('Accessibility.enable')
+      const { nodes } = await s.send('Accessibility.getFullAXTree')
+      fs.writeFileSync(path.join(run.evidenceDir, `${name}-hover.aria.txt`), formatAxTree(nodes))
+      if (flags.cancel) {
+        await s.send('Input.dispatchKeyEvent', {
+          type: 'keyDown',
+          key: 'Escape',
+          code: 'Escape',
+          windowsVirtualKeyCode: 27
+        })
+        await s.send('Input.dispatchKeyEvent', {
+          type: 'keyUp',
+          key: 'Escape',
+          code: 'Escape',
+          windowsVirtualKeyCode: 27
+        })
+        await s.send('Input.dispatchDragEvent', { ...target, type: 'dragCancel', data: payload })
+      } else {
+        await s.send('Input.dispatchDragEvent', { ...target, type: 'drop', data: payload })
+      }
+      return {
+        source,
+        target,
+        cancelled: !!flags.cancel,
+        types: payload.items.map((item) => item.mimeType),
+        hoverArtifacts: `${name}-hover`
+      }
+    } finally {
+      await s.send('Input.cancelDragging').catch(() => undefined)
+      await s.send('Input.setInterceptDrags', { enabled: false }).catch(() => undefined)
+      await s
+        .send('Input.dispatchMouseEvent', {
+          ...source,
+          type: 'mouseReleased',
+          button: 'left',
+          buttons: 0,
+          clickCount: 1
+        })
+        .catch(() => undefined)
+    }
+  })
+  printAndLog(
+    run,
+    'drag',
+    { source: flags.source, target: flags.target, name: flags.name, cancel: !!flags.cancel },
     result
   )
 }
@@ -1190,6 +1295,9 @@ try {
       break
     case 'click':
       await click()
+      break
+    case 'drag':
+      await drag()
       break
     case 'key':
       await key()

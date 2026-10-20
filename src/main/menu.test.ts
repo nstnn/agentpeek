@@ -8,6 +8,7 @@ const actions = () => ({
   markRead: vi.fn(),
   pin: vi.fn(),
   copy: vi.fn(),
+  openPrimary: vi.fn(),
   openSecondary: vi.fn(),
   closeSecondary: vi.fn(),
   back: vi.fn()
@@ -119,12 +120,13 @@ describe('session and context menus', () => {
     expect(
       items.filter((item) => item.label).map((item) => [item.label, item.accelerator])
     ).toEqual([
+      ['Open in Left Pane', undefined],
+      ['Open in Right Pane', undefined],
       ['Open Claude', 'CommandOrControl+O'],
       ['Mark Read', 'Shift+CommandOrControl+U'],
       ['Unpin', 'Shift+CommandOrControl+P'],
       ['Copy Session ID', 'Alt+CommandOrControl+C'],
-      ['Open in Second Pane', undefined],
-      ['Close Second Pane', undefined],
+      ['Close Right Pane', undefined],
       ['Back', 'CommandOrControl+[']
     ])
     for (const item of items.filter((item) => item.label)) click(item)
@@ -136,7 +138,7 @@ describe('session and context menus', () => {
   })
   it('omits Back from the row context menu', () => {
     const items = buildSessionMenu(testSession(), actions(), { context: true })
-    expect(items).toHaveLength(5)
+    expect(items).toHaveLength(6)
     expect(items.some((item) => item.id === 'session-back')).toBe(false)
   })
 })

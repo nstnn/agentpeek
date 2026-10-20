@@ -164,35 +164,26 @@ describe('two detail slots', () => {
     f.off()
   })
 
-  it('opens, replaces and closes only Second; ordinary selection always targets Main', async () => {
+  it('routes ordinary activation to either active pane and explicit placement preserves its sibling', async () => {
     const f = await setup()
-    expect(f.store.getSnapshot()).toMatchObject({ secondarySelection: null, activePane: null })
     f.select(f.a)
-    f.store.openSecondary(f.b.key)
-    const second = f.store.getSnapshot().secondarySelection
-    f.select(f.c)
-    expect(f.store.getSnapshot()).toMatchObject({
-      selection: { session: f.c },
-      secondarySelection: second,
-      activePane: 'main'
-    })
     const main = f.store.getSnapshot().selection
-    f.store.openSecondary(f.a.key)
-    expect(f.store.getSnapshot().selection).toBe(main)
-    expect(f.store.getSnapshot().secondarySelection?.session).toEqual(f.a)
-    f.store.activatePane('main')
-    expect(f.store.getSnapshot().activePane).toBe('main')
-    f.store.activatePane('second')
-    expect(f.store.getSnapshot().activePane).toBe('second')
-    f.select(f.c) // Selecting the already displayed Main also activates it.
-    expect(f.store.getSnapshot().activePane).toBe('main')
-    f.store.activatePane('second')
-    f.store.closeSecondary()
+    f.store.openSecondary(f.b.key)
+    f.store.activate(f.c, displayedGroups(f.store.getSnapshot()))
     expect(f.store.getSnapshot()).toMatchObject({
       selection: main,
-      secondarySelection: null,
-      activePane: 'main'
+      secondarySelection: { session: f.c },
+      activePane: 'second'
     })
+    const second = f.store.getSnapshot().secondarySelection
+    f.command({ type: 'open-primary', key: f.b.key })
+    expect(f.store.getSnapshot().secondarySelection).toBe(second)
+    expect(f.store.getSnapshot().activePane).toBe('main')
+    f.store.activate(f.a, displayedGroups(f.store.getSnapshot()))
+    expect(f.store.getSnapshot().selection?.session).toBe(f.a)
+    expect(f.store.getSnapshot().secondarySelection).toBe(second)
+    f.store.closeSecondary()
+    expect(f.store.getSnapshot()).toMatchObject({ secondarySelection: null, activePane: 'main' })
     expect(f.api.onSnapshot).toHaveBeenCalledOnce()
     expect(f.api.onCommand).toHaveBeenCalledOnce()
     f.off()
@@ -204,10 +195,12 @@ describe('two detail slots', () => {
     f.store.openSecondary(f.a.key)
     expect(f.store.getSnapshot().selection).not.toBe(f.store.getSnapshot().secondarySelection)
     const second = f.store.getSnapshot().secondarySelection
+    f.store.activatePane('main')
     f.select(f.c)
     f.store.openSecondary(f.a.key)
     expect(f.store.getSnapshot().secondarySelection).toBe(second)
     expect(f.store.getSnapshot().activePane).toBe('second')
+    f.store.activatePane('main')
     f.select(f.a)
     const updated = { ...f.a, pinned: true, activity: { state: 'idle' } as const }
     f.push(snapshot([updated, f.b, f.c], { takenAt: NOW + 1 }))
@@ -228,18 +221,26 @@ describe('two detail slots', () => {
     f.off()
   })
 
-  it('clears Main on view/filter changes and retains Second without inserting it into the list', async () => {
+  it('preserves both panes on view/filter changes and clears the list cursor without inserting it into the list', async () => {
     const f = await setup()
     f.select(f.a)
     f.store.openSecondary(f.b.key)
     const second = f.store.getSnapshot().secondarySelection
     f.store.setFilter('codex')
-    expect(f.store.getSnapshot()).toMatchObject({ selection: null, activePane: null })
+    expect(f.store.getSnapshot()).toMatchObject({
+      selection: { session: f.a },
+      listSelection: null,
+      activePane: null
+    })
     expect(f.store.getSnapshot().secondarySelection).toBe(second)
     expect(displayedGroups(f.store.getSnapshot()).flatMap((g) => g.sessions)).toEqual([f.a, f.c])
     f.select(f.c)
     f.command('view:pinned')
-    expect(f.store.getSnapshot()).toMatchObject({ selection: null, activePane: null })
+    expect(f.store.getSnapshot()).toMatchObject({
+      selection: { session: f.a },
+      listSelection: null,
+      activePane: null
+    })
     expect(f.store.getSnapshot().secondarySelection).toBe(second)
     expect(displayedGroups(f.store.getSnapshot())).toEqual([])
     const updated = { ...f.b, pinned: true }
@@ -253,6 +254,41 @@ describe('two detail slots', () => {
     expect(displayedGroups(f.store.getSnapshot())).toEqual([])
     f.off()
   })
+
+  it('does not reinsert filtered pane rows on return, focus or explicit same-key placement', async () => {
+    const f = await setup()
+    f.select(f.a)
+    f.store.openSecondary(f.a.key)
+    f.store.setFilter('claude')
+    const ids = () =>
+      displayedGroups(f.store.getSnapshot()).flatMap((g) => g.sessions.map((s) => s.key.id))
+    expect(ids()).toEqual(['b'])
+    f.store.returnToSessions()
+    expect(ids()).toEqual(['b'])
+    f.store.activatePane('main')
+    expect(ids()).toEqual(['b'])
+    f.store.openSecondary(f.a.key)
+    expect(ids()).toEqual(['b'])
+    f.off()
+  })
+
+  it.each(['return', 'activate', 'focus', 'explicit'] as const)(
+    'uses the current view group for a new list cursor after %s',
+    async (entry) => {
+      const f = await setup()
+      f.select(f.a)
+      f.store.openSecondary(f.a.key)
+      f.store.setView('all')
+      if (entry === 'return') f.store.returnToSessions()
+      if (entry === 'activate') f.store.activate(f.a, displayedGroups(f.store.getSnapshot()))
+      if (entry === 'focus') f.store.activatePane('second')
+      if (entry === 'explicit') f.store.openSecondary(f.a.key)
+      const groups = displayedGroups(f.store.getSnapshot())
+      expect(groups.map((g) => g.id)).toEqual(['all'])
+      expect(groups[0]!.sessions.filter((s) => s.key.id === 'a')).toHaveLength(1)
+      f.off()
+    }
+  )
 
   it.each(['main', 'second'] as const)(
     'freezes only a missing %s source and independently restarts its provenance',
@@ -331,14 +367,14 @@ describe('two detail slots', () => {
     f.select(f.c)
     expect(f.store.getSnapshot()).toMatchObject({ activePane: null, detailOpen: false })
     f.store.activate(f.c, displayedGroups(f.store.getSnapshot()))
-    expect(f.store.getSnapshot().activePane).toBe('main')
+    expect(f.store.getSnapshot().activePane).toBe('second')
     f.store.setNarrow(true)
-    expect(f.store.getSnapshot()).toMatchObject({ activePane: 'main', detailOpen: true })
+    expect(f.store.getSnapshot()).toMatchObject({ activePane: 'second', detailOpen: true })
     f.store.back()
     f.select(f.a)
     expect(f.store.getSnapshot().activePane).toBeNull()
     f.store.activate(f.c, displayedGroups(f.store.getSnapshot()))
-    expect(f.store.getSnapshot()).toMatchObject({ activePane: 'main', detailOpen: true })
+    expect(f.store.getSnapshot()).toMatchObject({ activePane: 'second', detailOpen: true })
     f.store.closeSecondary()
     expect(f.store.getSnapshot()).toMatchObject({ activePane: 'main', detailOpen: true })
     f.store.openSecondary(f.b.key)

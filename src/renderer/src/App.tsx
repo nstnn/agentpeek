@@ -1,5 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type JSX } from 'react'
-import { sessionKeyToString } from '../../core/session'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type DragEvent,
+  type JSX
+} from 'react'
+import { sessionKeyToString, type Session } from '../../core/session'
 import { flushSync } from 'react-dom'
 import { buildView } from '../../core/views'
 import { createSessionsStore, displayedGroups, sameKey, type SessionsStore } from './sessions-store'
@@ -15,12 +23,32 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
   const [now, setNow] = useState(Date.now)
   const [firstLaunchDismissed, dismissFirstLaunch] = useState(false)
   const [windowFocused, setWindowFocused] = useState(() => document.hasFocus())
+  const [dragSession, setDragSession] = useState<Session | null>(null)
+  const [dropPane, setDropPane] = useState<'main' | 'second' | null>(null)
+  const [dropLeft, setDropLeft] = useState(0)
+  const workspace = useRef<HTMLDivElement>(null)
   const mainPane = useRef<HTMLElement>(null)
   const secondPane = useRef<HTMLElement>(null)
   const navigation = useRef<HTMLElement>(null)
   const previousSecond = useRef<string | null>(null)
   const previousPlacement = useRef(0)
   const previousLayout = useRef({ reading: false, split: false, narrow: false, roomy: false })
+  const paneAtDrop = (event: DragEvent): 'main' | 'second' | null => {
+    const targets = workspace.current?.querySelectorAll<HTMLElement>('[data-drop-pane]') ?? []
+    for (const target of targets) {
+      const bounds = target.getBoundingClientRect()
+      if (
+        bounds.width > 0 &&
+        bounds.height > 0 &&
+        event.clientX >= bounds.left &&
+        event.clientX <= bounds.right &&
+        event.clientY >= bounds.top &&
+        event.clientY <= bounds.bottom
+      )
+        return target.dataset.dropPane as 'main' | 'second'
+    }
+    return null
+  }
   const split = !!state.secondarySelection
   const reading = split ? !state.splitBrowsing : !state.narrow || state.detailOpen
   const navigationVisible = split
@@ -51,7 +79,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     ? sessionKeyToString(state.secondarySelection.session.key)
     : null
   useLayoutEffect(() => {
-    const placed = previousPlacement.current !== state.secondaryOpenVersion
+    const placed = previousPlacement.current !== state.placementVersion
     const previous = previousLayout.current
     const active = document.activeElement as HTMLElement | null
     const hiddenFocus = !!active?.closest('[hidden]')
@@ -64,7 +92,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
       )?.focus({ preventScroll: true })
     if ((!reading && previous.reading) || (closed && (!reading || !state.selection))) {
       focusList()
-    } else if (reading && (!previous.reading || closed || (placed && secondVisible))) {
+    } else if (reading && (!previous.reading || closed || placed)) {
       if (!split && state.narrow)
         mainPane.current?.querySelector<HTMLButtonElement>('.detail-back')?.focus()
       else target?.focus({ preventScroll: true })
@@ -80,13 +108,13 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
       else focusList()
     }
     previousSecond.current = secondKey
-    previousPlacement.current = state.secondaryOpenVersion
+    previousPlacement.current = state.placementVersion
     previousLayout.current = { reading, split, narrow: state.narrow, roomy: state.roomy }
   }, [
     secondKey,
     secondVisible,
     state.activePane,
-    state.secondaryOpenVersion,
+    state.placementVersion,
     state.selection,
     reading,
     split,
@@ -107,6 +135,11 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     const timer = window.setInterval(() => setNow(Date.now()), 60_000)
     return () => window.clearInterval(timer)
   }, [])
+  // A removed source can detach the drag origin before Chromium sends dragend.
+  if (dragSession && !snapshot?.sessions.some((s) => sameKey(s.key, dragSession.key))) {
+    setDragSession(null)
+    setDropPane(null)
+  }
   const contents = buildView(snapshot?.sessions ?? [], view, filter)
   const groups = displayedGroups(state)
   const sessions = contents.groups.flatMap((group) => group.sessions)
@@ -120,6 +153,12 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
       className="app-shell"
       data-window-focused={windowFocused}
       onKeyDown={(event) => {
+        if (event.key === 'Escape' && dragSession) {
+          event.preventDefault()
+          setDragSession(null)
+          setDropPane(null)
+          return
+        }
         if (event.key === 'Escape' && state.detailOpen) {
           event.preventDefault()
           store.back()
@@ -169,19 +208,51 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                       [next === 'main' ? 0 : 1]?.focus()
                   }}
                 >
-                  {pane === 'main' ? 'Main pane' : 'Second pane'}
+                  {pane === 'main' ? 'Left pane' : 'Right pane'}
                 </button>
               ))}
             </div>
           )}
           {(state.narrow || state.splitBrowsing) && (
             <button type="button" onClick={store.closeSecondary}>
-              Close Second Pane
+              Close Right Pane
             </button>
           )}
         </div>
       )}
       <div
+        ref={workspace}
+        onDragOver={(event) => {
+          if (!dragSession || !event.dataTransfer.types.includes('application/x-agentpeek-session'))
+            return
+          const pane = paneAtDrop(event)
+          if (pane) {
+            event.preventDefault()
+            event.dataTransfer.dropEffect = 'copy'
+          }
+          setDropPane(pane)
+        }}
+        onDragLeave={(event) => {
+          if (
+            !(event.relatedTarget instanceof Node) ||
+            !event.currentTarget.contains(event.relatedTarget)
+          )
+            setDropPane(null)
+        }}
+        onDrop={(event) => {
+          if (!dragSession) return
+          event.preventDefault()
+          const pane = paneAtDrop(event)
+          if (
+            pane &&
+            event.dataTransfer.getData('application/x-agentpeek-session') ===
+              sessionKeyToString(dragSession.key)
+          ) {
+            store.openPane(pane, dragSession.key)
+          }
+          setDragSession(null)
+          setDropPane(null)
+        }}
         className={`workspace${split ? ' split-workspace' : ''}${split && state.splitBrowsing ? ' browsing-workspace' : ''}`}
       >
         <div className="sidebar-container" hidden={split && !navigationVisible}>
@@ -195,6 +266,11 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
         >
           <header className="list-header">
             <h1>{VIEW_NAMES[view]}</h1>
+            {split && (
+              <p className="list-destination">
+                Opens in {(state.activePane ?? state.returnPane) === 'main' ? 'Left' : 'Right'} pane
+              </p>
+            )}
             <p className="summary">
               {attention} need attention · {running} running · {unknown} unknown
             </p>
@@ -254,6 +330,22 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
               store={store}
               now={now}
               hidden={!navigationVisible}
+              onSessionDrag={(session) => {
+                const bounds = workspace.current?.getBoundingClientRect()
+                const pane = mainPane.current?.getBoundingClientRect()
+                // Browsing keeps the source list reachable; reading previews actual pane bounds.
+                setDropLeft(
+                  bounds && pane && mainVisible
+                    ? pane.left - bounds.left + (split ? 0 : pane.width / 2)
+                    : (bounds?.width ?? 0) * 0.35
+                )
+                setDragSession(session)
+                setDropPane(null)
+              }}
+              onSessionDragEnd={() => {
+                setDragSession(null)
+                setDropPane(null)
+              }}
             />
           ) : (
             <EmptyList
@@ -283,7 +375,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
           if (pane === 'second' && !selection) return null
           const selected = selection?.session
           const visible = pane === 'main' ? mainVisible : secondVisible
-          const label = pane === 'main' ? 'Main pane' : 'Second pane'
+          const label = pane === 'main' ? 'Left pane' : 'Right pane'
           const activate = () => {
             if (visible && state.activePane !== pane) store.activatePane(pane)
           }
@@ -311,7 +403,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                   <span className="pane-active">{state.activePane === pane ? 'Active' : ''}</span>
                   {pane === 'second' && !state.narrow && (
                     <button type="button" onClick={store.closeSecondary}>
-                      Close Second Pane
+                      Close Right Pane
                     </button>
                   )}
                 </div>
@@ -324,9 +416,6 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                   visible={visible}
                   focused={windowFocused}
                   paneLabel={split ? label : undefined}
-                  onOpenSecondary={
-                    pane === 'main' ? () => store.openSecondary(selected.key) : undefined
-                  }
                   canAutoRead={() => store.canAutoRead(pane, selected.key, state.targetGeneration)}
                   missing={!snapshot?.sessions.some((s) => sameKey(s.key, selected.key))}
                   lastSeenAt={selection.lastSeenAt}
@@ -344,6 +433,27 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
             </aside>
           )
         })}
+        {dragSession && (
+          <div className="session-drop-targets" style={{ left: dropLeft }}>
+            {(split ? (['main', 'second'] as const) : (['second'] as const)).map((pane) => (
+              <div
+                key={pane}
+                role="region"
+                aria-label={`Drop in ${pane === 'main' ? 'Left' : 'Right'} Pane`}
+                className={`session-drop-target${dropPane === pane ? ' drag-over' : ''}`}
+                data-drop-pane={pane}
+              >
+                <strong>
+                  {split
+                    ? `Replace ${pane === 'main' ? 'left' : 'right'} pane`
+                    : 'Open to the right'}
+                </strong>
+                <span>{dragSession.summary.title || 'Untitled session'}</span>
+                <small>Drop to open · Esc to cancel</small>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

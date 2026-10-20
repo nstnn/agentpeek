@@ -7,6 +7,7 @@ export interface SessionMenuActions {
   markRead(this: void): void
   pin(this: void): void
   copy(this: void): void
+  openPrimary(this: void): void
   openSecondary(this: void): void
   closeSecondary(this: void): void
   back(this: void): void
@@ -19,6 +20,23 @@ export function buildSessionMenu(
 ): MenuItemConstructorOptions[] {
   const enabled = session !== null
   const items: MenuItemConstructorOptions[] = [
+    ...(options.canCloseSecondary
+      ? [
+          {
+            id: 'session-open-primary',
+            label: 'Open in Left Pane',
+            enabled,
+            click: actions.openPrimary
+          }
+        ]
+      : []),
+    {
+      id: 'session-open-secondary',
+      label: options.canCloseSecondary ? 'Open in Right Pane' : 'Open to the Right',
+      enabled,
+      click: actions.openSecondary
+    },
+    { type: 'separator' },
     {
       id: 'session-open',
       label: session?.key.tool === 'claude' ? 'Open Claude' : 'Open Codex',
@@ -46,12 +64,6 @@ export function buildSessionMenu(
       accelerator: 'Alt+CommandOrControl+C',
       enabled,
       click: actions.copy
-    },
-    {
-      id: 'session-open-secondary',
-      label: 'Open in Second Pane',
-      enabled,
-      click: actions.openSecondary
     }
   ]
   if (!options.context)
@@ -59,7 +71,7 @@ export function buildSessionMenu(
       { type: 'separator' },
       {
         id: 'session-close-secondary',
-        label: 'Close Second Pane',
+        label: 'Close Right Pane',
         enabled: options.canCloseSecondary === true,
         click: actions.closeSecondary
       },
