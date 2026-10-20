@@ -149,25 +149,49 @@ describe('sessions interface', () => {
   })
 
   it('uses exact session keys for context menus, keeps gray highlight until dismissal, supports keyboard', async () => {
-    const fake = mount(snapshot([session('a')]))
+    const fake = mount(snapshot([session('a'), session('b')]))
     let dismiss!: () => void
-    fake.api.showSessionMenu.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          dismiss = resolve
-        })
-    )
-    const row = await screen.findByRole('option')
+    fake.api.showSessionMenu.mockImplementation((key) => {
+      // Native popup entry can suspend painting before React's event batch commits.
+      expect(
+        document.getElementById(`session-${key.tool}:${key.id}`)?.classList.contains('context-open')
+      ).toBe(true)
+      return new Promise((resolve) => {
+        dismiss = resolve
+      })
+    })
+    const primary = await screen.findByRole('option', { name: /Synthetic a/ })
+    const row = screen.getByRole('option', { name: /Synthetic b/ })
     fireEvent.contextMenu(row)
-    expect(fake.api.showSessionMenu).toHaveBeenCalledWith({ tool: 'codex', id: 'a' })
+    expect(fake.store.getSnapshot().selection).toBeNull()
+    expect(fake.api.getMessages).not.toHaveBeenCalled()
+    await act(async () => {
+      dismiss()
+      await Promise.resolve()
+    })
+    await userEvent.click(primary)
+    await screen.findByText('No recent messages.')
+    const selection = fake.store.getSnapshot().selection
+    fake.api.setSelection.mockClear()
+    fake.api.getMessages.mockClear()
+    fireEvent.contextMenu(row)
+    expect(fake.api.showSessionMenu).toHaveBeenLastCalledWith({ tool: 'codex', id: 'b' })
     expect(row.classList.contains('context-open')).toBe(true)
+    expect(row.getAttribute('aria-selected')).toBe('false')
+    expect(primary.getAttribute('aria-selected')).toBe('true')
+    expect(fake.store.getSnapshot().selection).toBe(selection)
+    expect(screen.getByRole('heading', { name: 'Synthetic a' })).toBeTruthy()
+    expect(fake.api.getMessages).not.toHaveBeenCalled()
+    expect(fake.api.setSelection).not.toHaveBeenCalled()
     await act(async () => {
       dismiss()
       await Promise.resolve()
     })
     expect(row.classList.contains('context-open')).toBe(false)
+    expect(fake.store.getSnapshot().selection).toBe(selection)
     fireEvent.keyDown(screen.getByRole('listbox'), { key: 'F10', shiftKey: true })
-    expect(fake.api.showSessionMenu).toHaveBeenCalledTimes(2)
+    expect(fake.api.showSessionMenu).toHaveBeenCalledTimes(3)
+    expect(fake.api.showSessionMenu).toHaveBeenLastCalledWith({ tool: 'codex', id: 'a' })
     await act(async () => {
       dismiss()
       await Promise.resolve()
@@ -184,6 +208,21 @@ describe('sessions interface', () => {
     fake.unmount()
     expect(fake.offSnapshot).toHaveBeenCalledOnce()
     expect(fake.offCommand).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the optional second-slot model out of the single-pane interface', async () => {
+    const a = session('a')
+    const b = session('b')
+    const f = mount(snapshot([a, b]))
+    await userEvent.click(await screen.findByRole('option', { name: /Synthetic a/ }))
+    await screen.findByText('No recent messages.')
+    f.api.getMessages.mockClear()
+    act(() => f.store.openSecondary(b.key))
+    expect(screen.getAllByRole('complementary', { name: 'Session detail' })).toHaveLength(1)
+    expect(screen.getByRole('heading', { name: 'Synthetic a' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Synthetic b' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Second Pane/i })).toBeNull()
+    expect(f.api.getMessages).not.toHaveBeenCalled()
   })
 
   it.each([

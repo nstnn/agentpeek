@@ -1,10 +1,13 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useSyncExternalStore } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import type { RecentMessages } from '../../core/session'
+import { sessionKeyToString, type RecentMessages } from '../../core/session'
 import { fakeApi, NOW, session, snapshot } from '../test-support'
 import { App } from './App'
-import { createSessionsStore, displayedGroups } from './sessions-store'
+import { createSessionsStore, displayedGroups, sameKey, type SessionsStore } from './sessions-store'
+import { SessionDetail } from './SessionDetail'
+import type { AgentPeekApi } from '../../shared/api'
 import { rowStatus } from './session-display'
 
 function mount(initial = snapshot()) {
@@ -272,5 +275,69 @@ describe('reload bounds and observation provenance', () => {
     store.select(failed, [{ id: 'errors', sessions: [failed] }])
     expect(store.getSnapshot().selection?.lastSeenAt).toBeNull()
     expect(displayedGroups(store.getSnapshot())[0]?.sessions[0]).toBe(failed)
+  })
+})
+
+// Exercise the store-to-detail contract without exposing unfinished split controls in App.
+function SecondaryDetail({ store, api }: { store: SessionsStore; api: AgentPeekApi }) {
+  const state = useSyncExternalStore(store.subscribe, store.getSnapshot)
+  const selected = state.secondarySelection
+  return selected ? (
+    <SessionDetail
+      key={`second:${sessionKeyToString(selected.session.key)}`}
+      session={selected.session}
+      api={api}
+      visible={true}
+      focused={false}
+      missing={!state.snapshot?.sessions.some((s) => sameKey(s.key, selected.session.key))}
+      lastSeenAt={selected.lastSeenAt}
+      sourceEpoch={selected.sourceEpoch}
+      reloadPending={state.reloadPending}
+      reloadVersion={state.reloadVersion}
+      onReload={store.reload}
+    />
+  ) : null
+}
+
+describe('secondary selection detail contract', () => {
+  it('discards a former secondary transcript after source loss and replacement', async () => {
+    const a = session('main')
+    const b = session('former-second')
+    const c = session('replacement-second')
+    const f = fakeApi(snapshot([a, b, c]))
+    let finish!: (value: RecentMessages) => void
+    f.api.getMessages.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const store = createSessionsStore(f.api)
+    render(<SecondaryDetail store={store} api={f.api} />)
+    await act(async () => Promise.resolve())
+    act(() => {
+      store.select(a, displayedGroups(store.getSnapshot()))
+      store.openSecondary(b.key)
+    })
+    expect(screen.getByText('Loading messages…')).toBeTruthy()
+    act(() => f.push(snapshot([a, c], { takenAt: NOW + 1 })))
+    expect(screen.getByText(/Unavailable — last known:/)).toBeTruthy()
+    act(() => store.openSecondary(c.key))
+    await screen.findByText('No recent messages.')
+    await act(async () => {
+      finish({
+        kind: 'messages',
+        hasOlder: false,
+        messages: [{ kind: 'reply', text: 'Former secondary synthetic result', at: NOW }]
+      })
+      await Promise.resolve()
+    })
+    expect(screen.queryByText('Former secondary synthetic result')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Synthetic replacement-second' })).toBeTruthy()
+    expect(store.getSnapshot().selection?.session.key).toEqual(a.key)
+    expect(store.getSnapshot().secondarySelection?.session.key).toEqual(c.key)
+    expect(f.api.markRead).not.toHaveBeenCalled()
+    act(() => store.closeSecondary())
+    expect(screen.queryByRole('heading')).toBeNull()
   })
 })

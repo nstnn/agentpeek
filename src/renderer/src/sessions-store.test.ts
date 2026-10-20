@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createSessionsStore, displayedGroups } from './sessions-store'
-import { fakeApi, session, snapshot } from '../test-support'
+import { fakeApi, NOW, session, snapshot } from '../test-support'
+import { buildView } from '../../core/views'
 
 describe('renderer subscription lifetime', () => {
   it('ignores a stale initial request after a pushed snapshot', async () => {
@@ -28,13 +29,17 @@ describe('renderer subscription lifetime', () => {
     const off = store.subscribe(listener)
     const offSecond = store.subscribe(vi.fn())
     expect(fake.api.onSnapshot).toHaveBeenCalledOnce()
+    expect(fake.api.onCommand).toHaveBeenCalledOnce()
     offSecond()
     expect(fake.offSnapshot).not.toHaveBeenCalled()
     off()
     await Promise.resolve()
     expect(listener).not.toHaveBeenCalled()
     expect(store.getSnapshot().snapshot).toBeNull()
+    expect(fake.offSnapshot).toHaveBeenCalledOnce()
     expect(fake.offCommand).toHaveBeenCalledOnce()
+    fake.push(snapshot([session('after-unmount')]))
+    expect(store.getSnapshot().snapshot).toBeNull()
   })
 
   it('recovers from initial failure through a later pushed snapshot', async () => {
@@ -70,5 +75,228 @@ describe('renderer subscription lifetime', () => {
     expect(store.getSnapshot().selection).toBeNull()
     expect(displayedGroups(store.getSnapshot())).toEqual([])
     off()
+  })
+})
+
+describe('two detail slots', () => {
+  async function setup() {
+    const a = session('a')
+    const b = session('b', { key: { tool: 'claude', id: 'b' } })
+    const c = session('c')
+    const fake = fakeApi(snapshot([a, b, c]))
+    const store = createSessionsStore(fake.api)
+    const off = store.subscribe(vi.fn())
+    await Promise.resolve()
+    const select = (s: typeof a) => store.select(s, displayedGroups(store.getSnapshot()))
+    return { ...fake, store, off, a, b, c, select }
+  }
+
+  it('opens, replaces and closes only Second; ordinary selection always targets Main', async () => {
+    const f = await setup()
+    expect(f.store.getSnapshot()).toMatchObject({ secondarySelection: null, activePane: null })
+    f.select(f.a)
+    f.store.openSecondary(f.b.key)
+    const second = f.store.getSnapshot().secondarySelection
+    f.select(f.c)
+    expect(f.store.getSnapshot()).toMatchObject({
+      selection: { session: f.c },
+      secondarySelection: second,
+      activePane: 'main'
+    })
+    const main = f.store.getSnapshot().selection
+    f.store.openSecondary(f.a.key)
+    expect(f.store.getSnapshot().selection).toBe(main)
+    expect(f.store.getSnapshot().secondarySelection?.session).toEqual(f.a)
+    f.store.activatePane('main')
+    expect(f.store.getSnapshot().activePane).toBe('main')
+    f.store.activatePane('second')
+    expect(f.store.getSnapshot().activePane).toBe('second')
+    f.select(f.c) // Selecting the already displayed Main also activates it.
+    expect(f.store.getSnapshot().activePane).toBe('main')
+    f.store.activatePane('second')
+    f.store.closeSecondary()
+    expect(f.store.getSnapshot()).toMatchObject({
+      selection: main,
+      secondarySelection: null,
+      activePane: 'main'
+    })
+    expect(f.api.onSnapshot).toHaveBeenCalledOnce()
+    expect(f.api.onCommand).toHaveBeenCalledOnce()
+    f.off()
+  })
+
+  it('keeps same-key slots separate while sharing current session truth and one list anchor', async () => {
+    const f = await setup()
+    f.select(f.a)
+    f.store.openSecondary(f.a.key)
+    expect(f.store.getSnapshot().selection).not.toBe(f.store.getSnapshot().secondarySelection)
+    const second = f.store.getSnapshot().secondarySelection
+    f.select(f.c)
+    f.store.openSecondary(f.a.key)
+    expect(f.store.getSnapshot().secondarySelection).toBe(second)
+    expect(f.store.getSnapshot().activePane).toBe('second')
+    f.select(f.a)
+    const updated = { ...f.a, pinned: true, activity: { state: 'idle' } as const }
+    f.push(snapshot([updated, f.b, f.c], { takenAt: NOW + 1 }))
+    const state = f.store.getSnapshot()
+    expect(state.selection?.session).toEqual(updated)
+    expect(state.secondarySelection?.session).toBe(state.selection?.session)
+    expect(state.selection).not.toBe(state.secondarySelection)
+    expect(
+      displayedGroups(state)
+        .flatMap((g) => g.sessions)
+        .filter((s) => s.key.id === 'a')
+    ).toHaveLength(1)
+    expect(buildView(state.snapshot!.sessions, state.view, state.filter).toolCounts).toEqual({
+      all: 2,
+      codex: 1,
+      claude: 1
+    })
+    f.off()
+  })
+
+  it('clears Main on view/filter changes and retains Second without inserting it into the list', async () => {
+    const f = await setup()
+    f.select(f.a)
+    f.store.openSecondary(f.b.key)
+    const second = f.store.getSnapshot().secondarySelection
+    f.store.setFilter('codex')
+    expect(f.store.getSnapshot()).toMatchObject({ selection: null, activePane: null })
+    expect(f.store.getSnapshot().secondarySelection).toBe(second)
+    expect(displayedGroups(f.store.getSnapshot()).flatMap((g) => g.sessions)).toEqual([f.a, f.c])
+    f.select(f.c)
+    f.command('view:pinned')
+    expect(f.store.getSnapshot()).toMatchObject({ selection: null, activePane: null })
+    expect(f.store.getSnapshot().secondarySelection).toBe(second)
+    expect(displayedGroups(f.store.getSnapshot())).toEqual([])
+    const updated = { ...f.b, pinned: true }
+    f.push(snapshot([f.a, updated, f.c], { takenAt: NOW + 10 }))
+    expect(f.store.getSnapshot().secondarySelection).toMatchObject({
+      session: updated,
+      lastSeenAt: NOW + 10,
+      sourceEpoch: 0
+    })
+    expect(f.store.getSnapshot().activePane).toBeNull()
+    expect(displayedGroups(f.store.getSnapshot())).toEqual([])
+    f.off()
+  })
+
+  it.each(['main', 'second'] as const)(
+    'freezes only a missing %s source and independently restarts its provenance',
+    async (pane) => {
+      const f = await setup()
+      f.select(f.a)
+      f.store.openSecondary(f.b.key)
+      const [missing, healthy] = pane === 'main' ? [f.a, f.b] : [f.b, f.a]
+      const field = pane === 'main' ? 'selection' : 'secondarySelection'
+      const otherField = pane === 'main' ? 'secondarySelection' : 'selection'
+      f.push(snapshot([healthy, f.c], { takenAt: NOW + 10 }))
+      f.push(snapshot([healthy, f.c], { takenAt: NOW + 20 }))
+      expect(f.store.getSnapshot()[field]).toMatchObject({
+        session: missing,
+        lastSeenAt: NOW,
+        sourceEpoch: 1
+      })
+      expect(f.store.getSnapshot()[otherField]).toMatchObject({
+        session: healthy,
+        lastSeenAt: NOW + 20,
+        sourceEpoch: 0
+      })
+      expect(f.store.getSnapshot().activePane).toBe('second')
+      const recovered = { ...missing, pinned: true }
+      f.push(snapshot([healthy, recovered, f.c], { takenAt: NOW + 30 }))
+      expect(f.store.getSnapshot()[field]).toMatchObject({
+        session: recovered,
+        lastSeenAt: NOW + 30,
+        sourceEpoch: 2
+      })
+      expect(f.store.getSnapshot()[otherField]?.sourceEpoch).toBe(0)
+      expect(f.store.getSnapshot().activePane).toBe('second')
+      f.off()
+    }
+  )
+
+  it('does not restore a replaced or closed Second when an older reload completes', async () => {
+    const f = await setup()
+    f.select(f.a)
+    f.store.openSecondary(f.b.key)
+    f.push(snapshot([f.a, f.c], { takenAt: NOW + 10 }))
+    let finish!: () => void
+    f.api.reload.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const reload = f.store.reload()
+    await f.store.reload()
+    expect(f.api.reload).toHaveBeenCalledOnce()
+    f.store.openSecondary(f.c.key)
+    const replacement = f.store.getSnapshot().secondarySelection
+    finish()
+    await reload
+    expect(f.store.getSnapshot().secondarySelection).toBe(replacement)
+    f.store.closeSecondary()
+    f.push(snapshot([f.a, f.b, f.c], { takenAt: NOW + 20 }))
+    expect(f.store.getSnapshot().secondarySelection).toBeNull()
+    expect(f.store.getSnapshot().selection?.session).toEqual(f.a)
+    expect(f.store.getSnapshot().reloadPending).toBe(false)
+    f.off()
+  })
+
+  it('retains both slots through narrow browsing and resize without a hidden active pane', async () => {
+    const f = await setup()
+    f.store.setNarrow(true)
+    f.select(f.a)
+    expect(f.store.getSnapshot().activePane).toBeNull()
+    f.store.openSecondary(f.b.key)
+    expect(f.store.getSnapshot()).toMatchObject({ activePane: 'second', detailOpen: true })
+    f.store.back()
+    expect(f.store.getSnapshot()).toMatchObject({ activePane: null, detailOpen: false })
+    f.store.setNarrow(false)
+    expect(f.store.getSnapshot()).toMatchObject({ activePane: null, detailOpen: false })
+    f.select(f.c)
+    expect(f.store.getSnapshot()).toMatchObject({ activePane: null, detailOpen: false })
+    f.store.activate(f.c, displayedGroups(f.store.getSnapshot()))
+    expect(f.store.getSnapshot().activePane).toBe('main')
+    f.store.setNarrow(true)
+    expect(f.store.getSnapshot()).toMatchObject({ activePane: 'main', detailOpen: true })
+    f.store.back()
+    f.select(f.a)
+    expect(f.store.getSnapshot().activePane).toBeNull()
+    f.store.activate(f.c, displayedGroups(f.store.getSnapshot()))
+    expect(f.store.getSnapshot()).toMatchObject({ activePane: 'main', detailOpen: true })
+    f.store.closeSecondary()
+    expect(f.store.getSnapshot()).toMatchObject({ activePane: 'main', detailOpen: true })
+    f.store.openSecondary(f.b.key)
+    f.store.back()
+    f.store.setNarrow(false)
+    expect(f.store.getSnapshot().activePane).toBeNull()
+    f.store.closeSecondary()
+    expect(f.store.getSnapshot()).toMatchObject({
+      activePane: 'main',
+      secondarySelection: null,
+      detailOpen: false
+    })
+    f.off()
+  })
+
+  it('ignores absent keys and closes a secondary-only layout to the empty main state', async () => {
+    const f = await setup()
+    f.store.openSecondary({ tool: 'codex', id: 'missing' })
+    f.store.activatePane('second')
+    expect(f.store.getSnapshot()).toMatchObject({ secondarySelection: null, activePane: null })
+    f.store.setNarrow(true)
+    f.store.openSecondary(f.b.key)
+    f.store.activatePane('main')
+    expect(f.store.getSnapshot().activePane).toBe('second')
+    f.store.closeSecondary()
+    expect(f.store.getSnapshot()).toMatchObject({
+      selection: null,
+      secondarySelection: null,
+      activePane: null,
+      detailOpen: false
+    })
+    f.off()
   })
 })
