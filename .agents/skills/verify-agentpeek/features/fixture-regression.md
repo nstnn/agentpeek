@@ -1,6 +1,6 @@
 # Fixture regression
 
-The synthetic simulator changes the same local file shapes the tools write. The built app shows those changes live, while its fixture banner identifies the isolated home. A separate Playwright smoke checks bootstrap, one timed update, pin persistence and renderer-file-only requests.
+The synthetic simulator changes the same local file shapes the tools write. The built app shows those changes live, while its fixture banner identifies the isolated home. A separate Playwright smoke checks bootstrap, one timed update, combined two-pane navigation/read isolation, pin persistence and renderer-file-only requests.
 
 ## Sub-features
 
@@ -9,6 +9,7 @@ The synthetic simulator changes the same local file shapes the tools write. The 
 - `fixture-stress`: long messages/titles, hostile Markdown, malformed lines and source/read failures.
 - `fixture-reconcile`: old resumed thread and removed registry.
 - `fixture-smoke`: built-app automation, retained evidence, profile isolation and cleanup.
+- `fixture-split-smoke`: A/B to C/B selection, inactive/hidden replies, active read, compact Back/Return, close-to-single and layout reset on relaunch.
 
 ## How to get to it (user POV)
 
@@ -30,7 +31,7 @@ Preconditions:
 - **Other transitions.** Apply steps from the fixture guide one at a time, save before/after artifacts, and check its expected row state. Use All Sessions to find Idle rows. Select a different row to prevent automatic read-on-view from clearing attention being inspected.
 - **Reconcile.** Run `npm run fixture -- simulate <copied-home> old-resumed`; choose `menu-click "View > Reload Sessions"`. Capture the old row appearing as Running. Apply `registry-removed`; the catalog-backed dead row becomes Idle. This does not prove real PID death.
 - **Detail stress.** Follow session-detail.md with the Codex long, hostile and retry rows. The simulator supplies `read-failure`/`read-restored`. No external links or Open-tool buttons are clicked without separate authorization.
-- **Smoke.** `npm run e2e` creates and owns a separate run, launching twice. Do not attach this helper to it. Inspect its `evidence.json`, PNG and ARIA files under `test-results/e2e/`; requests include bootstrap and all observed URLs must be renderer files. Cleanup reports no profile processes and fixture removed.
+- **Smoke.** `npm run e2e` creates and owns a separate run, launching twice. Do not attach this helper to it. Inspect its `evidence.json`, PNG and ARIA files under `test-results/e2e/`; requests include bootstrap and all observed URLs must be renderer files. The `split-a-b`, `split-c-b`, `split-inactive-reply` and `split-active-read` captures show Main changing while Second retains its key and unread reply until activation. `split-compact-back`, `split-compact-main` and `split-closed-single` show hidden details, Return/selector and restored single-pane focus. The second launch has no selected session or Second pane and keeps the pin. Cleanup reports no profile processes and fixture removed.
 - **Cleanup.** Run helper `doctor`, then `stop`; require `clean: true`. Remove the generator-owned original with `npm run fixture -- clean <original-home>`. Keep both evidence folders.
 
 ## Gotchas

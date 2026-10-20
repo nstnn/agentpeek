@@ -12,7 +12,7 @@ const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 
 // Playwright requires fixture arguments to use an object pattern, even without fixtures.
 // eslint-disable-next-line no-empty-pattern
-test('built app: fixture bootstrap, live reply, safe detail, persisted pin, no network and cleanup', async ({}, info) => {
+test('built app: fixture bootstrap, safe detail, split navigation/read isolation, persisted pin and cleanup', async ({}, info) => {
   await access(join(ROOT, 'out/main/index.js'))
   const fixture = await createFixture()
   const evidence = { launches: [], actions: [], requests: [], cleanup: null }
@@ -56,6 +56,16 @@ test('built app: fixture bootstrap, live reply, safe detail, persisted pin, no n
     expect(paths).toEqual({ userData: fixture.userData, windows: 1, sandbox: true })
     expect(await page.evaluate(() => typeof globalThis.window.require)).toBe('undefined')
     evidence.launches.push({ pid: application.process().pid, ...paths })
+    await application.evaluate(({ app, BrowserWindow }) => {
+      app.focus({ steal: true })
+      BrowserWindow.getAllWindows()[0].focus()
+    })
+    await expect
+      .poll(() =>
+        application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFocused())
+      )
+      .toBe(true)
+    await expect(page.locator('.app-shell')).toHaveAttribute('data-window-focused', 'true')
   }
   const close = async () => {
     await audit()
@@ -197,9 +207,92 @@ test('built app: fixture bootstrap, live reply, safe detail, persisted pin, no n
       action:
         'All Sessions; hostile detail; long title; Show More; deep scroll; Collapse Message; 1000/999/minimum; Escape'
     })
+
+    // Keep B in Second while ordinary list selection moves Main from A to C.
+    await application.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0].setContentSize(1440, 688)
+    })
+    const main = page.locator('[data-pane=main]')
+    const second = page.locator('[data-pane=second]')
+    await page.getByRole('option', { name: /^Fixture Codex complete,/ }).click()
+    await main.getByRole('button', { name: 'Open in Second Pane' }).click()
+    await expect(second).toBeFocused()
+    await page.getByRole('option', { name: /^Fixture Codex long/ }).click()
+    await expect(main.getByRole('heading', { level: 2 })).toContainText('Fixture Codex long')
+    await expect(second.getByRole('heading', { level: 2 })).toHaveText('Fixture Codex complete')
+    await expect(main).toHaveAttribute('data-active', 'true')
+    await expect(page.getByRole('option', { selected: true })).toHaveCount(1)
+    await save('split-a-b')
+
+    const replyState = () =>
+      page.evaluate(async () => {
+        const { sessions } = await globalThis.window.agentpeek.getSnapshot()
+        const session = sessions.find((item) => item.summary.title === 'Fixture Codex complete')
+        return { newReply: session.attention.newReply, cursor: session.lastReply?.cursor }
+      })
+    const previousReply = await replyState()
+    await simulate(fixture.home, 'codex-reply')
+    await expect.poll(replyState).toMatchObject({ newReply: true })
+    await expect(second.getByRole('region', { name: 'Second pane recent messages' })).toContainText(
+      'Synthetic newer reply.'
+    )
+    const unreadReply = await replyState()
+    expect(unreadReply.cursor).not.toEqual(previousReply.cursor)
+    await save('split-inactive-reply')
+    await page.getByRole('option', { name: /^Fixture Claude busy,/ }).click()
+    await expect(main.getByRole('heading', { level: 2 })).toHaveText('Fixture Claude busy')
+    await expect(second.getByRole('heading', { level: 2 })).toHaveText('Fixture Codex complete')
+    expect(await replyState()).toEqual(unreadReply)
+    await save('split-c-b')
+    await second.getByRole('region', { name: 'Second pane recent messages' }).click()
+    await expect(second).toHaveAttribute('data-active', 'true')
+    await expect.poll(replyState).toEqual({ ...unreadReply, newReply: false })
+    await save('split-active-read')
+
+    await application.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0].setContentSize(999, 600)
+    })
+    await expect(main).toBeHidden()
+    await expect(second).toBeVisible()
+    await expect(page.getByRole('radio', { name: 'Second pane', exact: true })).toHaveAttribute(
+      'aria-checked',
+      'true'
+    )
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('listbox')).toBeFocused()
+    await expect(main).toBeHidden()
+    await expect(second).toBeHidden()
+    await save('split-compact-back')
+    await simulate(fixture.home, 'codex-reply')
+    await expect.poll(replyState).toMatchObject({ newReply: true })
+    const hiddenReply = await replyState()
+    await page.getByRole('button', { name: 'Return to Sessions', exact: true }).click()
+    await expect(second).toBeFocused()
+    await expect.poll(replyState).toEqual({ ...hiddenReply, newReply: false })
+    await page.getByRole('radio', { name: 'Main pane', exact: true }).click()
+    await expect(main).toBeVisible()
+    await expect(second).toBeHidden()
+    await save('split-compact-main')
+    await page.getByRole('button', { name: 'Close Second Pane', exact: true }).click()
+    await expect(second).toHaveCount(0)
+    await expect(main.getByRole('heading', { level: 2 })).toHaveText('Fixture Claude busy')
+    await expect(main.getByRole('button', { name: '‹ All Sessions' })).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('listbox')).toBeFocused()
+    await save('split-closed-single')
+    evidence.actions.push({
+      action: 'A/B to C/B; inactive reply; activate/read; compact Back/Return; close to single',
+      unreadReply,
+      hiddenReply
+    })
+    // Reopen before quitting: the second launch must start in the single-pane layout.
+    await page.getByRole('option', { name: /^Fixture Claude busy,/ }).click()
+    await main.getByRole('button', { name: 'Open in Second Pane' }).click()
     await close()
 
     await launch()
+    await expect(page.locator('[data-pane=second]')).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: 'No session selected' })).toBeVisible()
     await page.getByRole('button', { name: /^Pinned/ }).click()
     await expect(page.getByRole('option')).toHaveCount(1)
     await expect(page.getByRole('option', { name: /^Fixture Codex complete,/ })).toHaveAttribute(

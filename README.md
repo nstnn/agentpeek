@@ -6,9 +6,20 @@ AgentPeek is built with Electron, TypeScript, and React.
 
 **Status: Phase 1 implemented; final acceptance pending.** The app has live session lists,
 Active/Pinned/All Sessions views, tool filters, source health, safe message detail, pin/read
-actions, keyboard navigation and a local macOS package. Automated tests and approved synthetic
+actions, two session panes, keyboard navigation and a local macOS package. Automated tests and approved synthetic
 built-app checks cover the implemented paths. VoiceOver speech, physical sleep/wake, external
 app/browser actions and a complete real-session comparison still need acceptance evidence.
+
+Use **Open in Second Pane** in the detail header, Session menu or a row's context menu to keep
+a session visible while ordinary list selection changes Main. Click or focus a pane to make it
+the Session menu's target. Only its successfully loaded, active visible reply/error is marked
+read while the window is focused; waiting still requires action in the tool.
+
+At 1300+ content pixels the shared list and both panes appear together. At 1000–1299,
+**Show Sessions** opens the list and **Return to Sessions** resumes reading; below 1000,
+**Main pane** and **Second pane** select one detail at a time. Each pane keeps its own scroll
+and disclosures across browsing and resizing. **Close Second Pane** restores the single-pane
+layout. The layout and selected sessions reset when the app quits or reloads.
 
 ## Requirements
 
@@ -92,8 +103,10 @@ synthetic fixture overrides, just like development runs.
 | `npm run format`            | Rewrites files in the Prettier style.                                                               |
 
 The [fixture guide](scripts/fixture/README.md) lists the simulator commands and expected states.
-The smoke checks bootstrap, a live update within 2 seconds, safe detail rendering, persisted pins
-and requests limited to the app's renderer files. It uses temporary fixture/profile folders,
+The smoke checks bootstrap, a live update within 2 seconds, safe detail rendering, independent
+Main/Second selection, inactive/hidden reply isolation, compact Back/Return, close-to-single,
+layout reset on relaunch, persisted pins and requests limited to the app's renderer files.
+It uses temporary fixture/profile folders,
 removes them after the run, and retains evidence in ignored `test-results/e2e/`. It does not
 replace manual system, accessibility, packaged-build or consented real-data acceptance.
 
