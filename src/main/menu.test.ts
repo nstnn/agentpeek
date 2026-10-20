@@ -8,6 +8,8 @@ const actions = () => ({
   markRead: vi.fn(),
   pin: vi.fn(),
   copy: vi.fn(),
+  openSecondary: vi.fn(),
+  closeSecondary: vi.fn(),
   back: vi.fn()
 })
 function options(isDev = false) {
@@ -17,7 +19,8 @@ function options(isDev = false) {
     command: vi.fn(),
     session: null,
     actions: actions(),
-    canGoBack: false
+    canGoBack: false,
+    canCloseSecondary: false
   }
 }
 function submenuOf(template: MenuItemConstructorOptions[], label: string) {
@@ -76,6 +79,17 @@ describe('application menu', () => {
 })
 
 describe('session and context menus', () => {
+  it('allows Close Second and replacement Back even without a valid session', () => {
+    const items = buildSessionMenu(null, actions(), { canCloseSecondary: true, canGoBack: true })
+    expect(items.find((item) => item.id === 'session-close-secondary')?.enabled).toBe(true)
+    expect(items.find((item) => item.id === 'session-back')?.enabled).toBe(true)
+    expect(items.find((item) => item.id === 'session-open-secondary')?.enabled).toBe(false)
+    const context = buildSessionMenu(testSession(), actions(), {
+      context: true,
+      canCloseSecondary: true
+    })
+    expect(context.some((item) => item.id === 'session-close-secondary')).toBe(false)
+  })
   it('disables every session action with no selection', () => {
     expect(
       buildSessionMenu(null, actions())
@@ -100,7 +114,7 @@ describe('session and context menus', () => {
     const items = buildSessionMenu(
       testSession({ key: { tool: 'claude', id: 'synthetic' }, pinned: true }),
       callbacks,
-      { canGoBack: true }
+      { canGoBack: true, canCloseSecondary: true }
     )
     expect(
       items.filter((item) => item.label).map((item) => [item.label, item.accelerator])
@@ -109,6 +123,8 @@ describe('session and context menus', () => {
       ['Mark Read', 'Shift+CommandOrControl+U'],
       ['Unpin', 'Shift+CommandOrControl+P'],
       ['Copy Session ID', 'Alt+CommandOrControl+C'],
+      ['Open in Second Pane', undefined],
+      ['Close Second Pane', undefined],
       ['Back', 'CommandOrControl+[']
     ])
     for (const item of items.filter((item) => item.label)) click(item)
@@ -120,7 +136,7 @@ describe('session and context menus', () => {
   })
   it('omits Back from the row context menu', () => {
     const items = buildSessionMenu(testSession(), actions(), { context: true })
-    expect(items).toHaveLength(4)
+    expect(items).toHaveLength(5)
     expect(items.some((item) => item.id === 'session-back')).toBe(false)
   })
 })

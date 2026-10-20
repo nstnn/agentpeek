@@ -1,5 +1,5 @@
 import type { SessionKey } from '../core/session'
-import type { AppSnapshot, MenuCommand } from '../shared/api'
+import type { AppSnapshot, MenuCommand, SelectionPresentation } from '../shared/api'
 import type { SessionsService } from './sessions/service'
 import { buildSessionMenu, type SessionMenuActions } from './menu'
 import type { MenuItemConstructorOptions } from 'electron'
@@ -14,12 +14,12 @@ export function createSessionController(options: {
   command: (command: MenuCommand) => void
   updateMenu: () => void
   popup: (template: MenuItemConstructorOptions[]) => void | Promise<void>
-  isNarrow?: () => boolean
   isFocused?: () => boolean
 }) {
   const { service, system } = options
   let selection: SessionKey | null = null
   let detailOpen = false
+  let secondPaneOpen = false
   const find = (key: SessionKey | null) =>
     key === null
       ? null
@@ -28,25 +28,34 @@ export function createSessionController(options: {
           .sessions.find((session) => session.key.tool === key.tool && session.key.id === key.id) ??
         null)
 
-  function actions(key: SessionKey | null): SessionMenuActions {
+  function actions(target: () => SessionKey | null): SessionMenuActions {
     return {
       open: () => {
-        const session = find(key)
+        const session = find(target())
         if (session) void system.openTool(session.key.tool)
       },
       markRead: () => {
-        const session = find(key)
+        const session = find(target())
         if (session?.attention.newReply || session?.attention.error) service.markRead(session.key)
       },
       pin: () => {
-        const session = find(key)
+        const session = find(target())
         if (session) service.setPinned(session.key, !session.pinned)
       },
       copy: () => {
-        const session = find(key)
+        const session = find(target())
         if (session) void system.copyText(session.key.id).catch(() => undefined)
       },
-      back: () => options.command('back')
+      openSecondary: () => {
+        const session = find(target())
+        if (session) options.command({ type: 'open-secondary', key: session.key })
+      },
+      closeSecondary: () => {
+        if (secondPaneOpen) options.command({ type: 'close-secondary' })
+      },
+      back: () => {
+        if (detailOpen) options.command('back')
+      }
     }
   }
 
@@ -55,17 +64,18 @@ export function createSessionController(options: {
       return { ...service.snapshot(), fixtureHome: options.fixtureHome }
     },
     selected: () => find(selection),
-    actions: () => actions(selection),
-    setSelection: (key: SessionKey | null) => {
+    actions: () => actions(() => selection),
+    setSelection: (key: SessionKey | null, presentation?: SelectionPresentation) => {
       selection = find(key)?.key ?? null
-      if (key === null) detailOpen = false
+      if (presentation) secondPaneOpen = presentation.secondPaneOpen
       options.updateMenu()
     },
     setDetailOpen: (open: boolean) => {
-      detailOpen = open && selection !== null && options.isNarrow?.() === true
+      detailOpen = open
       options.updateMenu()
     },
-    canGoBack: () => detailOpen && options.isNarrow?.() === true,
+    canGoBack: () => detailOpen,
+    canCloseSecondary: () => secondPaneOpen,
     publish() {
       selection = find(selection)?.key ?? null
       options.updateMenu()
@@ -79,8 +89,11 @@ export function createSessionController(options: {
       const session = find(key)
       if (
         !session ||
-        (expectedCursor !== undefined && options.isFocused?.() === false) ||
-        (expectedCursor !== undefined && session.lastReply?.cursor !== expectedCursor)
+        (expectedCursor !== undefined &&
+          (options.isFocused?.() !== true ||
+            selection?.tool !== key.tool ||
+            selection?.id !== key.id ||
+            session.lastReply?.cursor !== expectedCursor))
       )
         return false
       return service.markRead(key)
@@ -97,7 +110,13 @@ export function createSessionController(options: {
     showSessionMenu: (key: SessionKey) => {
       const session = find(key)
       if (session)
-        return options.popup(buildSessionMenu(session, actions(session.key), { context: true }))
+        return options.popup(
+          buildSessionMenu(
+            session,
+            actions(() => key),
+            { context: true }
+          )
+        )
     }
   }
 }

@@ -14,6 +14,54 @@ function mount(initial = snapshot()) {
 }
 
 describe('sessions interface', () => {
+  it('waits for the current target sync, ignores stale completion, and keeps prepared Second unread', async () => {
+    const unread = (id: string) =>
+      session(id, {
+        lastReply: {
+          cursor: id,
+          completedAt: NOW,
+          isError: false,
+          errorCode: null,
+          newerTurnStarted: false
+        },
+        attention: { waiting: false, error: false, newReply: true }
+      })
+    const a = unread('a')
+    const b = unread('b')
+    const f = mount(snapshot([a, b]))
+    await screen.findByRole('option', { name: /Synthetic a/ })
+    fireEvent(window, new Event('focus'))
+    const pending: (() => void)[] = []
+    f.api.setSelection.mockImplementation(
+      () => new Promise<void>((resolve) => pending.push(resolve))
+    )
+    await userEvent.click(screen.getByRole('option', { name: /Synthetic a/ }))
+    await screen.findByText('No recent messages.')
+    expect(f.api.markRead).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('option', { name: /Synthetic b/ }))
+    await screen.findByText('No recent messages.')
+    await act(async () => {
+      pending[0]!()
+      await Promise.resolve()
+    })
+    expect(f.api.markRead).not.toHaveBeenCalled()
+    await act(async () => {
+      pending[1]!()
+      await Promise.resolve()
+    })
+    expect(f.api.markRead.mock.calls).toEqual([[b.key, 'b']])
+    f.api.markRead.mockClear()
+    f.api.getMessages.mockClear()
+    act(() => f.command({ type: 'open-secondary', key: a.key }))
+    await act(async () => {
+      pending.at(-1)!()
+      await Promise.resolve()
+    })
+    act(() => f.push(snapshot([a, { ...b, lastReply: { ...b.lastReply!, cursor: 'b-new' } }])))
+    await screen.findByText('No recent messages.')
+    expect(f.api.markRead).not.toHaveBeenCalled()
+    expect(f.api.getMessages.mock.calls.map(([key]) => key.id)).toEqual(['b'])
+  })
   it.each(['insert', 'remove'])(
     'anchors the selected row when an earlier group is %s-ed',
     async (mode) => {
@@ -104,7 +152,7 @@ describe('sessions interface', () => {
     expect(screen.getByRole('radio', { name: 'All 3' })).toBeTruthy()
     expect(screen.getAllByRole('option')).toHaveLength(1)
     expect(screen.getByText(/Sessions active in the last 7 days/)).toBeTruthy()
-    expect(fake.api.setSelection).toHaveBeenLastCalledWith(null)
+    expect(fake.api.setSelection).toHaveBeenLastCalledWith(null, { secondPaneOpen: false })
   })
 
   it('keeps a selected row, focus, scroll and group when it becomes idle or disappears', async () => {
@@ -137,7 +185,10 @@ describe('sessions interface', () => {
     const list = screen.getByRole('listbox')
     list.focus()
     await userEvent.keyboard('{ArrowDown}{ArrowDown}')
-    expect(fake.api.setSelection).toHaveBeenLastCalledWith({ tool: 'codex', id: 'b' })
+    expect(fake.api.setSelection).toHaveBeenLastCalledWith(
+      { tool: 'codex', id: 'b' },
+      { secondPaneOpen: false }
+    )
     screen.getByRole('button', { name: 'Active, 0 sessions need attention' }).focus()
     await userEvent.keyboard('{ArrowDown}')
     expect(screen.getByRole('heading', { name: 'Pinned', level: 1 })).toBeTruthy()

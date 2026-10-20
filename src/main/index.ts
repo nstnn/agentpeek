@@ -45,7 +45,8 @@ function updateMenu(): void {
         command: (command) => send(IPC.command, command),
         session: controller.selected(),
         actions: controller.actions(),
-        canGoBack: controller.canGoBack()
+        canGoBack: controller.canGoBack(),
+        canCloseSecondary: controller.canCloseSecondary()
       })
     )
   )
@@ -115,7 +116,6 @@ if (!app.requestSingleInstanceLock()) {
         reload: () => lifecycle!.reload(),
         command: (command: MenuCommand) => send(IPC.command, command),
         updateMenu,
-        isNarrow: () => (mainWindow?.getContentSize()[0] ?? 1000) < 1000,
         isFocused: () => mainWindow?.isFocused() ?? false,
         popup: (template) =>
           new Promise<void>((resolve) => {
@@ -133,7 +133,10 @@ if (!app.requestSingleInstanceLock()) {
       mainWindow.on('focus', () => lifecycle?.focus())
       mainWindow.on('resize', updateMenu)
       mainWindow.webContents.on('did-start-navigation', (_event, _url, _inPlace, isMainFrame) => {
-        if (isMainFrame) controller?.setSelection(null)
+        if (isMainFrame) {
+          controller?.setSelection(null, { secondPaneOpen: false })
+          controller?.setDetailOpen(false)
+        }
       })
       mainWindow.on('closed', () => {
         mainWindow = null

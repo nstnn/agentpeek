@@ -56,6 +56,7 @@ export function SessionDetail({
   api,
   visible,
   focused,
+  canAutoRead,
   missing,
   lastSeenAt,
   sourceEpoch,
@@ -67,6 +68,7 @@ export function SessionDetail({
   api: AgentPeekApi
   visible: boolean
   focused: boolean
+  canAutoRead: () => boolean
   missing: boolean
   lastSeenAt: number | null
   sourceEpoch: number
@@ -153,6 +155,7 @@ export function SessionDetail({
     if (
       !visible ||
       !focused ||
+      !canAutoRead() ||
       missing ||
       !cursor ||
       loaded?.revision !== revision ||
@@ -162,16 +165,26 @@ export function SessionDetail({
     )
       return
     seen.current = cursor
+    let active = true
+    let completed = false
     void api
       .markRead(session.key, cursor)
       .then((success) => {
+        if (!active) return
+        completed = true
         if (!success) seen.current = null
       })
       .catch(() => {
+        if (!active) return
+        completed = true
         seen.current = null
         setActionError("Couldn't mark this session read. Try again.")
       })
-  }, [api, visible, focused, missing, loaded, revision, session])
+    return () => {
+      active = false
+      if (!completed && seen.current === cursor) seen.current = null
+    }
+  }, [api, visible, focused, canAutoRead, missing, loaded, revision, session])
 
   async function action(request: () => Promise<boolean>, failure: string): Promise<void> {
     setActionError(null)

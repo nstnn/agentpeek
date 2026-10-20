@@ -71,6 +71,32 @@ afterEach(() => {
 })
 
 describe('main process lifecycle', () => {
+  it('wires replacement Back at default width and clears split/navigation on renderer navigation', async () => {
+    const s = setup()
+    await import('./index')
+    await vi.waitFor(() => expect(s.service.start).toHaveBeenCalledOnce())
+    const invoke = async (channel: string, ...args: unknown[]) => {
+      const handler = s.ipcMain.handle.mock.calls.find(([name]) => name === channel)![1]
+      await handler(
+        { sender: s.contents, senderFrame: s.contents.mainFrame } as unknown as IpcMainInvokeEvent,
+        ...args
+      )
+    }
+    const enabled = (id: string) => {
+      const items = s.Menu.buildFromTemplate.mock.lastCall![0].find(
+        (item) => item.label === 'Session'
+      )!.submenu as MenuItemConstructorOptions[]
+      return items.find((item) => item.id === id)?.enabled
+    }
+    await invoke(IPC.setSelection, null, { secondPaneOpen: true })
+    await invoke(IPC.setDetailOpen, true)
+    expect(enabled('session-back')).toBe(true)
+    expect(enabled('session-close-secondary')).toBe(true)
+    expect(enabled('session-open-secondary')).toBe(false)
+    s.contents.emit('did-start-navigation', {}, '', false, true)
+    expect(enabled('session-back')).toBe(false)
+    expect(enabled('session-close-secondary')).toBe(false)
+  })
   it('keeps Back disabled after selecting a row in the narrow list without a detail screen', async () => {
     const s = setup()
     s.window.getContentSize.mockReturnValue([760, 480])

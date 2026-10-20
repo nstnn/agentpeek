@@ -7,13 +7,15 @@ export interface SessionMenuActions {
   markRead(this: void): void
   pin(this: void): void
   copy(this: void): void
+  openSecondary(this: void): void
+  closeSecondary(this: void): void
   back(this: void): void
 }
 
 export function buildSessionMenu(
   session: Session | null,
   actions: SessionMenuActions,
-  options: { context?: boolean; canGoBack?: boolean } = {}
+  options: { context?: boolean; canGoBack?: boolean; canCloseSecondary?: boolean } = {}
 ): MenuItemConstructorOptions[] {
   const enabled = session !== null
   const items: MenuItemConstructorOptions[] = [
@@ -44,11 +46,23 @@ export function buildSessionMenu(
       accelerator: 'Alt+CommandOrControl+C',
       enabled,
       click: actions.copy
+    },
+    {
+      id: 'session-open-secondary',
+      label: 'Open in Second Pane',
+      enabled,
+      click: actions.openSecondary
     }
   ]
   if (!options.context)
     items.push(
       { type: 'separator' },
+      {
+        id: 'session-close-secondary',
+        label: 'Close Second Pane',
+        enabled: options.canCloseSecondary === true,
+        click: actions.closeSecondary
+      },
       {
         id: 'session-back',
         label: 'Back',
@@ -68,6 +82,7 @@ export function buildMenuTemplate(options: {
   session: Session | null
   actions: SessionMenuActions
   canGoBack: boolean
+  canCloseSecondary: boolean
 }): MenuItemConstructorOptions[] {
   const viewItems: MenuItemConstructorOptions[] = [
     {

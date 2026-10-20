@@ -289,6 +289,7 @@ function SecondaryDetail({ store, api }: { store: SessionsStore; api: AgentPeekA
       api={api}
       visible={true}
       focused={false}
+      canAutoRead={() => false}
       missing={!state.snapshot?.sessions.some((s) => sameKey(s.key, selected.session.key))}
       lastSeenAt={selected.lastSeenAt}
       sourceEpoch={selected.sourceEpoch}

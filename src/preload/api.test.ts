@@ -44,6 +44,7 @@ describe('preload API', () => {
     await api.openLink('https://example.com')
     await api.reload()
     await api.setSelection(null)
+    await api.setSelection(key, { secondPaneOpen: true })
     await api.setDetailOpen(true)
     await api.showSessionMenu(key)
     expect(transport.invoke.mock.calls).toEqual([
@@ -56,6 +57,7 @@ describe('preload API', () => {
       [IPC.openLink, 'https://example.com'],
       [IPC.reload],
       [IPC.setSelection, null],
+      [IPC.setSelection, key, { secondPaneOpen: true }],
       [IPC.setDetailOpen, true],
       [IPC.showSessionMenu, key]
     ])
@@ -70,7 +72,10 @@ describe('preload API', () => {
         string,
         (event: unknown, value: unknown) => void
       ]
-      const payload = kind === 'snapshot' ? { sessions: [] } : 'view:pinned'
+      const payload =
+        kind === 'snapshot'
+          ? { sessions: [] }
+          : { type: 'open-secondary', key: { tool: 'codex', id: 'synthetic' } }
       listener({ sender: 'must never escape' }, payload)
       expect(callback.mock.calls).toEqual([[payload]])
       unsubscribe()

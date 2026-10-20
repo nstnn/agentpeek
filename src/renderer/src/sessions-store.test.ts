@@ -91,6 +91,79 @@ describe('two detail slots', () => {
     return { ...fake, store, off, a, b, c, select }
   }
 
+  it('routes object commands without selecting their row, and never targets an unmounted Second', async () => {
+    const f = await setup()
+    f.select(f.a)
+    f.command({ type: 'open-secondary', key: f.b.key })
+    expect(f.store.getSnapshot().selection?.session.key).toEqual(f.a.key)
+    expect(f.api.setSelection).toHaveBeenLastCalledWith(null, { secondPaneOpen: true })
+    f.store.setVisiblePanes(['main', 'second'])
+    expect(f.api.setSelection).toHaveBeenLastCalledWith(f.b.key, { secondPaneOpen: true })
+    await Promise.resolve()
+    const generation = f.store.getSnapshot().targetGeneration
+    expect(f.store.canAutoRead('second', f.b.key, generation)).toBe(true)
+    expect(f.store.canAutoRead('main', f.a.key, generation)).toBe(false)
+    f.command({ type: 'close-secondary' })
+    expect(f.api.setSelection).toHaveBeenLastCalledWith(f.a.key, { secondPaneOpen: false })
+    f.off()
+  })
+
+  it('ignores delayed/rejected activations and rechecks same-key pane generations', async () => {
+    const f = await setup()
+    const pending: { resolve: () => void; reject: () => void }[] = []
+    f.api.setSelection.mockImplementation(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          pending.push({ resolve, reject: () => reject(new Error('synthetic')) })
+        })
+    )
+    f.select(f.a)
+    const first = f.store.getSnapshot().targetGeneration
+    expect(f.store.canAutoRead('main', f.a.key, first)).toBe(false)
+    f.select(f.c)
+    const second = f.store.getSnapshot().targetGeneration
+    pending[1]!.resolve()
+    await Promise.resolve()
+    expect(f.store.canAutoRead('main', f.c.key, second)).toBe(true)
+    pending[0]!.reject()
+    await Promise.resolve()
+    expect(f.store.getSnapshot().actionError).toBeNull()
+    expect(f.store.canAutoRead('main', f.a.key, first)).toBe(false)
+    f.store.setVisiblePanes(['main', 'second'])
+    f.store.openSecondary(f.c.key)
+    const third = f.store.getSnapshot().targetGeneration
+    pending.at(-1)!.resolve()
+    await Promise.resolve()
+    expect(f.store.canAutoRead('second', f.c.key, third)).toBe(true)
+    expect(f.store.canAutoRead('main', f.c.key, second)).toBe(false)
+    f.store.activatePane('main')
+    pending.at(-1)!.reject()
+    await Promise.resolve()
+    expect(f.store.getSnapshot().targetReady).toBe(false)
+    f.select(f.c) // A fresh explicit activation can retry the failed synchronization.
+    pending.at(-1)!.resolve()
+    await Promise.resolve()
+    expect(f.store.getSnapshot().targetReady).toBe(true)
+    f.off()
+  })
+
+  it('clears only the active target on source loss/browse and restores it on rediscovery', async () => {
+    const f = await setup()
+    f.store.setVisiblePanes(['main', 'second'])
+    f.select(f.a)
+    f.store.openSecondary(f.b.key)
+    f.push(snapshot([f.a, f.c]))
+    expect(f.api.setSelection).toHaveBeenLastCalledWith(null, { secondPaneOpen: true })
+    expect(f.store.getSnapshot().targetReady).toBe(false)
+    f.push(snapshot([f.a, f.b, f.c]))
+    expect(f.api.setSelection).toHaveBeenLastCalledWith(f.b.key, { secondPaneOpen: true })
+    f.store.setNarrow(true)
+    f.store.back()
+    expect(f.api.setSelection).toHaveBeenLastCalledWith(null, { secondPaneOpen: true })
+    expect(f.api.setDetailOpen).toHaveBeenLastCalledWith(false)
+    f.off()
+  })
+
   it('opens, replaces and closes only Second; ordinary selection always targets Main', async () => {
     const f = await setup()
     expect(f.store.getSnapshot()).toMatchObject({ secondarySelection: null, activePane: null })

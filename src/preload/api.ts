@@ -31,7 +31,10 @@ export function createPreloadApi(transport: PreloadTransport): AgentPeekApi {
     copySessionId: (key) => invoke(IPC.copySessionId, key),
     openLink: (url) => invoke(IPC.openLink, url),
     reload: () => invoke(IPC.reload),
-    setSelection: (key) => invoke(IPC.setSelection, key),
+    setSelection: (key, presentation) =>
+      presentation === undefined
+        ? invoke(IPC.setSelection, key)
+        : invoke(IPC.setSelection, key, presentation),
     setDetailOpen: (open) => invoke(IPC.setDetailOpen, open),
     showSessionMenu: (key) => invoke(IPC.showSessionMenu, key),
     onCommand: (callback: (command: MenuCommand) => void) => subscribe(IPC.command, callback)
