@@ -358,11 +358,6 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
         >
           <header className="list-header">
             <h1>{VIEW_NAMES[view]}</h1>
-            {split && (
-              <p className="list-destination">
-                Opens in {(state.activePane ?? state.returnPane) === 'main' ? 'Left' : 'Right'} pane
-              </p>
-            )}
             <p className="summary">
               {attention} need attention · {running} running · {unknown} unknown
             </p>
