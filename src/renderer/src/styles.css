@@ -852,9 +852,3 @@ button[aria-disabled='true'] {
 .detail-pane[data-active='true'] > .pane-toolbar {
   background: var(--info-bg);
 }
-
-.list-destination {
-  margin: 3px 0;
-  color: var(--accent);
-  font-size: 12px;
-}

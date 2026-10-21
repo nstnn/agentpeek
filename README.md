@@ -13,7 +13,7 @@ app/browser actions and a complete real-session comparison still need acceptance
 Right-click a session and choose **Open to the Right**, or drag its row into the right-side
 preview to split the view. Once split, the context menu and drag previews can replace either
 **Left pane** or **Right pane**. Clicking or focusing a pane makes it active; ordinary row
-clicks open in that pane. The list names the destination, and the active pane has a labeled
+clicks open in that pane. The active pane has a labeled
 accent header showing its session title once; the metadata below starts with the tool and workspace. Escape or an outside drop cancels a drag without changing either session.
 Only a successfully loaded, active visible reply/error is marked read while the window is
 focused; waiting still requires action in the tool.
