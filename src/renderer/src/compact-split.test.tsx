@@ -53,6 +53,31 @@ async function open(f: ReturnType<typeof mount>) {
 }
 
 describe('responsive split navigation', () => {
+  it.each([760, 999, 1000, 1299])(
+    'closes Left at %i pixels and keeps Right in the single detail with usable focus',
+    async (width) => {
+      const f = mount(width)
+      await choose('a')
+      act(() => f.command({ type: 'open-secondary', key: session('b').key }))
+      await within(pane('Right')).findByRole('button', { name: 'Show More' })
+      if (width < 1000)
+        await userEvent.click(screen.getByRole('radio', { name: 'Synthetic a (Left pane)' }))
+      await userEvent.click(within(pane('Left')).getByRole('button', { name: 'Close Left Pane' }))
+      const detail = screen.getByRole('complementary', { name: 'Session detail' })
+      await within(detail).findByRole('heading', { name: 'Synthetic b' })
+      expect(screen.queryByRole('radiogroup', { name: 'Visible session pane' })).toBeNull()
+      expect(f.store.getSnapshot()).toMatchObject({
+        selection: { session: { key: session('b').key } },
+        secondarySelection: null,
+        activePane: 'main',
+        detailOpen: width < 1000
+      })
+      expect(document.activeElement).toBe(
+        width < 1000 ? screen.getByRole('button', { name: '‹ Active' }) : detail
+      )
+    }
+  )
+
   it.each([999, 1000, 1299, 1300, 1440])(
     'presents the intended panes and navigation at %i content pixels',
     async (width) => {

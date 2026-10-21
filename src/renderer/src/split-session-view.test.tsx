@@ -52,6 +52,48 @@ const unread = (id: string, error = false): Session =>
   })
 
 describe('roomy split session composition', () => {
+  it.each(['a', 'b'])(
+    'closes Left and keeps Right session %s with its transcript, scroll, disclosures and focus',
+    async (id) => {
+      const f = mount()
+      await choose('a')
+      act(() => f.command({ type: 'open-secondary', key: session(id).key }))
+      await userEvent.click(await within(pane('Right')).findByRole('button', { name: 'Show More' }))
+      const transcript = messages('Right')
+      fireEvent.keyDown(transcript, { key: 'PageDown' })
+      fireEvent.scroll(transcript, { target: { scrollTop: 81 } })
+      const loads = f.api.getMessages.mock.calls.length
+      const user = userEvent.setup()
+      const close = within(pane('Left')).getByRole('button', { name: 'Close Left Pane' })
+      expect(close.textContent).toBe('×')
+      expect(
+        within(pane('Right')).getByRole('button', { name: 'Close Right Pane' }).textContent
+      ).toBe('×')
+      act(() => close.focus())
+      await user.keyboard('{Enter}')
+      const detail = screen.getByRole('complementary', { name: 'Session detail' })
+      expect(f.store.getSnapshot()).toMatchObject({
+        selection: { session: { key: session(id).key } },
+        secondarySelection: null,
+        activePane: 'main'
+      })
+      expect(within(detail).getByRole('region', { name: 'Recent messages' })).toBe(transcript)
+      expect(transcript.scrollTop).toBe(81)
+      expect(within(detail).getByRole('button', { name: 'Collapse Message' })).toBeTruthy()
+      expect(f.api.getMessages.mock.calls.length).toBe(loads)
+      expect(f.api.setSelection).toHaveBeenLastCalledWith(session(id).key, {
+        secondPaneOpen: false
+      })
+      expect(document.activeElement).toBe(detail)
+      expect(screen.queryByRole('button', { name: /Close (Left|Right) Pane/ })).toBeNull()
+
+      act(() => f.command({ type: 'open-secondary', key: session('c').key }))
+      await within(pane('Right')).findByRole('button', { name: 'Show More' })
+      await user.click(within(pane('Right')).getByRole('button', { name: 'Close Right Pane' }))
+      expect(screen.getByRole('region', { name: 'Recent messages' })).toBe(transcript)
+    }
+  )
+
   it('resizes visible columns without replacing transcripts or changing the active session', async () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       width: 1440

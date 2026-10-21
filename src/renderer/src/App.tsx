@@ -34,6 +34,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
   const regionId = useId()
   const [workspaceWidth, setWorkspaceWidth] = useState(() => window.innerWidth)
   const [paneSizes, setPaneSizes] = useState<PaneSizes>({})
+  const [paneInstances, setPaneInstances] = useState({ main: 'main', second: 'second' })
   const mainPane = useRef<HTMLElement>(null)
   const secondPane = useRef<HTMLElement>(null)
   const navigation = useRef<HTMLElement>(null)
@@ -280,9 +281,15 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
               ))}
             </div>
           )}
-          {(state.narrow || state.splitBrowsing) && (
-            <button type="button" onClick={store.closeSecondary}>
-              Close Right Pane
+          {state.splitBrowsing && (
+            <button
+              type="button"
+              className="pane-close"
+              aria-label="Close Right Pane"
+              title="Close Right Pane"
+              onClick={store.closeSecondary}
+            >
+              <span aria-hidden="true">×</span>
             </button>
           )}
         </div>
@@ -476,7 +483,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
             if (visible && state.activePane !== pane) store.activatePane(pane)
           }
           return (
-            <Fragment key={pane}>
+            <Fragment key={paneInstances[pane]}>
               {pane === 'second' && mainVisible && secondVisible && (
                 <PaneDivider
                   label={`${paneTitles.main} (Left pane) width`}
@@ -519,16 +526,26 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                       {paneTitles[pane]}
                     </h2>
                     <span className="pane-active">{state.activePane === pane ? 'Active' : ''}</span>
-                    {pane === 'second' && !state.narrow && (
-                      <button type="button" onClick={store.closeSecondary}>
-                        Close Right Pane
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="pane-close"
+                      aria-label={`Close ${pane === 'main' ? 'Left' : 'Right'} Pane`}
+                      title={`Close ${pane === 'main' ? 'Left' : 'Right'} Pane`}
+                      onClick={() => {
+                        if (pane === 'main') {
+                          // Move the surviving detail without remounting its transcript.
+                          setPaneInstances(({ main, second }) => ({ main: second, second: main }))
+                        }
+                        store.closePane(pane)
+                      }}
+                    >
+                      <span aria-hidden="true">×</span>
+                    </button>
                   </div>
                 )}
                 {selected ? (
                   <SessionDetail
-                    key={`${pane}:${sessionKeyToString(selected.key)}`}
+                    key={`${paneInstances[pane]}:${sessionKeyToString(selected.key)}`}
                     session={selected}
                     api={window.agentpeek}
                     visible={visible}

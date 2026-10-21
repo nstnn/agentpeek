@@ -305,14 +305,19 @@ export function createSessionsStore(api: AgentPeekApi) {
       sendDetailOpen(state.detailOpen)
     },
     closeSecondary(this: void) {
+      store.closePane('second')
+    },
+    closePane(this: void, pane: PaneId) {
       if (!state.secondarySelection) return
+      const selection = pane === 'main' ? state.secondarySelection : state.selection
       emit({
+        selection,
         secondarySelection: null,
-        listSelection: cursorForPane(state.selection),
+        listSelection: cursorForPane(selection),
         returnPane: 'main',
         splitBrowsing: false,
-        activePane: state.selection && (!state.narrow || state.detailOpen) ? 'main' : null,
-        detailOpen: !!state.selection && state.narrow && state.detailOpen
+        activePane: selection && (!state.narrow || state.detailOpen) ? 'main' : null,
+        detailOpen: !!selection && state.narrow && state.detailOpen
       })
       sendDetailOpen(state.detailOpen)
     },

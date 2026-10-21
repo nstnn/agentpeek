@@ -21,7 +21,8 @@ focused; waiting still requires action in the tool.
 At 1300+ content pixels the shared list and both panes appear together. At 1000–1299,
 **Show Sessions** opens the list and **Return to Sessions** resumes reading; below 1000,
 buttons labeled with the session titles select one detail at a time. Each pane keeps its own scroll
-and disclosures across browsing and resizing. **Close Right Pane** restores the single-pane
+and disclosures across browsing and resizing. Each split pane has an **×** button to close it;
+the other session keeps its scroll and disclosures in the single-pane
 layout. The layout and selected sessions reset when the app quits or reloads.
 
 Drag the divider between visible columns to resize the sidebar, sessions list or either

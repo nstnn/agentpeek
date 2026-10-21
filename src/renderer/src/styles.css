@@ -625,6 +625,25 @@ button[aria-disabled='true'] {
 .detail-pane button:disabled {
   opacity: 0.5;
 }
+.detail-pane .pane-close,
+.split-navigation .pane-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--secondary);
+  font-size: 18px;
+  line-height: 1;
+}
+.pane-close:hover {
+  background: var(--fill);
+  color: var(--text);
+}
 .detail-back {
   align-self: flex-start;
   flex: none;
