@@ -363,10 +363,9 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     })
     await expect(main).toBeHidden()
     await expect(second).toBeVisible()
-    await expect(page.getByRole('radio', { name: 'Right pane', exact: true })).toHaveAttribute(
-      'aria-checked',
-      'true'
-    )
+    await expect(
+      page.getByRole('radio', { name: 'Fixture Codex complete (Right pane)', exact: true })
+    ).toHaveAttribute('aria-checked', 'true')
     await page.keyboard.press('Escape')
     await expect(page.getByRole('listbox')).toBeFocused()
     await expect(main).toBeHidden()
@@ -386,7 +385,7 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     await page.getByRole('button', { name: 'Return to Sessions', exact: true }).click()
     await expect(second).toBeFocused()
     await expect.poll(replyState).toEqual({ ...hiddenReply, newReply: false })
-    await page.getByRole('radio', { name: 'Left pane', exact: true }).click()
+    await page.getByRole('radio', { name: 'Fixture Claude busy (Left pane)', exact: true }).click()
     await expect(main).toBeVisible()
     await expect(second).toBeHidden()
     await save('split-compact-main')

@@ -14,13 +14,13 @@ Right-click a session and choose **Open to the Right**, or drag its row into the
 preview to split the view. Once split, the context menu and drag previews can replace either
 **Left pane** or **Right pane**. Clicking or focusing a pane makes it active; ordinary row
 clicks open in that pane. The list names the destination, and the active pane has a labeled
-accent header. Escape or an outside drop cancels a drag without changing either session.
+accent header showing its session title once; the metadata below starts with the tool and workspace. Escape or an outside drop cancels a drag without changing either session.
 Only a successfully loaded, active visible reply/error is marked read while the window is
 focused; waiting still requires action in the tool.
 
 At 1300+ content pixels the shared list and both panes appear together. At 1000–1299,
 **Show Sessions** opens the list and **Return to Sessions** resumes reading; below 1000,
-**Left pane** and **Right pane** select one detail at a time. Each pane keeps its own scroll
+buttons labeled with the session titles select one detail at a time. Each pane keeps its own scroll
 and disclosures across browsing and resizing. **Close Right Pane** restores the single-pane
 layout. The layout and selected sessions reset when the app quits or reloads.
 

@@ -61,14 +61,18 @@ describe('responsive split navigation', () => {
       expect(screen.queryByRole('complementary', { name: 'Left pane' }) !== null).toBe(
         width >= 1000
       )
-      expect(pane('Right')).toBeTruthy()
+      expect(pane('Right').querySelector('.pane-title')?.textContent).toBe('Synthetic a')
+      if (width >= 1000)
+        expect(pane('Left').querySelector('.pane-title')?.textContent).toBe('Synthetic a')
       expect(screen.queryByRole('listbox') !== null).toBe(width >= 1300)
       expect(screen.queryByRole('button', { name: 'Show Sessions' }) !== null).toBe(width < 1300)
       expect(f.api.setDetailOpen).toHaveBeenLastCalledWith(width < 1300)
       if (width < 1000)
-        expect(screen.getByRole('radio', { name: 'Right pane' }).getAttribute('aria-checked')).toBe(
-          'true'
-        )
+        expect(
+          screen
+            .getByRole('radio', { name: 'Synthetic a (Right pane)' })
+            .getAttribute('aria-checked')
+        ).toBe('true')
     }
   )
 
@@ -88,8 +92,11 @@ describe('responsive split navigation', () => {
     f.resize(1299)
     expect(document.activeElement).toBe(pane('Left'))
     f.resize(999)
-    expect(pane('Left')).toBeTruthy()
-    await userEvent.click(screen.getByRole('radio', { name: 'Right pane' }))
+    expect(pane('Left').querySelector('.pane-title')?.textContent).toBe('Synthetic c')
+    expect(screen.getByRole('radio', { name: 'Synthetic c (Left pane)' }).textContent).toBe(
+      'Synthetic c'
+    )
+    await userEvent.click(screen.getByRole('radio', { name: 'Synthetic a (Right pane)' }))
     expect(f.store.getSnapshot().activePane).toBe('second')
     await userEvent.click(screen.getByRole('button', { name: 'Show Sessions' }))
     expect(document.activeElement).toBe(list)
@@ -110,11 +117,13 @@ describe('responsive split navigation', () => {
   it('uses arrow selectors, Escape/native Back and browse arrows/Enter without loading hidden selections', async () => {
     const f = mount(999)
     await open(f)
-    const secondSelector = screen.getByRole('radio', { name: 'Right pane' })
+    const secondSelector = screen.getByRole('radio', { name: 'Synthetic a (Right pane)' })
     secondSelector.focus()
     await userEvent.keyboard('{ArrowLeft}')
     expect(f.store.getSnapshot().activePane).toBe('main')
-    expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'Left pane' }))
+    expect(document.activeElement).toBe(
+      screen.getByRole('radio', { name: 'Synthetic a (Left pane)' })
+    )
     await userEvent.keyboard('{End}')
     expect(f.store.getSnapshot().activePane).toBe('second')
     await userEvent.keyboard('{Escape}')
