@@ -5,6 +5,7 @@ import type { RecentMessages, Session } from '../../core/session'
 import { fakeApi, NOW, session, snapshot } from '../test-support'
 import { SessionDetail } from './SessionDetail'
 import { App } from './App'
+import { mockWorkspaceWidth } from '../workspace-test-support'
 import { createSessionsStore } from './sessions-store'
 
 const exchange: RecentMessages = {
@@ -664,42 +665,23 @@ describe('session detail', () => {
 })
 
 describe('detail navigation and request lifetime', () => {
-  it('switches responsive visibility immediately at the width breakpoint', async () => {
-    const media = { matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }
-    vi.spyOn(window, 'matchMedia').mockImplementation(
-      (query) =>
-        (query.includes('max-width')
-          ? media
-          : {
-              matches: false,
-              addEventListener: vi.fn(),
-              removeEventListener: vi.fn()
-            }) as unknown as MediaQueryList
-    )
+  it('keeps the reading target while resizing through replacement navigation', async () => {
+    const resize = mockWorkspaceWidth(1100)
     const fake = fakeApi(snapshot([session('a')]))
     Object.defineProperty(window, 'agentpeek', { value: fake.api, configurable: true })
     const store = createSessionsStore(fake.api)
     render(<App store={store} />)
     await userEvent.click(await screen.findByRole('option'))
     expect(screen.getByRole('complementary', { name: 'Session detail' })).toBeTruthy()
-    const listener = media.addEventListener.mock.calls[0]?.[1] as () => void
-    act(() => {
-      media.matches = true
-      listener()
-    })
-    expect(screen.queryByRole('complementary', { name: 'Session detail' })).toBeNull()
-    act(() => {
-      media.matches = false
-      listener()
-    })
+    resize(760)
     expect(screen.getByRole('complementary', { name: 'Session detail' })).toBeTruthy()
+    expect(screen.queryByRole('listbox')).toBeNull()
+    resize(1100)
+    expect(screen.getByRole('complementary', { name: 'Session detail' })).toBeTruthy()
+    expect(screen.getByRole('listbox')).toBeTruthy()
   })
   function mountApp(narrow = false) {
-    vi.spyOn(window, 'matchMedia').mockReturnValue({
-      matches: narrow,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn()
-    } as unknown as MediaQueryList)
+    mockWorkspaceWidth(narrow ? 760 : 1100)
     const fake = fakeApi(snapshot([session('a'), session('b')]))
     Object.defineProperty(window, 'agentpeek', { value: fake.api, configurable: true })
     const store = createSessionsStore(fake.api)

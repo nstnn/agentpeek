@@ -59,9 +59,119 @@ button {
   cursor: default;
 }
 button:focus-visible,
+summary:focus-visible,
 [tabindex]:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.navigation-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.navigation-toolbar > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+}
+.navigation-toolbar button:disabled {
+  opacity: 0.5;
+}
+.sidebar-collapsed {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 6px;
+}
+.sidebar-collapsed nav button {
+  position: relative;
+  justify-content: center;
+  min-height: 40px;
+  padding: 6px;
+}
+.sidebar-collapsed .badge {
+  position: absolute;
+  right: -2px;
+  top: -2px;
+  padding: 0 4px;
+  font-size: 10px;
+  background: var(--accent);
+  color: var(--bg);
+}
+.sidebar-collapsed .sources-list {
+  margin-top: auto;
+  padding-top: 16px;
+}
+.source-disclosure summary {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 40px;
+  border-radius: 6px;
+  list-style: none;
+}
+.source-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+.source-disclosure[open] summary {
+  background: var(--selection-inactive);
+}
+.source-monogram {
+  font-weight: 600;
+  font-size: 13px;
+  border: 1px solid var(--secondary);
+  border-radius: 5px;
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+}
+.source-status {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  background: var(--sidebar);
+  font-size: 12px;
+  font-weight: 700;
+}
+.source-status.connected {
+  color: var(--green);
+}
+.source-status.no-access {
+  color: var(--red);
+}
+.source-status.unsupported {
+  color: var(--orange);
+}
+.source-details {
+  position: fixed;
+  left: 64px;
+  bottom: 16px;
+  width: 280px;
+  z-index: 10;
+  padding: 12px;
+  border: 1px solid var(--sep);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 4px 16px #0002;
+  overflow-wrap: anywhere;
+}
+.source-details p {
+  margin-top: 4px;
+}
+.source-details button {
+  margin-top: 8px;
 }
 .list-scroll:focus,
 .detail-pane:focus,

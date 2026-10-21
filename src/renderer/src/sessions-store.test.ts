@@ -72,7 +72,7 @@ describe('renderer subscription lifetime', () => {
       'b'
     ])
     store.setFilter('claude')
-    expect(store.getSnapshot().selection).toBeNull()
+    expect(store.getSnapshot().selection?.session.key).toEqual(b.key)
     expect(displayedGroups(store.getSnapshot())).toEqual([])
     off()
   })
@@ -230,16 +230,16 @@ describe('two detail slots', () => {
     expect(f.store.getSnapshot()).toMatchObject({
       selection: { session: f.a },
       listSelection: null,
-      activePane: null
+      activePane: 'second'
     })
     expect(f.store.getSnapshot().secondarySelection).toBe(second)
     expect(displayedGroups(f.store.getSnapshot()).flatMap((g) => g.sessions)).toEqual([f.a, f.c])
-    f.select(f.c)
+    f.store.showSessions()
     f.command('view:pinned')
     expect(f.store.getSnapshot()).toMatchObject({
       selection: { session: f.a },
       listSelection: null,
-      activePane: null
+      activePane: 'second'
     })
     expect(f.store.getSnapshot().secondarySelection).toBe(second)
     expect(displayedGroups(f.store.getSnapshot())).toEqual([])
@@ -250,7 +250,7 @@ describe('two detail slots', () => {
       lastSeenAt: NOW + 10,
       sourceEpoch: 0
     })
-    expect(f.store.getSnapshot().activePane).toBeNull()
+    expect(f.store.getSnapshot().activePane).toBe('second')
     expect(displayedGroups(f.store.getSnapshot())).toEqual([])
     f.off()
   })

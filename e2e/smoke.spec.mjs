@@ -239,11 +239,12 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     await expect(messageToggle).toBeFocused()
     await expect(page.getByText(/Showing the first 6,000/)).toBeInViewport()
     await save('long-message-collapsed')
-    for (const width of [1000, 999, 760]) {
+    for (const width of [800, 799, 760]) {
       await application.evaluate(({ BrowserWindow }, width) => {
         BrowserWindow.getAllWindows()[0].setContentSize(width, width === 760 ? 448 : 600)
       }, width)
-      if (width < 1000) await page.getByRole('option', { name: /^Fixture Codex long/ }).click()
+      if (!(await titleToggle.isVisible()))
+        await page.getByRole('option', { name: /^Fixture Codex long/ }).click()
       await expect(titleToggle).toBeVisible()
       geometry = await titleGeometry()
       expect(geometry.height).toBeLessThanOrEqual(geometry.lineHeight * 2 + 1)
@@ -262,7 +263,7 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
         )
       ).toBe(0)
       await save(`long-content-${width}`)
-      if (width < 1000) {
+      if (width < 800) {
         await page.keyboard.press('Escape')
         await expect(page.getByRole('listbox')).toBeFocused()
         await save(`long-content-${width}-back`)
@@ -273,7 +274,7 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     })
     evidence.actions.push({
       action:
-        'All Sessions; hostile detail; long title; Show More; deep scroll; Collapse Message; 1000/999/minimum; Escape'
+        'All Sessions; hostile detail; long title; Show More; deep scroll; Collapse Message; 800/799/minimum; Escape'
     })
 
     // Open with a row drag; explicitly activate the destination before ordinary selection.
@@ -359,7 +360,7 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     await save('split-active-read')
 
     await application.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0].setContentSize(999, 600)
+      BrowserWindow.getAllWindows()[0].setContentSize(760, 600)
     })
     await expect(main).toBeHidden()
     await expect(second).toBeVisible()
@@ -382,7 +383,7 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     await simulate(fixture.home, 'codex-reply')
     await expect.poll(replyState).toMatchObject({ newReply: true })
     const hiddenReply = await replyState()
-    await page.getByRole('button', { name: 'Return to Sessions', exact: true }).click()
+    await page.getByRole('button', { name: 'Hide Sessions', exact: true }).click()
     await expect(second).toBeFocused()
     await expect.poll(replyState).toEqual({ ...hiddenReply, newReply: false })
     await page.getByRole('radio', { name: 'Fixture Claude busy (Left pane)', exact: true }).click()
