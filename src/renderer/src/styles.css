@@ -9,6 +9,7 @@
   --sidebar: #f2f1f4;
   --text: #1d1d1f;
   --secondary: #68686d;
+  --scrollbar-thumb: #8a8a8f;
   --sep: #e7e7eb;
   --fill: #ececef;
   --accent: #0a64d6;
@@ -27,6 +28,7 @@
     --sidebar: #29292b;
     --text: #ededf0;
     --secondary: #ababaf;
+    --scrollbar-thumb: #76767c;
     --sep: #39393c;
     --fill: #38383b;
     --accent: #3b94ff;
@@ -42,6 +44,8 @@
 }
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 html,
 body,
