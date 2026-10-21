@@ -24,6 +24,11 @@ buttons labeled with the session titles select one detail at a time. Each pane k
 and disclosures across browsing and resizing. **Close Right Pane** restores the single-pane
 layout. The layout and selected sessions reset when the app quits or reloads.
 
+Drag the divider between visible columns to resize the sidebar, sessions list or either
+conversation pane. Sizes stay within readable limits and are remembered until quit/reload.
+Double-click a divider to reset it. With a divider focused, Left/Right adjusts by 10 pixels
+(Shift: 40), Home/End reaches its limits, and Enter resets it. Escape cancels an ongoing resize.
+
 ## Requirements
 
 - macOS on Apple Silicon

@@ -1,5 +1,7 @@
 import {
+  Fragment,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -15,6 +17,8 @@ import { VIEW_NAMES } from './session-display'
 import { Sidebar, SessionBanners, EmptyList } from './session-panels'
 import { SessionList } from './SessionList'
 import { SessionDetail } from './SessionDetail'
+import { PaneDivider } from './PaneDivider'
+import { clamp, paneLayout, type PaneSizes } from './pane-layout'
 
 export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.Element {
   const [store] = useState(() => suppliedStore ?? createSessionsStore(window.agentpeek))
@@ -27,6 +31,9 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
   const [dropPane, setDropPane] = useState<'main' | 'second' | null>(null)
   const [dropLeft, setDropLeft] = useState(0)
   const workspace = useRef<HTMLDivElement>(null)
+  const regionId = useId()
+  const [workspaceWidth, setWorkspaceWidth] = useState(() => window.innerWidth)
+  const [paneSizes, setPaneSizes] = useState<PaneSizes>({})
   const mainPane = useRef<HTMLElement>(null)
   const secondPane = useRef<HTMLElement>(null)
   const navigation = useRef<HTMLElement>(null)
@@ -56,6 +63,58 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     : !state.narrow || !state.detailOpen
   const mainVisible = reading && (!split || !state.narrow || state.activePane === 'main')
   const secondVisible = split && reading && (!state.narrow || state.activePane === 'second')
+  const sidebarVisible = !split || navigationVisible
+  const detailCount = Number(mainVisible) + Number(secondVisible)
+  const layout = paneLayout(workspaceWidth, paneSizes, {
+    sidebar: sidebarVisible,
+    list: navigationVisible,
+    details: detailCount,
+    split,
+    narrow: state.narrow
+  })
+  // Each divider trades space between its immediate neighbours.
+  const sidebarMax =
+    navigationVisible && detailCount
+      ? Math.min(layout.sidebarMax, layout.sidebar + layout.list - layout.listMin)
+      : layout.sidebarMax
+  const listMax = detailCount === 2 ? layout.list + layout.main - layout.detailMin : layout.listMax
+  const resizeSidebar = (value: number) => {
+    const sidebar = clamp(value, layout.sidebarMin, sidebarMax)
+    setPaneSizes((sizes) => ({
+      ...sizes,
+      sidebar,
+      ...(navigationVisible && detailCount
+        ? { [split ? 'splitList' : 'singleList']: layout.list + layout.sidebar - sidebar }
+        : {})
+    }))
+  }
+  const resizeList = (value: number) => {
+    const list = clamp(value, layout.listMin, listMax)
+    setPaneSizes((sizes) => ({
+      ...sizes,
+      [split ? 'splitList' : 'singleList']: list,
+      ...(detailCount === 2
+        ? {
+            splitRatio:
+              (layout.main + layout.list - list) /
+              (layout.main + layout.second + layout.list - list)
+          }
+        : {})
+    }))
+  }
+  useLayoutEffect(() => {
+    const element = workspace.current
+    if (!element) return
+    const update = (width: number) => {
+      if (width > 0) setWorkspaceWidth(width)
+    }
+    update(element.getBoundingClientRect().width)
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) update(entry.contentRect.width)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
   useLayoutEffect(() => {
     const narrow = window.matchMedia('(max-width: 999px)')
     const roomy = window.matchMedia('(min-width: 1300px)')
@@ -263,11 +322,29 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
         }}
         className={`workspace${split ? ' split-workspace' : ''}${split && state.splitBrowsing ? ' browsing-workspace' : ''}`}
       >
-        <div className="sidebar-container" hidden={split && !navigationVisible}>
+        <div
+          id={`${regionId}-sidebar`}
+          className="sidebar-container"
+          style={{ width: layout.sidebar }}
+          hidden={!sidebarVisible}
+        >
           <Sidebar snapshot={snapshot} view={view} onView={store.setView} />
         </div>
+        {sidebarVisible && (navigationVisible || detailCount > 0) && (
+          <PaneDivider
+            label="Sidebar width"
+            controls={`${regionId}-sidebar`}
+            value={layout.sidebar}
+            min={layout.sidebarMin}
+            max={sidebarMax}
+            onChange={resizeSidebar}
+            onReset={() => resizeSidebar(state.narrow ? 170 : 190)}
+          />
+        )}
         <main
+          id={`${regionId}-sessions`}
           className="sessions-pane"
+          style={{ flex: `0 0 ${layout.list}px` }}
           ref={navigation}
           aria-label="Sessions"
           hidden={!navigationVisible}
@@ -378,6 +455,17 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
             </p>
           )}
         </main>
+        {navigationVisible && detailCount > 0 && (
+          <PaneDivider
+            label="Sessions width"
+            controls={`${regionId}-sessions`}
+            value={layout.list}
+            min={layout.listMin}
+            max={listMax}
+            onChange={resizeList}
+            onReset={() => resizeList(split ? 300 : 420)}
+          />
+        )}
         {(['main', 'second'] as const).map((pane) => {
           const selection = pane === 'main' ? state.selection : state.secondarySelection
           if (pane === 'second' && !selection) return null
@@ -388,60 +476,83 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
             if (visible && state.activePane !== pane) store.activatePane(pane)
           }
           return (
-            <aside
-              key={pane}
-              ref={pane === 'main' ? mainPane : secondPane}
-              className="detail-pane"
-              aria-label={split ? label : 'Session detail'}
-              data-pane={pane}
-              data-active={state.activePane === pane}
-              tabIndex={-1}
-              hidden={!visible}
-              onPointerDownCapture={activate}
-              onFocusCapture={activate}
-            >
-              {pane === 'main' && !split && state.narrow && state.detailOpen && (
-                <button className="detail-back" type="button" onClick={store.back}>
-                  ‹ {VIEW_NAMES[view]}
-                </button>
-              )}
-              {split && (
-                <div className="pane-toolbar">
-                  <h2 className="pane-title" title={paneTitles[pane]}>
-                    {paneTitles[pane]}
-                  </h2>
-                  <span className="pane-active">{state.activePane === pane ? 'Active' : ''}</span>
-                  {pane === 'second' && !state.narrow && (
-                    <button type="button" onClick={store.closeSecondary}>
-                      Close Right Pane
-                    </button>
-                  )}
-                </div>
-              )}
-              {selected ? (
-                <SessionDetail
-                  key={`${pane}:${sessionKeyToString(selected.key)}`}
-                  session={selected}
-                  api={window.agentpeek}
-                  visible={visible}
-                  focused={windowFocused}
-                  paneLabel={split ? label : undefined}
-                  showTitle={!split}
-                  canAutoRead={() => store.canAutoRead(pane, selected.key, state.targetGeneration)}
-                  missing={!snapshot?.sessions.some((s) => sameKey(s.key, selected.key))}
-                  lastSeenAt={selection.lastSeenAt}
-                  sourceEpoch={selection.sourceEpoch}
-                  reloadPending={state.reloadPending}
-                  reloadVersion={state.reloadVersion}
-                  onReload={store.reload}
+            <Fragment key={pane}>
+              {pane === 'second' && mainVisible && secondVisible && (
+                <PaneDivider
+                  label={`${paneTitles.main} (Left pane) width`}
+                  controls={`${regionId}-main`}
+                  value={layout.main}
+                  min={layout.detailMin}
+                  max={layout.mainMax}
+                  onChange={(value) =>
+                    setPaneSizes((sizes) => ({
+                      ...sizes,
+                      splitRatio: value / (layout.main + layout.second)
+                    }))
+                  }
+                  onReset={() => setPaneSizes((sizes) => ({ ...sizes, splitRatio: 0.5 }))}
                 />
-              ) : (
-                <div className="detail-placeholder">
-                  <h2>No session selected</h2>
-                  <p>Select a session to see its latest exchange.</p>
-                </div>
               )}
-            </aside>
+              <aside
+                id={`${regionId}-${pane}`}
+                ref={pane === 'main' ? mainPane : secondPane}
+                className="detail-pane"
+                style={{
+                  flex: `0 0 ${pane === 'main' || detailCount === 1 ? layout.main : layout.second}px`
+                }}
+                aria-label={split ? label : 'Session detail'}
+                data-pane={pane}
+                data-active={state.activePane === pane}
+                tabIndex={-1}
+                hidden={!visible}
+                onPointerDownCapture={activate}
+                onFocusCapture={activate}
+              >
+                {pane === 'main' && !split && state.narrow && state.detailOpen && (
+                  <button className="detail-back" type="button" onClick={store.back}>
+                    ‹ {VIEW_NAMES[view]}
+                  </button>
+                )}
+                {split && (
+                  <div className="pane-toolbar">
+                    <h2 className="pane-title" title={paneTitles[pane]}>
+                      {paneTitles[pane]}
+                    </h2>
+                    <span className="pane-active">{state.activePane === pane ? 'Active' : ''}</span>
+                    {pane === 'second' && !state.narrow && (
+                      <button type="button" onClick={store.closeSecondary}>
+                        Close Right Pane
+                      </button>
+                    )}
+                  </div>
+                )}
+                {selected ? (
+                  <SessionDetail
+                    key={`${pane}:${sessionKeyToString(selected.key)}`}
+                    session={selected}
+                    api={window.agentpeek}
+                    visible={visible}
+                    focused={windowFocused}
+                    paneLabel={split ? label : undefined}
+                    showTitle={!split}
+                    canAutoRead={() =>
+                      store.canAutoRead(pane, selected.key, state.targetGeneration)
+                    }
+                    missing={!snapshot?.sessions.some((s) => sameKey(s.key, selected.key))}
+                    lastSeenAt={selection.lastSeenAt}
+                    sourceEpoch={selection.sourceEpoch}
+                    reloadPending={state.reloadPending}
+                    reloadVersion={state.reloadVersion}
+                    onReload={store.reload}
+                  />
+                ) : (
+                  <div className="detail-placeholder">
+                    <h2>No session selected</h2>
+                    <p>Select a session to see its latest exchange.</p>
+                  </div>
+                )}
+              </aside>
+            </Fragment>
           )
         })}
         {dragSession && (

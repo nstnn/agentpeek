@@ -52,6 +52,35 @@ const unread = (id: string, error = false): Session =>
   })
 
 describe('roomy split session composition', () => {
+  it('resizes visible columns without replacing transcripts or changing the active session', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 1440
+    } as DOMRect)
+    const f = mount()
+    await choose('a')
+    await keepMain(f)
+    await userEvent.click(within(pane('Right')).getByRole('button', { name: 'Show More' }))
+    const transcript = messages('Right')
+    fireEvent.scroll(transcript, { target: { scrollTop: 75 } })
+    const activeKey = f.store.getSnapshot().secondarySelection!.session.key
+    const loads = f.api.getMessages.mock.calls.length
+    const divider = screen.getByRole('separator', { name: 'Synthetic a (Left pane) width' })
+    const before = Number(divider.getAttribute('aria-valuenow'))
+    fireEvent.keyDown(divider, { key: 'ArrowLeft' })
+    expect(Number(divider.getAttribute('aria-valuenow'))).toBe(before - 10)
+    fireEvent.keyDown(divider, { key: 'Enter' })
+    expect(f.store.getSnapshot().activePane).toBe('second')
+    expect(f.store.getSnapshot().secondarySelection!.session.key).toEqual(activeKey)
+    expect(messages('Right')).toBe(transcript)
+    expect(transcript.scrollTop).toBe(75)
+    expect(within(pane('Right')).getByRole('button', { name: 'Collapse Message' })).toBeTruthy()
+    expect(f.api.getMessages.mock.calls.length).toBe(loads)
+    await userEvent.click(within(pane('Right')).getByRole('button', { name: 'Close Right Pane' }))
+    expect(screen.queryByRole('separator', { name: /Left pane.*width/ })).toBeNull()
+    expect(screen.getByRole('separator', { name: 'Sidebar width' })).toBeTruthy()
+    expect(screen.getByRole('separator', { name: 'Sessions width' })).toBeTruthy()
+  })
+
   it('keeps slot-local identity, scroll and disclosures across selection, replacement and close', async () => {
     const f = mount()
     await choose('a')

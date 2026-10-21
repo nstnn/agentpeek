@@ -32,7 +32,9 @@ const USAGE = `Usage: node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs
   main-eval <js> [--run <id>] Evaluate in the main process; \`require\`, \`electron\`, \`app\`,
                               \`BrowserWindow\`, and \`Menu\` are in scope. For observing state.
   click (--role <r> --name <n> | --selector <css>) [--nth <i>] [--run <id>]
-                              Real mouse click at the element's center.
+                              Real mouse click at the element's center; --double for double-click.
+  resize --selector <css> --by <pixels> [--cancel] [--run <id>]
+                              Drag an observed pane divider horizontally; --cancel presses Escape.
   drag --source <css> --target <css> --name <evidence-name> [--cancel] [--run <id>]
                               Drag a real row to an observed target; save hover ARIA/PNG, then drop or Escape.
   key <combo> [--run <id>]    Key press sent to the page, e.g. Escape, ArrowDown, Meta+A.
@@ -364,19 +366,88 @@ async function click() {
     const [x1, y1, , , x3, y3] = model.border
     const x = (x1 + x3) / 2
     const y = (y1 + y3) / 2
-    const base = { x, y, button: 'left', clickCount: 1 }
+    const base = { x, y, button: 'left' }
     // No mouseMoved first: when the window is in the background, Chromium holds a move event for
     // about 5 seconds. Press and release alone produce mousedown, mouseup, and click.
-    await s.send('Input.dispatchMouseEvent', { ...base, type: 'mousePressed', buttons: 1 })
-    await s.send('Input.dispatchMouseEvent', { ...base, type: 'mouseReleased', buttons: 0 })
+    for (let clickCount = 1; clickCount <= (flags.double ? 2 : 1); clickCount++) {
+      await s.send('Input.dispatchMouseEvent', {
+        ...base,
+        clickCount,
+        type: 'mousePressed',
+        buttons: 1
+      })
+      await s.send('Input.dispatchMouseEvent', {
+        ...base,
+        clickCount,
+        type: 'mouseReleased',
+        buttons: 0
+      })
+    }
     return { clickedAt: { x: Math.round(x), y: Math.round(y) } }
   })
   printAndLog(
     run,
     'click',
-    { role: flags.role, name: flags.name, selector: flags.selector, nth },
+    { role: flags.role, name: flags.name, selector: flags.selector, nth, double: !!flags.double },
     result
   )
+}
+
+async function resize() {
+  const run = loadLiveRun()
+  const by = Number(flags.by)
+  if (!flags.selector || !Number.isFinite(by) || Math.abs(by) > 10000)
+    throw new Error('resize needs --selector and a finite --by within +/-10000 pixels')
+  if (!(await withMain(run, (s) => evaluate(s, mainExpression(WINDOW_FOCUSED)))))
+    throw new Error('window not focused; run focus first')
+  const result = await withPage(run, async (s) => {
+    const { root } = await s.send('DOM.getDocument', { depth: 0 })
+    const { nodeId } = await s.send('DOM.querySelector', {
+      nodeId: root.nodeId,
+      selector: String(flags.selector)
+    })
+    if (!nodeId) throw new Error(`no divider for ${flags.selector}`)
+    const { attributes } = await s.send('DOM.getAttributes', { nodeId })
+    if (attributes[attributes.indexOf('role') + 1] !== 'separator')
+      throw new Error('resize target must be an observed separator')
+    const { model } = await s.send('DOM.getBoxModel', { nodeId })
+    const [x1, y1, , , x3, y3] = model.border
+    const origin = { x: (x1 + x3) / 2, y: (y1 + y3) / 2 }
+    const pointer = { ...origin, button: 'left', clickCount: 1 }
+    await s.send('Input.dispatchMouseEvent', { ...pointer, type: 'mousePressed', buttons: 1 })
+    try {
+      for (let i = 1; i <= 8; i++)
+        await s.send('Input.dispatchMouseEvent', {
+          ...pointer,
+          x: origin.x + (by * i) / 8,
+          type: 'mouseMoved',
+          buttons: 1
+        })
+      if (flags.cancel) {
+        await s.send('Input.dispatchKeyEvent', {
+          type: 'keyDown',
+          key: 'Escape',
+          code: 'Escape',
+          windowsVirtualKeyCode: 27
+        })
+        await s.send('Input.dispatchKeyEvent', {
+          type: 'keyUp',
+          key: 'Escape',
+          code: 'Escape',
+          windowsVirtualKeyCode: 27
+        })
+      }
+    } finally {
+      await s.send('Input.dispatchMouseEvent', {
+        ...pointer,
+        x: origin.x + by,
+        type: 'mouseReleased',
+        buttons: 0
+      })
+    }
+    return { origin, by, cancelled: !!flags.cancel }
+  })
+  printAndLog(run, 'resize', { selector: flags.selector, by, cancel: !!flags.cancel }, result)
 }
 
 // Intercept Chromium's actual drag payload after pointer input; never fabricate a session key.
@@ -1298,6 +1369,9 @@ try {
       break
     case 'drag':
       await drag()
+      break
+    case 'resize':
+      await resize()
       break
     case 'key':
       await key()
