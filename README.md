@@ -18,12 +18,21 @@ accent header showing its session title once; the metadata below starts with the
 Only a successfully loaded, active visible reply/error is marked read while the window is
 focused; waiting still requires action in the tool.
 
-At 1300+ content pixels the shared list and both panes appear together. At 1000–1299,
-**Show Sessions** opens the list and **Return to Sessions** resumes reading; below 1000,
-buttons labeled with the session titles select one detail at a time. Each pane keeps its own scroll
-and disclosures across browsing and resizing. Each split pane has an **×** button to close it;
-the other session keeps its scroll and disclosures in the single-pane
-layout. The layout and selected sessions reset when the app quits or reloads.
+The **Views** button (⇧⌘B) collapses the sidebar to a 56-pixel icon rail;
+**Hide Sessions / Show Sessions** (⇧⌘L) independently toggles the session list.
+The rail keeps Active attention counts, view selection and source status; click a source
+initial to inspect its health, then Close or Escape to dismiss it. Choosing a view opens
+its filtered list while retaining the sessions being read.
+
+The layout uses the remaining width after navigation: with the default 190-pixel sidebar,
+single-pane reading fits beside the list at 800+ content pixels, two split details fit at
+840+, and the list fits alongside both at 1125+. Collapsing Views lowers those thresholds
+to 661/701/982 pixels. Resizing a preferred sidebar changes the thresholds accordingly.
+When the list replaces reading, **Hide Sessions** resumes the remembered pane; below the
+two-detail capacity, buttons labeled with session titles select one detail at a time.
+Each pane keeps its scroll and disclosures across toggles and resizing. Each split pane
+has an **×** button; closing either keeps the other session in the single-pane layout.
+The layout, navigation visibility and selected sessions reset when the app quits or reloads.
 
 Drag the divider between visible columns to resize the sidebar, sessions list or either
 conversation pane. Sizes stay within readable limits and are remembered until quit/reload.

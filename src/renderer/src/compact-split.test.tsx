@@ -5,21 +5,10 @@ import type { RecentMessages } from '../../core/session'
 import { fakeApi, NOW, session, snapshot } from '../test-support'
 import { App } from './App'
 import { createSessionsStore } from './sessions-store'
+import { mockWorkspaceWidth } from '../workspace-test-support'
 
 function mount(width: number) {
-  let currentWidth = width
-  const queries: { query: string; listeners: Set<() => void> }[] = []
-  vi.spyOn(window, 'matchMedia').mockImplementation((query) => {
-    const listeners = new Set<() => void>()
-    queries.push({ query, listeners })
-    return {
-      get matches() {
-        return query.includes('max-width') ? currentWidth < 1000 : currentWidth >= 1300
-      },
-      addEventListener: (_: string, callback: () => void) => listeners.add(callback),
-      removeEventListener: (_: string, callback: () => void) => listeners.delete(callback)
-    } as unknown as MediaQueryList
-  })
+  const resize = mockWorkspaceWidth(width)
   const f = fakeApi(snapshot([session('a'), session('b'), session('c')]))
   f.api.getMessages.mockImplementation((key) =>
     Promise.resolve({
@@ -35,12 +24,7 @@ function mount(width: number) {
     ...f,
     store,
     ...rendered,
-    resize(next: number) {
-      act(() => {
-        currentWidth = next
-        queries.forEach(({ listeners }) => listeners.forEach((callback) => callback()))
-      })
-    }
+    resize
   }
 }
 const pane = (name: 'Left' | 'Right') => screen.getByRole('complementary', { name: `${name} pane` })
@@ -53,14 +37,14 @@ async function open(f: ReturnType<typeof mount>) {
 }
 
 describe('responsive split navigation', () => {
-  it.each([760, 999, 1000, 1299])(
+  it.each([760, 839, 840, 1124])(
     'closes Left at %i pixels and keeps Right in the single detail with usable focus',
     async (width) => {
       const f = mount(width)
       await choose('a')
       act(() => f.command({ type: 'open-secondary', key: session('b').key }))
       await within(pane('Right')).findByRole('button', { name: 'Show More' })
-      if (width < 1000)
+      if (width < 840)
         await userEvent.click(screen.getByRole('radio', { name: 'Synthetic a (Left pane)' }))
       await userEvent.click(within(pane('Left')).getByRole('button', { name: 'Close Left Pane' }))
       const detail = screen.getByRole('complementary', { name: 'Session detail' })
@@ -70,29 +54,27 @@ describe('responsive split navigation', () => {
         selection: { session: { key: session('b').key } },
         secondarySelection: null,
         activePane: 'main',
-        detailOpen: width < 1000
+        detailOpen: width < 800
       })
       expect(document.activeElement).toBe(
-        width < 1000 ? screen.getByRole('button', { name: '‹ Active' }) : detail
+        width < 800 ? screen.getByRole('button', { name: '‹ Active' }) : detail
       )
     }
   )
 
-  it.each([999, 1000, 1299, 1300, 1440])(
+  it.each([839, 840, 1124, 1125, 1440])(
     'presents the intended panes and navigation at %i content pixels',
     async (width) => {
       const f = mount(width)
       await open(f)
-      expect(screen.queryByRole('complementary', { name: 'Left pane' }) !== null).toBe(
-        width >= 1000
-      )
+      expect(screen.queryByRole('complementary', { name: 'Left pane' }) !== null).toBe(width >= 840)
       expect(pane('Right').querySelector('.pane-title')?.textContent).toBe('Synthetic a')
-      if (width >= 1000)
+      if (width >= 840)
         expect(pane('Left').querySelector('.pane-title')?.textContent).toBe('Synthetic a')
-      expect(screen.queryByRole('listbox') !== null).toBe(width >= 1300)
-      expect(screen.queryByRole('button', { name: 'Show Sessions' }) !== null).toBe(width < 1300)
-      expect(f.api.setDetailOpen).toHaveBeenLastCalledWith(width < 1300)
-      if (width < 1000)
+      expect(screen.queryByRole('listbox') !== null).toBe(width >= 1125)
+      expect(screen.queryByRole('button', { name: 'Show Sessions' }) !== null).toBe(width < 1125)
+      expect(f.api.setDetailOpen).toHaveBeenLastCalledWith(width < 1125)
+      if (width < 840)
         expect(
           screen
             .getByRole('radio', { name: 'Synthetic a (Right pane)' })
@@ -114,9 +96,9 @@ describe('responsive split navigation', () => {
     fireEvent.scroll(main, { target: { scrollTop: 42 } })
     const list = screen.getByRole('listbox')
     list.focus()
-    f.resize(1299)
+    f.resize(1124)
     expect(document.activeElement).toBe(pane('Left'))
-    f.resize(999)
+    f.resize(839)
     expect(pane('Left').querySelector('.pane-title')?.textContent).toBe('Synthetic c')
     expect(screen.getByRole('radio', { name: 'Synthetic c (Left pane)' }).textContent).toBe(
       'Synthetic c'
@@ -128,7 +110,7 @@ describe('responsive split navigation', () => {
     f.resize(1440)
     expect(screen.queryByRole('complementary', { name: 'Right pane' })).toBeNull()
     expect(f.api.setDetailOpen).toHaveBeenLastCalledWith(false)
-    await userEvent.click(screen.getByRole('button', { name: 'Return to Sessions' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Hide Sessions' }))
     expect(f.store.getSnapshot().activePane).toBe('second')
     expect(document.activeElement).toBe(pane('Right'))
     expect(within(pane('Right')).getByRole('region')).toBe(second)
@@ -140,7 +122,7 @@ describe('responsive split navigation', () => {
   })
 
   it('uses arrow selectors, Escape/native Back and browse arrows/Enter without loading hidden selections', async () => {
-    const f = mount(999)
+    const f = mount(839)
     await open(f)
     const secondSelector = screen.getByRole('radio', { name: 'Synthetic a (Right pane)' })
     secondSelector.focus()
@@ -169,12 +151,14 @@ describe('responsive split navigation', () => {
     expect(f.store.getSnapshot().selection?.session.key.id).toBe('a')
     await userEvent.click(screen.getByRole('button', { name: 'Close Right Pane' }))
     expect(screen.queryByRole('radiogroup', { name: 'Visible session pane' })).toBeNull()
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: '‹ Active' }))
-    expect(f.store.getSnapshot()).toMatchObject({ activePane: 'main', detailOpen: true })
+    expect(document.activeElement).toBe(
+      screen.getByRole('complementary', { name: 'Session detail' })
+    )
+    expect(f.store.getSnapshot()).toMatchObject({ activePane: 'main', detailOpen: false })
   })
 
   it('defers hidden updates, rejects late hidden results and does not acknowledge a pane revealed by resize', async () => {
-    const f = mount(999)
+    const f = mount(839)
     await choose('a')
     await screen.findByRole('button', { name: 'Show More' })
     let finish!: (messages: RecentMessages) => void
@@ -210,10 +194,10 @@ describe('responsive split navigation', () => {
     expect(f.api.getMessages).not.toHaveBeenCalled()
     expect(f.api.markRead).not.toHaveBeenCalled()
     expect(screen.queryByText('Late hidden text')).toBeNull()
-    await userEvent.click(screen.getByRole('button', { name: 'Return to Sessions' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Hide Sessions' }))
     await within(pane('Right')).findByRole('button', { name: 'Show More' })
     f.api.getMessages.mockClear()
-    f.resize(1000)
+    f.resize(840)
     await within(pane('Left')).findByRole('button', { name: 'Show More' })
     expect(f.api.getMessages).toHaveBeenCalledWith(a.key, 20)
     expect(f.api.markRead).not.toHaveBeenCalled()
@@ -228,7 +212,7 @@ describe('responsive split navigation', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Show Sessions' }))
     await userEvent.click(screen.getByRole('radio', { name: 'Codex 3' }))
     expect(f.store.getSnapshot().selection?.session.key.id).toBe('a')
-    await userEvent.click(screen.getByRole('button', { name: 'Return to Sessions' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Hide Sessions' }))
     expect(document.activeElement).toBe(pane('Right'))
     await userEvent.click(screen.getByRole('button', { name: 'Show Sessions' }))
     await userEvent.click(screen.getByRole('button', { name: 'Close Right Pane' }))

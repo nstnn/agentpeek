@@ -31,6 +31,7 @@ export interface RendererState {
   splitBrowsing: boolean
   returnPane: PaneId
   detailOpen: boolean
+  sessionsHidden: boolean
   reloadPending: boolean
   reloadError: string | null
   reloadVersion: number
@@ -56,6 +57,7 @@ export function createSessionsStore(api: AgentPeekApi) {
     splitBrowsing: false,
     returnPane: 'main',
     detailOpen: false,
+    sessionsHidden: false,
     reloadPending: false,
     reloadError: null,
     reloadVersion: 0
@@ -181,30 +183,12 @@ export function createSessionsStore(api: AgentPeekApi) {
       }
     },
     setView(this: void, view: ViewId) {
-      sendDetailOpen(false)
-      emit({
-        view,
-        selection: state.secondarySelection ? state.selection : null,
-        listSelection: null,
-        activePane: null,
-        splitBrowsing: !!state.secondarySelection,
-        returnPane: state.activePane ?? state.returnPane,
-        detailOpen: false,
-        actionError: null
-      })
+      emit({ view, listSelection: null, actionError: null })
+      store.showSessions()
     },
     setFilter(this: void, filter: ToolFilter) {
-      sendDetailOpen(false)
-      emit({
-        filter,
-        selection: state.secondarySelection ? state.selection : null,
-        listSelection: null,
-        activePane: null,
-        splitBrowsing: !!state.secondarySelection,
-        returnPane: state.activePane ?? state.returnPane,
-        detailOpen: false,
-        actionError: null
-      })
+      emit({ filter, listSelection: null, actionError: null })
+      store.showSessions()
     },
     setNarrow(this: void, narrow: boolean) {
       store.setLayout(narrow, !narrow)
@@ -220,12 +204,13 @@ export function createSessionsStore(api: AgentPeekApi) {
         emit({ roomy })
         return
       }
-      sendDetailOpen(false)
+      const reading = state.activePane !== null
+      sendDetailOpen(narrow && reading)
       emit({
         narrow,
         roomy,
-        detailOpen: false,
-        activePane: !narrow && state.selection ? 'main' : null
+        detailOpen: narrow && reading,
+        activePane: state.selection && (reading || !narrow) ? 'main' : null
       })
     },
     activate(this: void, session: Session, groups: SessionGroup[]) {
@@ -251,13 +236,33 @@ export function createSessionsStore(api: AgentPeekApi) {
       store.showSessions()
     },
     showSessions(this: void) {
+      const replacing = state.secondarySelection ? !state.roomy : state.narrow
       emit({
+        sessionsHidden: false,
         detailOpen: false,
-        splitBrowsing: !!state.secondarySelection,
+        splitBrowsing: !!state.secondarySelection && replacing,
         returnPane: state.activePane ?? state.returnPane,
-        activePane: null
+        activePane: replacing ? null : state.activePane
       })
       sendDetailOpen(false)
+    },
+    hideSessions(this: void) {
+      if (!state.selection && !state.secondarySelection) return
+      const pane =
+        state.activePane ??
+        (state.returnPane === 'second' && state.secondarySelection
+          ? 'second'
+          : state.selection
+            ? 'main'
+            : 'second')
+      emit({
+        sessionsHidden: true,
+        splitBrowsing: false,
+        activePane: pane,
+        returnPane: pane,
+        detailOpen: state.secondarySelection ? !state.roomy : state.narrow
+      })
+      sendDetailOpen(state.detailOpen)
     },
     returnToSessions(this: void) {
       if (!state.secondarySelection || !state.splitBrowsing) return

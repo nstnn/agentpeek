@@ -5,16 +5,10 @@ import type { RecentMessages, Session } from '../../core/session'
 import { fakeApi, NOW, session, snapshot } from '../test-support'
 import { App } from './App'
 import { createSessionsStore } from './sessions-store'
+import { mockWorkspaceWidth } from '../workspace-test-support'
 
 function mount(sessions = [session('a'), session('b'), session('c'), session('d')]) {
-  vi.spyOn(window, 'matchMedia').mockImplementation(
-    (query) =>
-      ({
-        matches: query === '(min-width: 1300px)',
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn()
-      }) as unknown as MediaQueryList
-  )
+  mockWorkspaceWidth(1440)
   const f = fakeApi(snapshot(sessions))
   f.api.getMessages.mockImplementation((key) =>
     Promise.resolve({
@@ -263,7 +257,7 @@ describe('roomy split session composition', () => {
     await userEvent.click(screen.getByRole('radio', { name: 'Claude Code 1' }))
     expect(screen.getAllByRole('option')).toHaveLength(1)
     expect(screen.queryByRole('option', { name: /Right pane/ })).toBeNull()
-    expect(screen.queryByRole('complementary', { name: 'Right pane' })).toBeNull()
+    expect(pane('Right')).toBeTruthy()
     expect(f.container.querySelector('[data-pane=second] .transcript')).toBe(secondMessages)
     expect(f.store.getSnapshot().selection?.session.key.id).toBe('a')
     act(() =>

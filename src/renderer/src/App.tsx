@@ -10,7 +10,6 @@ import {
   type JSX
 } from 'react'
 import { sessionKeyToString, type Session } from '../../core/session'
-import { flushSync } from 'react-dom'
 import { buildView } from '../../core/views'
 import { createSessionsStore, displayedGroups, sameKey, type SessionsStore } from './sessions-store'
 import { VIEW_NAMES } from './session-display'
@@ -18,7 +17,8 @@ import { Sidebar, SessionBanners, EmptyList } from './session-panels'
 import { SessionList } from './SessionList'
 import { SessionDetail } from './SessionDetail'
 import { PaneDivider } from './PaneDivider'
-import { clamp, paneLayout, type PaneSizes } from './pane-layout'
+import { clamp, layoutCapacity, paneLayout, type PaneSizes } from './pane-layout'
+import { NavigationIcon } from './NavigationIcon'
 
 export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.Element {
   const [store] = useState(() => suppliedStore ?? createSessionsStore(window.agentpeek))
@@ -34,13 +34,20 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
   const regionId = useId()
   const [workspaceWidth, setWorkspaceWidth] = useState(() => window.innerWidth)
   const [paneSizes, setPaneSizes] = useState<PaneSizes>({})
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [paneInstances, setPaneInstances] = useState({ main: 'main', second: 'second' })
   const mainPane = useRef<HTMLElement>(null)
   const secondPane = useRef<HTMLElement>(null)
   const navigation = useRef<HTMLElement>(null)
   const previousSecond = useRef<string | null>(null)
   const previousPlacement = useRef(0)
-  const previousLayout = useRef({ reading: false, split: false, narrow: false, roomy: false })
+  const previousLayout = useRef({
+    reading: false,
+    split: false,
+    narrow: false,
+    roomy: false,
+    collapsed: false
+  })
   const paneAtDrop = (event: DragEvent): 'main' | 'second' | null => {
     const targets = workspace.current?.querySelectorAll<HTMLElement>('[data-drop-pane]') ?? []
     for (const target of targets) {
@@ -60,18 +67,18 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
   const split = !!state.secondarySelection
   const reading = split ? !state.splitBrowsing : !state.narrow || state.detailOpen
   const navigationVisible = split
-    ? state.splitBrowsing || state.roomy
-    : !state.narrow || !state.detailOpen
+    ? state.splitBrowsing || (state.roomy && !state.sessionsHidden)
+    : (!state.narrow || !state.detailOpen) && (!state.sessionsHidden || !state.selection)
   const mainVisible = reading && (!split || !state.narrow || state.activePane === 'main')
   const secondVisible = split && reading && (!state.narrow || state.activePane === 'second')
-  const sidebarVisible = !split || navigationVisible
   const detailCount = Number(mainVisible) + Number(secondVisible)
   const layout = paneLayout(workspaceWidth, paneSizes, {
-    sidebar: sidebarVisible,
+    sidebar: true,
     list: navigationVisible,
     details: detailCount,
     split,
-    narrow: state.narrow
+    narrow: state.narrow,
+    collapsed: sidebarCollapsed
   })
   // Each divider trades space between its immediate neighbours.
   const sidebarMax =
@@ -117,18 +124,9 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     return () => observer.disconnect()
   }, [])
   useLayoutEffect(() => {
-    const narrow = window.matchMedia('(max-width: 999px)')
-    const roomy = window.matchMedia('(min-width: 1300px)')
-    const update = () => store.setLayout(narrow.matches, roomy.matches)
-    const change = () => flushSync(update)
-    update()
-    narrow.addEventListener('change', change)
-    roomy.addEventListener('change', change)
-    return () => {
-      narrow.removeEventListener('change', change)
-      roomy.removeEventListener('change', change)
-    }
-  }, [store])
+    const capacity = layoutCapacity(workspaceWidth, paneSizes, sidebarCollapsed, split)
+    store.setLayout(capacity.narrow, capacity.roomy)
+  }, [store, workspaceWidth, paneSizes, sidebarCollapsed, split])
   useLayoutEffect(() => {
     store.setVisiblePanes([
       ...(mainVisible ? (['main'] as const) : []),
@@ -158,9 +156,10 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
       else target?.focus({ preventScroll: true })
     } else if (
       hiddenFocus ||
-      (reading &&
-        active === document.body &&
-        (previous.narrow !== state.narrow || previous.roomy !== state.roomy))
+      (active === document.body &&
+        (previous.narrow !== state.narrow ||
+          previous.roomy !== state.roomy ||
+          previous.collapsed !== sidebarCollapsed))
     ) {
       // A layout change can hide a focused list, selector or pane control. Keep
       // focus on the same reading target instead of activating its sibling.
@@ -169,7 +168,13 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     }
     previousSecond.current = secondKey
     previousPlacement.current = state.placementVersion
-    previousLayout.current = { reading, split, narrow: state.narrow, roomy: state.roomy }
+    previousLayout.current = {
+      reading,
+      split,
+      narrow: state.narrow,
+      roomy: state.roomy,
+      collapsed: sidebarCollapsed
+    }
   }, [
     secondKey,
     secondVisible,
@@ -179,7 +184,9 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     reading,
     split,
     state.narrow,
-    state.roomy
+    state.roomy,
+    navigationVisible,
+    sidebarCollapsed
   ])
   useEffect(() => {
     const focus = () => setWindowFocused(true)
@@ -191,6 +198,28 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
       window.removeEventListener('blur', blur)
     }
   }, [])
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        !event.metaKey ||
+        !event.shiftKey ||
+        event.altKey ||
+        event.ctrlKey
+      )
+        return
+      if (event.key.toLowerCase() === 'b') {
+        event.preventDefault()
+        setSidebarCollapsed((collapsed) => !collapsed)
+      } else if (event.key.toLowerCase() === 'l') {
+        event.preventDefault()
+        if (navigationVisible) store.hideSessions()
+        else store.showSessions()
+      }
+    }
+    window.addEventListener('keydown', shortcut)
+    return () => window.removeEventListener('keydown', shortcut)
+  }, [store, navigationVisible])
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000)
     return () => window.clearInterval(timer)
@@ -237,63 +266,80 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
         reloadError={state.reloadError}
         onReload={store.reload}
       />
-      {split && (!state.roomy || state.splitBrowsing) && (
-        <div className="split-navigation">
+      <div className="split-navigation navigation-toolbar">
+        <button
+          type="button"
+          aria-label={sidebarCollapsed ? 'Expand Views' : 'Collapse Views'}
+          title={`${sidebarCollapsed ? 'Expand' : 'Collapse'} Views (⇧⌘B)`}
+          aria-expanded={!sidebarCollapsed}
+          aria-controls={`${regionId}-sidebar`}
+          aria-keyshortcuts="Meta+Shift+B"
+          onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+        >
+          <NavigationIcon kind="views" />
+          <span>Views</span>
+        </button>
+        <button
+          type="button"
+          aria-label={navigationVisible ? 'Hide Sessions' : 'Show Sessions'}
+          title={`${navigationVisible ? 'Hide' : 'Show'} Sessions (⇧⌘L)`}
+          aria-expanded={navigationVisible}
+          aria-controls={`${regionId}-sessions`}
+          aria-keyshortcuts="Meta+Shift+L"
+          disabled={navigationVisible && !state.selection && !state.secondarySelection}
+          onClick={navigationVisible ? store.hideSessions : store.showSessions}
+        >
+          <NavigationIcon kind="sessions" />
+          <span>{navigationVisible ? 'Hide Sessions' : 'Show Sessions'}</span>
+        </button>
+        {split && state.narrow && reading && (
+          <div role="radiogroup" aria-label="Visible session pane" className="pane-selector">
+            {(['main', 'second'] as const).map((pane) => (
+              <button
+                type="button"
+                key={pane}
+                role="radio"
+                aria-label={`${paneTitles[pane]} (${pane === 'main' ? 'Left' : 'Right'} pane)`}
+                title={paneTitles[pane]}
+                aria-checked={state.activePane === pane}
+                disabled={pane === 'main' && !state.selection}
+                tabIndex={state.activePane === pane ? 0 : -1}
+                onClick={() => store.activatePane(pane)}
+                onKeyDown={(event) => {
+                  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+                  event.preventDefault()
+                  const next =
+                    event.key === 'Home'
+                      ? 'main'
+                      : event.key === 'End'
+                        ? 'second'
+                        : pane === 'main'
+                          ? 'second'
+                          : 'main'
+                  if (next === 'main' && !state.selection) return
+                  store.activatePane(next)
+                  event.currentTarget.parentElement
+                    ?.querySelectorAll<HTMLButtonElement>('button')
+                    [next === 'main' ? 0 : 1]?.focus()
+                }}
+              >
+                {paneTitles[pane]}
+              </button>
+            ))}
+          </div>
+        )}
+        {state.splitBrowsing && (
           <button
             type="button"
-            onClick={state.splitBrowsing ? store.returnToSessions : store.showSessions}
+            className="pane-close"
+            aria-label="Close Right Pane"
+            title="Close Right Pane"
+            onClick={store.closeSecondary}
           >
-            {state.splitBrowsing ? 'Return to Sessions' : 'Show Sessions'}
+            <span aria-hidden="true">×</span>
           </button>
-          {state.narrow && reading && (
-            <div role="radiogroup" aria-label="Visible session pane" className="pane-selector">
-              {(['main', 'second'] as const).map((pane) => (
-                <button
-                  type="button"
-                  key={pane}
-                  role="radio"
-                  aria-label={`${paneTitles[pane]} (${pane === 'main' ? 'Left' : 'Right'} pane)`}
-                  title={paneTitles[pane]}
-                  aria-checked={state.activePane === pane}
-                  disabled={pane === 'main' && !state.selection}
-                  tabIndex={state.activePane === pane ? 0 : -1}
-                  onClick={() => store.activatePane(pane)}
-                  onKeyDown={(event) => {
-                    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-                    event.preventDefault()
-                    const next =
-                      event.key === 'Home'
-                        ? 'main'
-                        : event.key === 'End'
-                          ? 'second'
-                          : pane === 'main'
-                            ? 'second'
-                            : 'main'
-                    if (next === 'main' && !state.selection) return
-                    store.activatePane(next)
-                    event.currentTarget.parentElement
-                      ?.querySelectorAll<HTMLButtonElement>('button')
-                      [next === 'main' ? 0 : 1]?.focus()
-                  }}
-                >
-                  {paneTitles[pane]}
-                </button>
-              ))}
-            </div>
-          )}
-          {state.splitBrowsing && (
-            <button
-              type="button"
-              className="pane-close"
-              aria-label="Close Right Pane"
-              title="Close Right Pane"
-              onClick={store.closeSecondary}
-            >
-              <span aria-hidden="true">×</span>
-            </button>
-          )}
-        </div>
-      )}
+        )}
+      </div>
       <div
         ref={workspace}
         onDragOver={(event) => {
@@ -333,11 +379,15 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
           id={`${regionId}-sidebar`}
           className="sidebar-container"
           style={{ width: layout.sidebar }}
-          hidden={!sidebarVisible}
         >
-          <Sidebar snapshot={snapshot} view={view} onView={store.setView} />
+          <Sidebar
+            snapshot={snapshot}
+            view={view}
+            onView={store.setView}
+            collapsed={sidebarCollapsed}
+          />
         </div>
-        {sidebarVisible && (navigationVisible || detailCount > 0) && (
+        {!sidebarCollapsed && (navigationVisible || detailCount > 0) && (
           <PaneDivider
             label="Sidebar width"
             controls={`${regionId}-sidebar`}
@@ -345,7 +395,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
             min={layout.sidebarMin}
             max={sidebarMax}
             onChange={resizeSidebar}
-            onReset={() => resizeSidebar(state.narrow ? 170 : 190)}
+            onReset={() => resizeSidebar(190)}
           />
         )}
         <main
