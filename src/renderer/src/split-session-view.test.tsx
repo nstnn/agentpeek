@@ -56,6 +56,10 @@ describe('roomy split session composition', () => {
     const f = mount()
     await choose('a')
     await keepMain(f)
+    for (const name of ['Left', 'Right'] as const) {
+      expect(within(pane(name)).getAllByRole('heading', { name: 'Synthetic a' })).toHaveLength(1)
+      expect(pane(name).querySelector('.detail-title')).toBeNull()
+    }
     await userEvent.click(within(pane('Right')).getByRole('button', { name: 'Show More' }))
     const secondMessages = messages('Right')
     fireEvent.keyDown(secondMessages, { key: 'PageDown' })
@@ -83,6 +87,9 @@ describe('roomy split session composition', () => {
       screen.getByRole('complementary', { name: 'Session detail' })
     )
     expect(f.store.getSnapshot().activePane).toBe('main')
+    expect(
+      screen.getByRole('heading', { name: 'Synthetic c' }).closest('.detail-title')
+    ).toBeTruthy()
   })
 
   it('reopens the same Second without reloading, uses distinct controls and keeps one list selection', async () => {

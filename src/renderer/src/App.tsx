@@ -148,6 +148,12 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
   ).length
   const running = sessions.filter((s) => s.activity.state === 'running').length
   const unknown = sessions.filter((s) => s.activity.state === 'unknown').length
+  const paneTitles = {
+    main: state.selection
+      ? state.selection.session.summary.title || 'Untitled session'
+      : 'No session selected',
+    second: state.secondarySelection?.session.summary.title || 'Untitled session'
+  }
   return (
     <div
       className="app-shell"
@@ -186,6 +192,8 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                   type="button"
                   key={pane}
                   role="radio"
+                  aria-label={`${paneTitles[pane]} (${pane === 'main' ? 'Left' : 'Right'} pane)`}
+                  title={paneTitles[pane]}
                   aria-checked={state.activePane === pane}
                   disabled={pane === 'main' && !state.selection}
                   tabIndex={state.activePane === pane ? 0 : -1}
@@ -208,7 +216,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                       [next === 'main' ? 0 : 1]?.focus()
                   }}
                 >
-                  {pane === 'main' ? 'Left pane' : 'Right pane'}
+                  {paneTitles[pane]}
                 </button>
               ))}
             </div>
@@ -399,7 +407,9 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
               )}
               {split && (
                 <div className="pane-toolbar">
-                  <span>{label}</span>
+                  <h2 className="pane-title" title={paneTitles[pane]}>
+                    {paneTitles[pane]}
+                  </h2>
                   <span className="pane-active">{state.activePane === pane ? 'Active' : ''}</span>
                   {pane === 'second' && !state.narrow && (
                     <button type="button" onClick={store.closeSecondary}>
@@ -416,6 +426,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                   visible={visible}
                   focused={windowFocused}
                   paneLabel={split ? label : undefined}
+                  showTitle={!split}
                   canAutoRead={() => store.canAutoRead(pane, selected.key, state.targetGeneration)}
                   missing={!snapshot?.sessions.some((s) => sameKey(s.key, selected.key))}
                   lastSeenAt={selection.lastSeenAt}

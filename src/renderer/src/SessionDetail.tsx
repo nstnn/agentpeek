@@ -57,6 +57,7 @@ export function SessionDetail({
   visible,
   focused,
   paneLabel,
+  showTitle = true,
   canAutoRead,
   missing,
   lastSeenAt,
@@ -70,6 +71,7 @@ export function SessionDetail({
   visible: boolean
   focused: boolean
   paneLabel?: string
+  showTitle?: boolean
   canAutoRead: () => boolean
   missing: boolean
   lastSeenAt: number | null
@@ -228,7 +230,7 @@ export function SessionDetail({
   return (
     <>
       <header className="detail-header">
-        <DetailTitle title={sessionTitle(session)} />
+        {showTitle && <DetailTitle title={sessionTitle(session)} />}
         <p className="detail-meta" title={session.summary.workspacePath ?? 'No folder'}>
           {toolName(tool)} · {workspaceName(session)}
         </p>
