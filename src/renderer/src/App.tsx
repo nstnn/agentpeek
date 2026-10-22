@@ -20,6 +20,7 @@ import { SessionDetail } from './SessionDetail'
 import { PaneDivider } from './PaneDivider'
 import { clamp, layoutCapacity, paneLayout, type PaneSizes } from './pane-layout'
 import { NavigationIcon } from './NavigationIcon'
+import { useNavigationMotion } from './use-navigation-motion'
 
 export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.Element {
   const [store] = useState(() => suppliedStore ?? createSessionsStore(window.agentpeek))
@@ -196,6 +197,13 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     navigationVisible,
     sidebarCollapsed
   ])
+  const stopNavigationMotion = useNavigationMotion(
+    workspace,
+    sidebarCollapsed,
+    navigationVisible,
+    workspaceWidth,
+    paneSizes
+  )
   useEffect(() => {
     const focus = () => setWindowFocused(true)
     const blur = () => setWindowFocused(false)
@@ -336,6 +344,12 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
       )}
       <div
         ref={workspace}
+        onPointerDownCapture={(event) => {
+          if ((event.target as HTMLElement).closest('.pane-divider')) stopNavigationMotion()
+        }}
+        onKeyDownCapture={(event) => {
+          if ((event.target as HTMLElement).closest('.pane-divider')) stopNavigationMotion()
+        }}
         onDragOver={(event) => {
           if (!dragSession || !event.dataTransfer.types.includes('application/x-agentpeek-session'))
             return
@@ -372,7 +386,8 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
         <div
           id={`${regionId}-sidebar`}
           className="sidebar-container"
-          style={{ width: layout.sidebar }}
+          data-motion-region="sidebar"
+          style={{ flex: `0 0 ${layout.sidebar}px` }}
         >
           <Sidebar
             snapshot={snapshot}
@@ -383,151 +398,156 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
             controls={`${regionId}-sidebar`}
           />
         </div>
-        {!sidebarCollapsed && (navigationVisible || detailCount > 0) && (
-          <PaneDivider
-            label="Sidebar width"
-            controls={`${regionId}-sidebar`}
-            value={layout.sidebar}
-            min={layout.sidebarMin}
-            max={sidebarMax}
-            onChange={resizeSidebar}
-            onReset={() => resizeSidebar(190)}
-          />
-        )}
+        <PaneDivider
+          motionRegion="sidebar-divider"
+          hidden={sidebarCollapsed || (!navigationVisible && detailCount === 0)}
+          label="Sidebar width"
+          controls={`${regionId}-sidebar`}
+          value={layout.sidebar}
+          min={layout.sidebarMin}
+          max={sidebarMax}
+          onChange={resizeSidebar}
+          onReset={() => resizeSidebar(190)}
+        />
         <main
           id={`${regionId}-sessions`}
           className="sessions-pane"
+          data-motion-region="sessions"
           style={{ flex: `0 0 ${layout.list}px` }}
           ref={navigation}
           aria-label="Sessions"
           hidden={!navigationVisible}
+          inert={!navigationVisible}
+          aria-hidden={!navigationVisible || undefined}
         >
-          <header className="list-header">
-            <div className="list-heading">
-              {navigationVisible && sessionsToggle}
-              <h1>{VIEW_NAMES[view]}</h1>
-              {state.splitBrowsing && (
+          <div className="navigation-motion-content">
+            <header className="list-header">
+              <div className="list-heading">
+                {navigationVisible && sessionsToggle}
+                <h1>{VIEW_NAMES[view]}</h1>
+                {state.splitBrowsing && (
+                  <button
+                    type="button"
+                    className="pane-close"
+                    aria-label="Close Right Pane"
+                    title="Close Right Pane"
+                    onClick={store.closeSecondary}
+                  >
+                    <span aria-hidden="true">×</span>
+                  </button>
+                )}
+              </div>
+              <p className="summary">
+                {attention} need attention · {running} running · {unknown} unknown
+              </p>
+              <div className="tool-filter" role="radiogroup" aria-label="Filter by tool">
+                {(['all', 'codex', 'claude'] as const).map((tool) => (
+                  <button
+                    key={tool}
+                    type="button"
+                    role="radio"
+                    aria-checked={filter === tool}
+                    tabIndex={filter === tool ? 0 : -1}
+                    onClick={() => store.setFilter(tool)}
+                    onKeyDown={(event) => {
+                      const tools = ['all', 'codex', 'claude'] as const
+                      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+                      event.preventDefault()
+                      const index =
+                        event.key === 'Home'
+                          ? 0
+                          : event.key === 'End'
+                            ? 2
+                            : (tools.indexOf(tool) + (event.key === 'ArrowRight' ? 1 : 2)) % 3
+                      store.setFilter(tools[index]!)
+                      event.currentTarget.parentElement?.querySelectorAll('button')[index]?.focus()
+                    }}
+                  >
+                    {tool === 'all' ? 'All' : tool === 'codex' ? 'Codex' : 'Claude Code'}{' '}
+                    <span>{contents.toolCounts[tool]}</span>
+                  </button>
+                ))}
+              </div>
+            </header>
+            {snapshot?.firstLaunch && !firstLaunchDismissed && (
+              <div className="strip info">
+                <span>
+                  First launch: replies that finished before now count as read. New replies will
+                  show up here from now on.
+                </span>
                 <button
                   type="button"
-                  className="pane-close"
-                  aria-label="Close Right Pane"
-                  title="Close Right Pane"
-                  onClick={store.closeSecondary}
+                  aria-label="Dismiss first launch notice"
+                  onClick={() => dismissFirstLaunch(true)}
                 >
-                  <span aria-hidden="true">×</span>
+                  ×
                 </button>
-              )}
-            </div>
-            <p className="summary">
-              {attention} need attention · {running} running · {unknown} unknown
-            </p>
-            <div className="tool-filter" role="radiogroup" aria-label="Filter by tool">
-              {(['all', 'codex', 'claude'] as const).map((tool) => (
-                <button
-                  key={tool}
-                  type="button"
-                  role="radio"
-                  aria-checked={filter === tool}
-                  tabIndex={filter === tool ? 0 : -1}
-                  onClick={() => store.setFilter(tool)}
-                  onKeyDown={(event) => {
-                    const tools = ['all', 'codex', 'claude'] as const
-                    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-                    event.preventDefault()
-                    const index =
-                      event.key === 'Home'
-                        ? 0
-                        : event.key === 'End'
-                          ? 2
-                          : (tools.indexOf(tool) + (event.key === 'ArrowRight' ? 1 : 2)) % 3
-                    store.setFilter(tools[index]!)
-                    event.currentTarget.parentElement?.querySelectorAll('button')[index]?.focus()
-                  }}
-                >
-                  {tool === 'all' ? 'All' : tool === 'codex' ? 'Codex' : 'Claude Code'}{' '}
-                  <span>{contents.toolCounts[tool]}</span>
-                </button>
-              ))}
-            </div>
-          </header>
-          {snapshot?.firstLaunch && !firstLaunchDismissed && (
-            <div className="strip info">
-              <span>
-                First launch: replies that finished before now count as read. New replies will show
-                up here from now on.
-              </span>
-              <button
-                type="button"
-                aria-label="Dismiss first launch notice"
-                onClick={() => dismissFirstLaunch(true)}
-              >
-                ×
-              </button>
-            </div>
-          )}
-          {state.actionError && (
-            <p className="strip warning" role="status">
-              {state.actionError}
-            </p>
-          )}
-          {groups.length > 0 ? (
-            <SessionList
-              groups={groups}
-              state={state}
-              store={store}
-              now={now}
-              hidden={!navigationVisible}
-              onSessionDrag={(session) => {
-                const bounds = workspace.current?.getBoundingClientRect()
-                const pane = mainPane.current?.getBoundingClientRect()
-                // Browsing keeps the source list reachable; reading previews actual pane bounds.
-                setDropLeft(
-                  bounds && pane && mainVisible
-                    ? pane.left - bounds.left + (split ? 0 : pane.width / 2)
-                    : (bounds?.width ?? 0) * 0.35
-                )
-                setDragSession(session)
-                setDropPane(null)
-              }}
-              onSessionDragEnd={() => {
-                setDragSession(null)
-                setDropPane(null)
-              }}
-            />
-          ) : (
-            <EmptyList
-              state={state}
-              unfilteredCount={contents.toolCounts.all}
-              onShowAll={() => {
-                store.setView('all')
-                document
-                  .querySelector<HTMLButtonElement>('.tool-filter [aria-checked=true]')
-                  ?.focus()
-              }}
-              onClearFilter={() => {
-                store.setFilter('all')
-                document.querySelector<HTMLButtonElement>('.tool-filter [role=radio]')?.focus()
-              }}
-            />
-          )}
-          {view === 'all' && (
-            <p className="footnote">
-              Sessions active in the last 7 days (up to 50 per tool), plus every session that is
-              running or waiting.
-            </p>
-          )}
+              </div>
+            )}
+            {state.actionError && (
+              <p className="strip warning" role="status">
+                {state.actionError}
+              </p>
+            )}
+            {groups.length > 0 ? (
+              <SessionList
+                groups={groups}
+                state={state}
+                store={store}
+                now={now}
+                hidden={!navigationVisible}
+                onSessionDrag={(session) => {
+                  const bounds = workspace.current?.getBoundingClientRect()
+                  const pane = mainPane.current?.getBoundingClientRect()
+                  // Browsing keeps the source list reachable; reading previews actual pane bounds.
+                  setDropLeft(
+                    bounds && pane && mainVisible
+                      ? pane.left - bounds.left + (split ? 0 : pane.width / 2)
+                      : (bounds?.width ?? 0) * 0.35
+                  )
+                  setDragSession(session)
+                  setDropPane(null)
+                }}
+                onSessionDragEnd={() => {
+                  setDragSession(null)
+                  setDropPane(null)
+                }}
+              />
+            ) : (
+              <EmptyList
+                state={state}
+                unfilteredCount={contents.toolCounts.all}
+                onShowAll={() => {
+                  store.setView('all')
+                  document
+                    .querySelector<HTMLButtonElement>('.tool-filter [aria-checked=true]')
+                    ?.focus()
+                }}
+                onClearFilter={() => {
+                  store.setFilter('all')
+                  document.querySelector<HTMLButtonElement>('.tool-filter [role=radio]')?.focus()
+                }}
+              />
+            )}
+            {view === 'all' && (
+              <p className="footnote">
+                Sessions active in the last 7 days (up to 50 per tool), plus every session that is
+                running or waiting.
+              </p>
+            )}
+          </div>
         </main>
-        {navigationVisible && detailCount > 0 && (
-          <PaneDivider
-            label="Sessions width"
-            controls={`${regionId}-sessions`}
-            value={layout.list}
-            min={layout.listMin}
-            max={listMax}
-            onChange={resizeList}
-            onReset={() => resizeList(split ? 300 : 420)}
-          />
-        )}
+        <PaneDivider
+          motionRegion="sessions-divider"
+          hidden={!navigationVisible || detailCount === 0}
+          label="Sessions width"
+          controls={`${regionId}-sessions`}
+          value={layout.list}
+          min={layout.listMin}
+          max={listMax}
+          onChange={resizeList}
+          onReset={() => resizeList(split ? 300 : 420)}
+        />
         {(['main', 'second'] as const).map((pane) => {
           const selection = pane === 'main' ? state.selection : state.secondarySelection
           if (pane === 'second' && !selection) return null
@@ -540,8 +560,10 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
           }
           return (
             <Fragment key={paneInstances[pane]}>
-              {pane === 'second' && mainVisible && secondVisible && (
+              {pane === 'second' && (
                 <PaneDivider
+                  motionRegion="detail-divider"
+                  hidden={!mainVisible || !secondVisible}
                   label={`${paneTitles.main} (Left pane) width`}
                   controls={`${regionId}-main`}
                   value={layout.main}
@@ -560,6 +582,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                 id={`${regionId}-${pane}`}
                 ref={pane === 'main' ? mainPane : secondPane}
                 className="detail-pane"
+                data-motion-region={pane}
                 style={{
                   flex: `0 0 ${pane === 'main' || detailCount === 1 ? layout.main : layout.second}px`
                 }}
@@ -568,62 +591,68 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                 data-active={state.activePane === pane}
                 tabIndex={-1}
                 hidden={!visible}
+                inert={!visible}
+                aria-hidden={!visible || undefined}
                 onPointerDownCapture={activate}
                 onFocusCapture={activate}
               >
-                {split && (
-                  <div className="pane-toolbar">
-                    {!navigationVisible &&
-                      visible &&
-                      (pane === 'main' || !mainVisible) &&
-                      sessionsToggle}
-                    <h2 className="pane-title" title={paneTitles[pane]}>
-                      {paneTitles[pane]}
-                    </h2>
-                    <span className="pane-active">{state.activePane === pane ? 'Active' : ''}</span>
-                    <button
-                      type="button"
-                      className="pane-close"
-                      aria-label={`Close ${pane === 'main' ? 'Left' : 'Right'} Pane`}
-                      title={`Close ${pane === 'main' ? 'Left' : 'Right'} Pane`}
-                      onClick={() => {
-                        if (pane === 'main') {
-                          // Move the surviving detail without remounting its transcript.
-                          setPaneInstances(({ main, second }) => ({ main: second, second: main }))
-                        }
-                        store.closePane(pane)
-                      }}
-                    >
-                      <span aria-hidden="true">×</span>
-                    </button>
-                  </div>
-                )}
-                {selected ? (
-                  <SessionDetail
-                    key={`${paneInstances[pane]}:${sessionKeyToString(selected.key)}`}
-                    session={selected}
-                    api={window.agentpeek}
-                    visible={visible}
-                    focused={windowFocused}
-                    paneLabel={split ? label : undefined}
-                    showTitle={!split}
-                    leadingControl={!split && !navigationVisible ? sessionsToggle : undefined}
-                    canAutoRead={() =>
-                      store.canAutoRead(pane, selected.key, state.targetGeneration)
-                    }
-                    missing={!snapshot?.sessions.some((s) => sameKey(s.key, selected.key))}
-                    lastSeenAt={selection.lastSeenAt}
-                    sourceEpoch={selection.sourceEpoch}
-                    reloadPending={state.reloadPending}
-                    reloadVersion={state.reloadVersion}
-                    onReload={store.reload}
-                  />
-                ) : (
-                  <div className="detail-placeholder">
-                    <h2>No session selected</h2>
-                    <p>Select a session to see its latest exchange.</p>
-                  </div>
-                )}
+                <div className="navigation-motion-content">
+                  {split && (
+                    <div className="pane-toolbar">
+                      {!navigationVisible &&
+                        visible &&
+                        (pane === 'main' || !mainVisible) &&
+                        sessionsToggle}
+                      <h2 className="pane-title" title={paneTitles[pane]}>
+                        {paneTitles[pane]}
+                      </h2>
+                      <span className="pane-active">
+                        {state.activePane === pane ? 'Active' : ''}
+                      </span>
+                      <button
+                        type="button"
+                        className="pane-close"
+                        aria-label={`Close ${pane === 'main' ? 'Left' : 'Right'} Pane`}
+                        title={`Close ${pane === 'main' ? 'Left' : 'Right'} Pane`}
+                        onClick={() => {
+                          if (pane === 'main') {
+                            // Move the surviving detail without remounting its transcript.
+                            setPaneInstances(({ main, second }) => ({ main: second, second: main }))
+                          }
+                          store.closePane(pane)
+                        }}
+                      >
+                        <span aria-hidden="true">×</span>
+                      </button>
+                    </div>
+                  )}
+                  {selected ? (
+                    <SessionDetail
+                      key={`${paneInstances[pane]}:${sessionKeyToString(selected.key)}`}
+                      session={selected}
+                      api={window.agentpeek}
+                      visible={visible}
+                      focused={windowFocused}
+                      paneLabel={split ? label : undefined}
+                      showTitle={!split}
+                      leadingControl={!split && !navigationVisible ? sessionsToggle : undefined}
+                      canAutoRead={() =>
+                        store.canAutoRead(pane, selected.key, state.targetGeneration)
+                      }
+                      missing={!snapshot?.sessions.some((s) => sameKey(s.key, selected.key))}
+                      lastSeenAt={selection.lastSeenAt}
+                      sourceEpoch={selection.sourceEpoch}
+                      reloadPending={state.reloadPending}
+                      reloadVersion={state.reloadVersion}
+                      onReload={store.reload}
+                    />
+                  ) : (
+                    <div className="detail-placeholder">
+                      <h2>No session selected</h2>
+                      <p>Select a session to see its latest exchange.</p>
+                    </div>
+                  )}
+                </div>
               </aside>
             </Fragment>
           )

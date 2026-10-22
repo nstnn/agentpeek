@@ -13,6 +13,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
+import { performance } from 'node:perf_hooks'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const ROOT = findRepoRoot()
@@ -49,6 +50,11 @@ const USAGE = `Usage: node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs
   blur [--run <id>]           Release this window's native focus, to test unread-on-focus behavior.
   screenshot <name> [--run <id>]
                               Save the page as <name>.png in the run's evidence folder.
+  motion --selector <css> --name <evidence-name> [--repeat-after <ms>]
+         [--reduced-motion reduce|no-preference] [--reduce-after <ms>]
+         [--resize-width <pixels> | --drag-divider <css>] [--run <id>]
+                              Click an observed control; save intermediate geometry, PNG and ARIA.
+                              Preference overrides apply only to this capture and are cleared afterwards.
   relaunch [--run <id>]       Start a second copy against the same profile; report how it exits.
   wait-exit [--timeout <ms>] [--run <id>]
                               Wait for the main pid, profile processes and debug ports to exit,
@@ -604,6 +610,220 @@ async function aria() {
     logAction(run, 'aria', { name }, path.relative(ROOT, file))
     console.error(`Saved ${path.relative(ROOT, file)}`)
   }
+}
+
+async function motion() {
+  const run = loadLiveRun()
+  if (!flags.selector || !flags.name) throw new Error('motion needs --selector and --name')
+  const preference = flags['reduced-motion'] ?? 'no-preference'
+  if (!['reduce', 'no-preference'].includes(preference))
+    throw new Error('invalid reduced-motion value')
+  const repeat = flags['repeat-after'] === undefined ? null : Number(flags['repeat-after'])
+  const reduceAfter = flags['reduce-after'] === undefined ? null : Number(flags['reduce-after'])
+  const resizeWidth = flags['resize-width'] === undefined ? null : Number(flags['resize-width'])
+  if (
+    resizeWidth !== null &&
+    (!Number.isInteger(resizeWidth) || resizeWidth < 760 || resizeWidth > 2200)
+  )
+    throw new Error('motion resize width must be between 760 and 2200 pixels')
+  for (const value of [repeat, reduceAfter])
+    if (value !== null && (!Number.isFinite(value) || value < 0 || value > 200))
+      throw new Error('motion offsets must be between 0 and 200 ms')
+  const name = safeName(flags.name)
+  const capture = (main) =>
+    withPage(run, async (s) => {
+      if (main) await evaluate(main, mainExpression('BrowserWindow.getAllWindows()[0].getBounds()'))
+      const captureAx = async (suffix) => {
+        await s.send('Accessibility.enable')
+        const { nodes } = await s.send('Accessibility.getFullAXTree')
+        fs.writeFileSync(
+          path.join(run.evidenceDir, `${name}-${suffix}.aria.txt`),
+          formatAxTree(nodes)
+        )
+      }
+      const pointFor = (selector) =>
+        evaluate(
+          s,
+          `(() => {
+        const element = Array.from(document.querySelectorAll(${JSON.stringify(selector)}))
+          .find(e => e.getClientRects().length && !e.closest('[hidden], [inert]'));
+        if (!element) throw new Error('no visible motion target');
+        const r = element.getBoundingClientRect();
+        return {x:r.x+r.width/2,y:r.y+r.height/2};
+      })()`
+        )
+      const pointerClick = async () => {
+        const point = await pointFor(flags.selector)
+        for (const type of ['mousePressed', 'mouseReleased'])
+          await s.send('Input.dispatchMouseEvent', {
+            ...point,
+            type,
+            button: 'left',
+            buttons: type === 'mousePressed' ? 1 : 0,
+            clickCount: 1
+          })
+      }
+      const observe = () =>
+        evaluate(
+          s,
+          `({
+      reduced:matchMedia('(prefers-reduced-motion: reduce)').matches,
+      overflow:document.documentElement.scrollWidth-innerWidth,
+      active:document.activeElement?.getAttribute('aria-label') || document.activeElement?.getAttribute('role'),
+      regions:Array.from(document.querySelectorAll('.workspace > [data-motion-region]')).map(e => ({
+        name:e.dataset.motionRegion,width:e.getBoundingClientRect().width,left:e.getBoundingClientRect().left,
+        hidden:e.hidden,inert:e.inert,ariaHidden:e.getAttribute('aria-hidden'),exiting:e.classList.contains('navigation-motion-exit'),
+        contentWidth:e.querySelector('.navigation-motion-content, .sidebar')?.getBoundingClientRect().width,
+        transcriptWidth:e.querySelector('.transcript')?.clientWidth,scroll:e.querySelector('.transcript')?.scrollTop
+      })),
+      sidebarText:Array.from(document.querySelectorAll('.sidebar .source p')).map(e=>({width:e.getBoundingClientRect().width,height:e.getBoundingClientRect().height})),
+      animations:document.getAnimations().map(a=>({state:a.playState,time:a.currentTime,progress:a.effect?.getComputedTiming().progress}))
+    })`
+        )
+      try {
+        await s.send('Emulation.setEmulatedMedia', {
+          features: [{ name: 'prefers-reduced-motion', value: preference }]
+        })
+        await captureAx('before')
+        const { data } = await s.send('Page.captureScreenshot', { format: 'png' })
+        fs.writeFileSync(
+          path.join(run.evidenceDir, `${name}-before.png`),
+          Buffer.from(data, 'base64')
+        )
+        const before = await observe()
+        const frames = []
+        const acknowledgements = []
+        let started = performance.now()
+        s.onEvent((event) => {
+          if (event.method !== 'Page.screencastFrame') return
+          const { data, sessionId, metadata } = event.params
+          const frame = `${name}-${frames.length}.png`
+          fs.writeFileSync(path.join(run.evidenceDir, frame), Buffer.from(data, 'base64'))
+          frames.push({
+            frame,
+            elapsed: performance.now() - started,
+            timestamp: metadata.timestamp
+          })
+          acknowledgements.push(s.send('Page.screencastFrameAck', { sessionId }))
+        })
+        await s.send('Page.startScreencast', {
+          format: 'png',
+          maxWidth: 1440,
+          maxHeight: 1000,
+          everyNthFrame: 1
+        })
+        await pointerClick()
+        started = performance.now()
+        const samples = []
+        let repeated = false
+        let reducedDuring = false
+        let interruptedAt = null
+        let interruption = null
+        for (const target of [0, 40, 80, 140, 230, 350, 500]) {
+          const wait = target - (performance.now() - started)
+          if (wait > 0) await sleep(wait)
+          if (repeat !== null && !repeated && performance.now() - started >= repeat) {
+            await pointerClick()
+            repeated = true
+          }
+          if (
+            reduceAfter !== null &&
+            !reducedDuring &&
+            performance.now() - started >= reduceAfter
+          ) {
+            await s.send('Emulation.setEmulatedMedia', {
+              features: [{ name: 'prefers-reduced-motion', value: 'reduce' }]
+            })
+            reducedDuring = true
+          }
+          if (
+            (resizeWidth !== null || flags['drag-divider']) &&
+            interruptedAt === null &&
+            performance.now() - started >= 60
+          ) {
+            interruptedAt = performance.now() - started
+            interruption = { before: await observe(), dispatchAt: performance.now() - started }
+            if (resizeWidth !== null) {
+              await evaluate(
+                main,
+                mainExpression(`BrowserWindow.getAllWindows()[0].setSize(${resizeWidth},720)`)
+              )
+            } else {
+              const point = await pointFor(flags['drag-divider'])
+              await s.send('Input.dispatchMouseEvent', {
+                ...point,
+                type: 'mousePressed',
+                button: 'left',
+                buttons: 1,
+                clickCount: 1
+              })
+              await s.send('Input.dispatchMouseEvent', {
+                x: point.x + 20,
+                y: point.y,
+                type: 'mouseMoved',
+                button: 'left',
+                buttons: 1
+              })
+              await s.send('Input.dispatchMouseEvent', {
+                x: point.x + 20,
+                y: point.y,
+                type: 'mouseReleased',
+                button: 'left',
+                buttons: 0,
+                clickCount: 1
+              })
+            }
+            interruption.completedAt = performance.now() - started
+            interruption.after = await observe()
+          }
+          const observed = await observe()
+          const elapsed = performance.now() - started
+          samples.push({ elapsed, ...observed })
+        }
+        await s.send('Page.stopScreencast')
+        await Promise.all(acknowledgements)
+        await captureAx('after')
+        return {
+          before,
+          samples,
+          frames,
+          repeated,
+          reducedDuring,
+          preference,
+          interruptedAt,
+          interruption
+        }
+      } finally {
+        await s.send('Page.stopScreencast').catch(() => undefined)
+        await s.send('Emulation.setEmulatedMedia', { features: [] })
+      }
+    })
+  const report = resizeWidth !== null ? await withMain(run, capture) : await capture(null)
+  fs.writeFileSync(
+    path.join(run.evidenceDir, `${name}.motion.json`),
+    `${JSON.stringify(report, null, 2)}\n`
+  )
+  printAndLog(
+    run,
+    'motion',
+    {
+      selector: flags.selector,
+      name,
+      repeatAfter: repeat,
+      reducedMotion: preference,
+      reduceAfter,
+      resizeWidth,
+      dragDivider: flags['drag-divider']
+    },
+    {
+      report: path.relative(ROOT, path.join(run.evidenceDir, `${name}.motion.json`)),
+      sampleTimes: report.samples.map((sample) => Math.round(sample.elapsed)),
+      frames: report.frames.length,
+      repeated: report.repeated,
+      reducedDuring: report.reducedDuring,
+      interruptedAt: report.interruptedAt
+    }
+  )
 }
 
 async function screenshot() {
@@ -1384,6 +1604,9 @@ try {
       break
     case 'screenshot':
       await screenshot()
+      break
+    case 'motion':
+      await motion()
       break
     case 'menu':
       await menu()

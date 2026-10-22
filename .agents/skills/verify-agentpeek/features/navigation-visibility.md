@@ -9,6 +9,7 @@ The Sessions heading collapses navigation to an icon rail independently of the s
 - `navigation-filter`: a rail view or native View command reveals the filtered list without replacing reading sessions.
 - `navigation-capacity`: remaining width determines one/two reading panes and adjacent/replacement navigation.
 - `navigation-keyboard`: Shift-Command-B/L, focus leaving hidden content and keyboard source details.
+- `navigation-motion`: 220 ms decelerating column transitions, stable clipped text, immediate reversal and Reduce Motion.
 
 ## How to get to it (user POV)
 
@@ -17,6 +18,7 @@ The Sessions heading collapses navigation to an icon rail independently of the s
 - In the rail, click Active, Pinned or All Sessions, or use View's existing commands.
 - Click a source initial (C for Codex, A for Claude Code), then Close or Escape to dismiss its health details.
 - Resize the window or expanded sidebar while reading one or two sessions.
+- Toggle again during a transition to reverse it. With macOS Reduce Motion enabled, navigation changes immediately.
 
 ## Driving it with agentpeek.mjs
 
@@ -30,6 +32,7 @@ Preconditions:
 - **Capacity (`navigation-capacity`).** With default expanded sidebar, visit content widths 799/800 (one-detail/list boundary), 839/840 (two-detail boundary) and 1124/1125 (list plus two-detail boundary). Save ARIA/PNG and zero document overflow. At 760 with two selections, expanded Views shows one detail with title radios. Collapse Views: both details fit, radios disappear and list remains hidden. Show Sessions replaces both details; resize to 1440 while browsing and verify details remain hidden until Hide Sessions restores them. With the rail, test 981/982 for list plus both details. Resize the expanded Sidebar width, then confirm thresholds follow the reserved width and preferred widths return when space permits. Repeat representative minimum/default/wide sizes in forced app Light/Dark and restore system appearance.
 - **Keyboard (`navigation-keyboard`).** Focus the visible list, run `key Meta+Shift+L`: list hides and focus leaves it for the retained detail. Run `key Meta+Shift+B`: rail appears. Tab to the named source control, press Return to show details, then Escape: details close, source control regains focus and session navigation is unchanged. Reopen and use its Close button. Verify named status includes source name and state; errors have an exclamation mark as well as color. With no session selected, Hide Sessions is disabled and the list remains available.
 - **Empty-list focus (`navigation-keyboard`).** Create a fresh fixture omitting Claude with `node scripts/fixture/index.mjs create claude`. Before selecting a session, drag an observed Codex row directly to Right using the path in session-detail.md. Select the Codex tool filter, then run `node scripts/fixture/index.mjs simulate <copied-home> missing-codex` and native `menu-click "View > Reload Sessions"`. Close Right Pane. With no rows or reading selection, Hide Sessions is disabled and keyboard focus lands on the selected Codex filter, rather than the page body or disabled control.
+- **Motion (`navigation-motion`).** At minimum/default/wide sizes, run `motion --selector '[data-navigation-control="sessions"]' --name motion-sessions` and `motion --selector '.sidebar-heading-toggle' --name motion-views`. Record intermediate and settled geometry and compositor frames over 500 ms. Columns should decelerate together over 220 ms without stretching text, exposing horizontal overflow or resetting reading state. Add `--repeat-after 60`: motion reverses from its current position and leaves no exiting regions or animations after settling. Add `--drag-divider '.pane-divider[aria-label="Sidebar width"]'` or `--resize-width 1100` to interrupt motion with a real divider drag or an isolated native window resize at about 80 ms: columns settle immediately, with resizing following input. Use `--reduced-motion reduce`, repeat both toggles and require zero running animations; `--reduce-after 60` checks cancellation during motion. Chromium preference overrides are cleared after each capture and do not prove delivery of the macOS system preference.
 - **Cleanup.** Run `doctor`, focus and choose `menu-click "Electron > Quit"` using the actual observed menu name, then `wait-exit --timeout 3000`. Require `cleanExit: true`, then run `stop` and retain artifacts. Clean the generator-owned original fixture separately.
 
 ## Gotchas
@@ -40,3 +43,4 @@ Preconditions:
 - Visibility and preferred dimensions reset on quit/reload. Pins and read markers retain their existing persistence.
 - The list restore icon occurs once in the visible reading headers; using it must not activate a different pane. Restoring the list transfers focus into that list. The compact pane selector remains available only when needed.
 - Component tests do not prove native key delivery, actual geometry, theme drawing or source-disclosure accessibility. Report missing live steps as unverified.
+- Outgoing content becomes inert and inaccessible immediately while its edge finishes moving. Hidden panes cannot request or acknowledge messages during the visual exit. Motion is renderer-local; no preference is persisted.

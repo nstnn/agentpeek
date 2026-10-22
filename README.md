@@ -22,6 +22,7 @@ Click the **Sessions** heading (⇧⌘B) to collapse the sidebar to a 56-pixel i
 The icon beside **Active**, **Pinned** or **All Sessions** (⇧⌘L) independently hides the
 session list. Its restore icon appears in the reading header while the list is hidden.
 Both controls use the existing headers, without a separate navigation toolbar or extra labels.
+Navigation slides over 220 ms with a gentle deceleration; Reduce Motion makes it immediate.
 The rail keeps Active attention counts, view selection and source status; click a source
 initial to inspect its health, then Close or Escape to dismiss it. Choosing a view opens
 its filtered list while retaining the sessions being read.
