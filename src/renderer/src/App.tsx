@@ -149,7 +149,8 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     const target = state.activePane === 'second' ? secondPane.current : mainPane.current
     const focusList = () =>
       (
-        navigation.current?.querySelector<HTMLElement>('[role=listbox]') ??
+        navigation.current?.querySelector<HTMLElement>('.list-scroll') ??
+        navigation.current?.querySelector<HTMLElement>('.tool-filter [aria-checked=true]') ??
         navigation.current?.querySelector<HTMLElement>('button:not(:disabled):not([tabindex="-1"])')
       )?.focus({ preventScroll: true })
     if (focusRevealedList.current && navigationVisible) {
@@ -440,6 +441,39 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
               <p className="summary">
                 {attention} need attention · {running} running · {unknown} unknown
               </p>
+              <div className="grouping-control">
+                <span>Group by</span>
+                <div className="grouping-options" role="radiogroup" aria-label="Group sessions by">
+                  {(['project', 'status'] as const).map((grouping) => (
+                    <button
+                      key={grouping}
+                      type="button"
+                      role="radio"
+                      aria-checked={state.grouping === grouping}
+                      tabIndex={state.grouping === grouping ? 0 : -1}
+                      onClick={() => store.setGrouping(grouping)}
+                      onKeyDown={(event) => {
+                        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+                        event.preventDefault()
+                        const next =
+                          event.key === 'Home'
+                            ? 'project'
+                            : event.key === 'End'
+                              ? 'status'
+                              : grouping === 'project'
+                                ? 'status'
+                                : 'project'
+                        store.setGrouping(next)
+                        event.currentTarget.parentElement
+                          ?.querySelectorAll('button')
+                          [next === 'project' ? 0 : 1]?.focus()
+                      }}
+                    >
+                      {grouping === 'project' ? 'Project' : 'Status'}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="tool-filter" role="radiogroup" aria-label="Filter by tool">
                 {(['all', 'codex', 'claude'] as const).map((tool) => (
                   <button

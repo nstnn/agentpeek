@@ -4,6 +4,8 @@ The window opens in Active with tool health, attention groups and live counts. P
 
 ## Sub-features
 
+- `list-projects` defaults to collapsible working-folder groups; Group by switches to Status. See [Project grouping](./project-grouping.md).
+
 - `list-views` switches Active, Pinned and All Sessions through sidebar or View menu.
 - `list-filter` filters every view by All, Codex or Claude Code, with live per-view counts.
 - `list-empty-scope` distinguishes no sessions in a view from sessions hidden by its tool filter, with clear-filter or browse actions and restored keyboard focus.
@@ -22,7 +24,7 @@ The window opens in Active with tool health, attention groups and live counts. P
 ## How to get to it (user POV)
 
 - Open AgentPeek and select Active, Pinned or All Sessions in the sidebar or View menu (⌘1–⌘3).
-- Choose a tool above the list. Tab enters the sidebar, then tool filter, then the first-launch dismiss button if visible, then list; arrow keys choose within each composite control.
+- Choose a tool above the list. Tab enters the sidebar, then Group by, then tool filter, then the first-launch dismiss button if visible, then list; arrow keys choose within each composite control.
 - Click a row or use Up/Down/Home/End in the list. Choose actions in the Session menu.
 - Right-click/Control-click a row, or select it and press Shift+F10, for its context menu.
 - Close the first-launch strip with its labeled × button. View > Reload Sessions retries source reads.
@@ -38,7 +40,7 @@ Preconditions:
 - `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs launch --label sessions-list --fixture <absolute-synthetic-home>` succeeded and `doctor` passes.
 - Replace option names below with literal names from the current `aria` tree; relative times change with the clock.
 
-- **Initial groups.** Run `aria sessions-list-initial` and `screenshot sessions-list-initial`. Active is current, both sources have health text, no option is selected, rows are grouped in the approved order, and the fixture banner names the copied home.
+- **Initial groups.** First run `click --role radio --name "Status"` for the status-specific recipes below; launch defaults to Project. Run `aria sessions-list-initial` and `screenshot sessions-list-initial`. Active is current, both sources have health text, no option is selected, rows are grouped in the approved order, and the fixture banner names the copied home.
 - **Views.** Run `menu-click "View > Pinned"`, then `aria sessions-list-pinned` and `screenshot sessions-list-pinned`. Without pins it says "No pinned sessions". Run `menu-click "View > All Sessions"` and capture `aria sessions-list-all` plus `screenshot sessions-list-all`; the footnote describes seven days and 50 sessions per tool.
 - **Filter.** Read `aria`, then `click --role radio --name "Codex <count>"`. Capture `aria sessions-list-filter` and `screenshot sessions-list-filter`. Only Codex rows appear; sidebar totals are unchanged. The filter persists when changing views.
 - **Scoped empty pins (`list-empty-scope`).** With no pins, open Pinned and capture `aria list-empty-scope-no-pins` plus `screenshot list-empty-scope-no-pins`: pin guidance and Browse All Sessions are present. Run `click --role button --name "Browse All Sessions"`; All Sessions opens with the same tool filter. Pin one Codex row through Session > Pin, open Pinned and choose Claude Code 0. Capture `aria list-empty-scope-claude` and `screenshot list-empty-scope-claude`: No pinned Claude Code sessions, Show All Pinned, sidebar Pinned 1. Click Show All Pinned; capture `aria list-empty-scope-restored` and `screenshot list-empty-scope-restored`: the pin appears in Pinned, All is selected and focused. Run `key Tab`, `key ArrowDown`; list focus/selection must be reachable. Repeat with the tools reversed; pin a row in each tool and check each filter shows its own pin without an empty action.

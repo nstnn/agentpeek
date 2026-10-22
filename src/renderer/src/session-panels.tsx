@@ -185,7 +185,7 @@ export function ReloadSessions({
         if (document.activeElement !== document.body) return
         const target =
           document.querySelector<HTMLElement>('.detail-pane:not([hidden]) .transcript') ??
-          document.querySelector<HTMLElement>('[role=listbox]:not([hidden])')
+          document.querySelector<HTMLElement>('.list-scroll:not([hidden])')
         target?.focus({ preventScroll: true })
       })
     },
