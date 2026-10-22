@@ -7,6 +7,7 @@ import {
   useState,
   useSyncExternalStore,
   type DragEvent,
+  type SyntheticEvent,
   type JSX
 } from 'react'
 import { sessionKeyToString, type Session } from '../../core/session'
@@ -39,6 +40,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
   const mainPane = useRef<HTMLElement>(null)
   const secondPane = useRef<HTMLElement>(null)
   const navigation = useRef<HTMLElement>(null)
+  const focusRevealedList = useRef(false)
   const previousSecond = useRef<string | null>(null)
   const previousPlacement = useRef(0)
   const previousLayout = useRef({
@@ -46,7 +48,8 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     split: false,
     narrow: false,
     roomy: false,
-    collapsed: false
+    collapsed: false,
+    navigationVisible: true
   })
   const paneAtDrop = (event: DragEvent): 'main' | 'second' | null => {
     const targets = workspace.current?.querySelectorAll<HTMLElement>('[data-drop-pane]') ?? []
@@ -146,9 +149,12 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     const focusList = () =>
       (
         navigation.current?.querySelector<HTMLElement>('[role=listbox]') ??
-        navigation.current?.querySelector<HTMLElement>('button')
+        navigation.current?.querySelector<HTMLElement>('button:not(:disabled):not([tabindex="-1"])')
       )?.focus({ preventScroll: true })
-    if ((!reading && previous.reading) || (closed && (!reading || !state.selection))) {
+    if (focusRevealedList.current && navigationVisible) {
+      focusRevealedList.current = false
+      focusList()
+    } else if ((!reading && previous.reading) || (closed && (!reading || !state.selection))) {
       focusList()
     } else if (reading && (!previous.reading || closed || placed)) {
       if (!split && state.narrow)
@@ -159,7 +165,8 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
       (active === document.body &&
         (previous.narrow !== state.narrow ||
           previous.roomy !== state.roomy ||
-          previous.collapsed !== sidebarCollapsed))
+          previous.collapsed !== sidebarCollapsed ||
+          previous.navigationVisible !== navigationVisible))
     ) {
       // A layout change can hide a focused list, selector or pane control. Keep
       // focus on the same reading target instead of activating its sibling.
@@ -173,7 +180,8 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
       split,
       narrow: state.narrow,
       roomy: state.roomy,
-      collapsed: sidebarCollapsed
+      collapsed: sidebarCollapsed,
+      navigationVisible
     }
   }, [
     secondKey,
@@ -243,6 +251,28 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
       : 'No session selected',
     second: state.secondarySelection?.session.summary.title || 'Untitled session'
   }
+  const sessionsToggle = (
+    <button
+      type="button"
+      className={`navigation-toggle${!split && state.narrow && !navigationVisible ? ' detail-back' : ''}`}
+      data-navigation-control="sessions"
+      aria-label={navigationVisible ? 'Hide Sessions' : 'Show Sessions'}
+      title={`${navigationVisible ? 'Hide' : 'Show'} sessions (⇧⌘L)`}
+      aria-expanded={navigationVisible}
+      aria-controls={`${regionId}-sessions`}
+      aria-keyshortcuts="Meta+Shift+L"
+      disabled={navigationVisible && !state.selection && !state.secondarySelection}
+      onClick={() => {
+        if (navigationVisible) store.hideSessions()
+        else {
+          focusRevealedList.current = true
+          store.showSessions()
+        }
+      }}
+    >
+      <NavigationIcon kind="sessions" />
+    </button>
+  )
   return (
     <div
       className="app-shell"
@@ -266,33 +296,8 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
         reloadError={state.reloadError}
         onReload={store.reload}
       />
-      <div className="split-navigation navigation-toolbar">
-        <button
-          type="button"
-          aria-label={sidebarCollapsed ? 'Expand Views' : 'Collapse Views'}
-          title={`${sidebarCollapsed ? 'Expand' : 'Collapse'} Views (⇧⌘B)`}
-          aria-expanded={!sidebarCollapsed}
-          aria-controls={`${regionId}-sidebar`}
-          aria-keyshortcuts="Meta+Shift+B"
-          onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
-        >
-          <NavigationIcon kind="views" />
-          <span>Views</span>
-        </button>
-        <button
-          type="button"
-          aria-label={navigationVisible ? 'Hide Sessions' : 'Show Sessions'}
-          title={`${navigationVisible ? 'Hide' : 'Show'} Sessions (⇧⌘L)`}
-          aria-expanded={navigationVisible}
-          aria-controls={`${regionId}-sessions`}
-          aria-keyshortcuts="Meta+Shift+L"
-          disabled={navigationVisible && !state.selection && !state.secondarySelection}
-          onClick={navigationVisible ? store.hideSessions : store.showSessions}
-        >
-          <NavigationIcon kind="sessions" />
-          <span>{navigationVisible ? 'Hide Sessions' : 'Show Sessions'}</span>
-        </button>
-        {split && state.narrow && reading && (
+      {split && state.narrow && reading && (
+        <div className="split-navigation">
           <div role="radiogroup" aria-label="Visible session pane" className="pane-selector">
             {(['main', 'second'] as const).map((pane) => (
               <button
@@ -327,19 +332,8 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
               </button>
             ))}
           </div>
-        )}
-        {state.splitBrowsing && (
-          <button
-            type="button"
-            className="pane-close"
-            aria-label="Close Right Pane"
-            title="Close Right Pane"
-            onClick={store.closeSecondary}
-          >
-            <span aria-hidden="true">×</span>
-          </button>
-        )}
-      </div>
+        </div>
+      )}
       <div
         ref={workspace}
         onDragOver={(event) => {
@@ -385,6 +379,8 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
             view={view}
             onView={store.setView}
             collapsed={sidebarCollapsed}
+            onToggle={() => setSidebarCollapsed((collapsed) => !collapsed)}
+            controls={`${regionId}-sidebar`}
           />
         </div>
         {!sidebarCollapsed && (navigationVisible || detailCount > 0) && (
@@ -407,7 +403,21 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
           hidden={!navigationVisible}
         >
           <header className="list-header">
-            <h1>{VIEW_NAMES[view]}</h1>
+            <div className="list-heading">
+              {navigationVisible && sessionsToggle}
+              <h1>{VIEW_NAMES[view]}</h1>
+              {state.splitBrowsing && (
+                <button
+                  type="button"
+                  className="pane-close"
+                  aria-label="Close Right Pane"
+                  title="Close Right Pane"
+                  onClick={store.closeSecondary}
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              )}
+            </div>
             <p className="summary">
               {attention} need attention · {running} running · {unknown} unknown
             </p>
@@ -524,7 +534,8 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
           const selected = selection?.session
           const visible = pane === 'main' ? mainVisible : secondVisible
           const label = pane === 'main' ? 'Left pane' : 'Right pane'
-          const activate = () => {
+          const activate = (event: SyntheticEvent<HTMLElement>) => {
+            if ((event.target as HTMLElement).closest('[data-navigation-control]')) return
             if (visible && state.activePane !== pane) store.activatePane(pane)
           }
           return (
@@ -560,13 +571,12 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                 onPointerDownCapture={activate}
                 onFocusCapture={activate}
               >
-                {pane === 'main' && !split && state.narrow && state.detailOpen && (
-                  <button className="detail-back" type="button" onClick={store.back}>
-                    ‹ {VIEW_NAMES[view]}
-                  </button>
-                )}
                 {split && (
                   <div className="pane-toolbar">
+                    {!navigationVisible &&
+                      visible &&
+                      (pane === 'main' || !mainVisible) &&
+                      sessionsToggle}
                     <h2 className="pane-title" title={paneTitles[pane]}>
                       {paneTitles[pane]}
                     </h2>
@@ -597,6 +607,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                     focused={windowFocused}
                     paneLabel={split ? label : undefined}
                     showTitle={!split}
+                    leadingControl={!split && !navigationVisible ? sessionsToggle : undefined}
                     canAutoRead={() =>
                       store.canAutoRead(pane, selected.key, state.targetGeneration)
                     }

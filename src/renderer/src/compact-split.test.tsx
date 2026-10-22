@@ -57,7 +57,7 @@ describe('responsive split navigation', () => {
         detailOpen: width < 800
       })
       expect(document.activeElement).toBe(
-        width < 800 ? screen.getByRole('button', { name: '‹ Active' }) : detail
+        width < 800 ? screen.getByRole('button', { name: 'Show Sessions' }) : detail
       )
     }
   )

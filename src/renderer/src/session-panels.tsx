@@ -11,12 +11,16 @@ export function Sidebar({
   snapshot,
   view,
   onView,
-  collapsed = false
+  collapsed = false,
+  onToggle,
+  controls
 }: {
   snapshot: AppSnapshot | null
   view: ViewId
   onView: (view: ViewId) => void
   collapsed?: boolean
+  onToggle: () => void
+  controls: string
 }): JSX.Element {
   const views = ['active', 'pinned', 'all'] as const
   return (
@@ -24,7 +28,20 @@ export function Sidebar({
       className={`sidebar${collapsed ? ' sidebar-collapsed' : ''}`}
       aria-label="Session navigation and sources"
     >
-      <h2 className={collapsed ? 'sr-only' : undefined}>Sessions</h2>
+      <h2 className="sidebar-heading">
+        <button
+          type="button"
+          className="sidebar-heading-toggle"
+          aria-label={collapsed ? 'Expand Views' : 'Collapse Views'}
+          title={`${collapsed ? 'Expand' : 'Collapse'} navigation (⇧⌘B)`}
+          aria-expanded={!collapsed}
+          aria-controls={controls}
+          aria-keyshortcuts="Meta+Shift+B"
+          onClick={onToggle}
+        >
+          {collapsed ? <NavigationIcon kind="views" /> : 'Sessions'}
+        </button>
+      </h2>
       <nav aria-label="Session views">
         {views.map((id) => {
           const count =

@@ -30,11 +30,46 @@ async function openSplit(f: ReturnType<typeof mount>) {
 }
 
 describe('independent navigation visibility', () => {
+  it('moves the icon between existing headers without changing the active pane or losing focus', async () => {
+    const f = mount()
+    await openSplit(f)
+    expect(screen.getByRole('button', { name: 'Collapse Views' }).textContent).toBe('Sessions')
+    const hide = screen.getByRole('button', { name: 'Hide Sessions' })
+    expect(hide.textContent).toBe('')
+    expect(
+      screen.getByRole('heading', { name: 'Active', level: 1 }).parentElement?.contains(hide)
+    ).toBe(true)
+    const loads = f.api.getMessages.mock.calls.length
+    await userEvent.click(hide)
+    expect(document.activeElement).toBe(pane('Right'))
+    const restore = screen.getByRole('button', { name: 'Show Sessions' })
+    expect(restore.textContent).toBe('')
+    expect(pane('Left').contains(restore)).toBe(true)
+    await userEvent.click(restore)
+    expect(document.activeElement).toBe(screen.getByRole('listbox'))
+    expect(f.store.getSnapshot().activePane).toBe('second')
+    expect(f.api.getMessages.mock.calls.length).toBe(loads)
+  })
+
   it('accepts the Views shortcut before any control has keyboard focus', async () => {
     mount()
     await screen.findByRole('option', { name: /Synthetic a,/ })
     fireEvent.keyDown(document.body, { key: 'B', metaKey: true, shiftKey: true })
     expect(screen.getByRole('button', { name: 'Expand Views' })).toBeTruthy()
+  })
+
+  it('focuses the selected tool filter after closing the only pane when all sessions disappear', async () => {
+    const f = mount()
+    await screen.findByRole('option', { name: /Synthetic a,/ })
+    act(() => f.command({ type: 'open-secondary', key: f.b.key }))
+    await within(pane('Right')).findByRole('region')
+    await userEvent.click(screen.getByRole('radio', { name: /^Codex / }))
+    act(() => f.push(snapshot([])))
+    await userEvent.click(screen.getByRole('button', { name: 'Close Right Pane' }))
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Hide Sessions' }).disabled).toBe(
+      true
+    )
+    expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'Codex 0' }))
   })
 
   it.each(['separator', 'source'] as const)(
