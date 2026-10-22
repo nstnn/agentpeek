@@ -20,6 +20,7 @@ function mount(width = 1440) {
   )
   Object.defineProperty(window, 'agentpeek', { value: fake.api, configurable: true })
   const store = createSessionsStore(fake.api)
+  store.setGrouping('status')
   return { ...fake, store, a, b, resize, ...render(<App store={store} />) }
 }
 const pane = (side: 'Left' | 'Right') => screen.getByRole('complementary', { name: `${side} pane` })

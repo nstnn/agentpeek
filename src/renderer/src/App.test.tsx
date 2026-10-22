@@ -10,6 +10,7 @@ function mount(initial = snapshot()) {
   const fake = fakeApi(initial)
   Object.defineProperty(window, 'agentpeek', { value: fake.api, configurable: true })
   const store = createSessionsStore(fake.api)
+  store.setGrouping('status')
   return { ...fake, store, ...render(<App store={store} />) }
 }
 

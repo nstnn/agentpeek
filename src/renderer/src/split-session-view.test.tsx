@@ -19,6 +19,7 @@ function mount(sessions = [session('a'), session('b'), session('c'), session('d'
   )
   Object.defineProperty(window, 'agentpeek', { value: f.api, configurable: true })
   const store = createSessionsStore(f.api)
+  store.setGrouping('status')
   return { ...f, store, ...render(<App store={store} />) }
 }
 const pane = (name: 'Left' | 'Right') => screen.getByRole('complementary', { name: `${name} pane` })

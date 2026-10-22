@@ -14,6 +14,7 @@ function mount(initial = snapshot()) {
   const fake = fakeApi(initial)
   Object.defineProperty(window, 'agentpeek', { value: fake.api, configurable: true })
   const store = createSessionsStore(fake.api)
+  store.setGrouping('status')
   return { ...fake, store, ...render(<App store={store} />) }
 }
 
@@ -244,6 +245,7 @@ describe('reload bounds and observation provenance', () => {
           })
       )
       const store = createSessionsStore(f.api)
+      store.setGrouping('status')
       const first = store.reload()
       await vi.advanceTimersByTimeAsync(10_000)
       await first
@@ -272,7 +274,8 @@ describe('reload bounds and observation provenance', () => {
 
   it('never fabricates a last-seen time from an unobserved row or its activity time', () => {
     const store = createSessionsStore(fakeApi().api)
-    store.select(failed, [{ id: 'errors', sessions: [failed] }])
+    store.setGrouping('status')
+    store.select(failed, [{ id: 'errors', label: 'Errors', sessions: [failed] }])
     expect(store.getSnapshot().selection?.lastSeenAt).toBeNull()
     expect(displayedGroups(store.getSnapshot())[0]?.sessions[0]).toBe(failed)
   })
@@ -314,6 +317,7 @@ describe('secondary selection detail contract', () => {
         })
     )
     const store = createSessionsStore(f.api)
+    store.setGrouping('status')
     render(<SecondaryDetail store={store} api={f.api} />)
     await act(async () => Promise.resolve())
     act(() => {

@@ -1,12 +1,13 @@
 import { sessionKeyToString, type Session, type SessionKey } from '../../core/session'
-import { buildView, type SessionGroup, type ToolFilter, type ViewId } from '../../core/views'
+import type { ToolFilter, ViewId } from '../../core/views'
+import { buildListGroups, listGroup, type Grouping, type ListGroup } from './list-groups'
 import type { AgentPeekApi, AppSnapshot } from '../../shared/api'
 
 export type PaneId = 'main' | 'second'
 
 export interface Selection {
   session: Session
-  group: SessionGroup['id']
+  group: string
   index: number
   /** Snapshot observation only; never a claim that the source file was freshly read. */
   lastSeenAt: number | null
@@ -17,6 +18,9 @@ export interface RendererState {
   failed: boolean
   view: ViewId
   filter: ToolFilter
+  grouping: Grouping
+  collapsedProjects: readonly string[]
+  focusedProject: string | null
   selection: Selection | null
   secondarySelection: Selection | null
   placementVersion: number
@@ -44,6 +48,9 @@ export function createSessionsStore(api: AgentPeekApi) {
     failed: false,
     view: 'active',
     filter: 'all',
+    grouping: 'project',
+    collapsedProjects: [],
+    focusedProject: null,
     selection: null,
     secondarySelection: null,
     placementVersion: 0,
@@ -79,6 +86,19 @@ export function createSessionsStore(api: AgentPeekApi) {
   }
   const emit = (change: Partial<RendererState>) => {
     state = { ...state, ...change }
+    if (change.listSelection && !change.snapshot) state = { ...state, focusedProject: null }
+    // Explicit pane/row placement reveals its cursor, but snapshot refreshes never undo a collapse.
+    if (
+      change.listSelection &&
+      !change.snapshot &&
+      state.collapsedProjects.includes(change.listSelection.group)
+    )
+      state = {
+        ...state,
+        collapsedProjects: state.collapsedProjects.filter(
+          (id) => id !== change.listSelection!.group
+        )
+      }
     const key = targetKey()
     const selected = state.activePane === 'main' ? state.selection : state.secondarySelection
     const signature = JSON.stringify([
@@ -114,8 +134,8 @@ export function createSessionsStore(api: AgentPeekApi) {
     if (!selected) return null
     if (state.listSelection && sameKey(state.listSelection.session.key, selected.session.key))
       return state.listSelection
-    const group = buildView(state.snapshot?.sessions ?? [], state.view, state.filter).groups.find(
-      (g) => g.sessions.some((s) => sameKey(s.key, selected.session.key))
+    const group = currentGroups(state).find((g) =>
+      g.sessions.some((s) => sameKey(s.key, selected.session.key))
     )
     return group
       ? {
@@ -183,12 +203,50 @@ export function createSessionsStore(api: AgentPeekApi) {
       }
     },
     setView(this: void, view: ViewId) {
-      emit({ view, listSelection: null, actionError: null })
+      emit({ view, listSelection: null, focusedProject: null, actionError: null })
       store.showSessions()
     },
     setFilter(this: void, filter: ToolFilter) {
-      emit({ filter, listSelection: null, actionError: null })
+      emit({ filter, listSelection: null, focusedProject: null, actionError: null })
       store.showSessions()
+    },
+    setGrouping(this: void, grouping: Grouping) {
+      if (grouping === state.grouping) return
+      const anchor = state.listSelection
+      const groups = currentGroups({ ...state, grouping })
+      const group =
+        anchor && groups.find((g) => g.sessions.some((s) => sameKey(s.key, anchor.session.key)))
+      emit({
+        grouping,
+        focusedProject: null,
+        listSelection:
+          anchor && group
+            ? {
+                ...anchor,
+                group: group.id,
+                index: group.sessions.findIndex((s) => sameKey(s.key, anchor.session.key))
+              }
+            : null
+      })
+    },
+    focusProject(this: void, id: string) {
+      emit({ focusedProject: id })
+    },
+    toggleProject(this: void, id: string) {
+      if (
+        state.grouping !== 'project' ||
+        (!currentGroups(state).some((group) => group.id === id) &&
+          !displayedGroups(state).some((group) => group.id === id))
+      )
+        return
+      const collapsed = state.collapsedProjects.includes(id)
+      emit({
+        focusedProject: id,
+        collapsedProjects: collapsed
+          ? state.collapsedProjects.filter((key) => key !== id)
+          : [...state.collapsedProjects, id],
+        ...(!collapsed && state.listSelection?.group === id ? { listSelection: null } : {})
+      })
     },
     setNarrow(this: void, narrow: boolean) {
       store.setLayout(narrow, !narrow)
@@ -213,7 +271,7 @@ export function createSessionsStore(api: AgentPeekApi) {
         activePane: state.selection && (reading || !narrow) ? 'main' : null
       })
     },
-    activate(this: void, session: Session, groups: SessionGroup[]) {
+    activate(this: void, session: Session, groups: ListGroup[]) {
       const pane = state.secondarySelection ? (state.activePane ?? state.returnPane) : 'main'
       store.select(session, groups)
       const selected = state.listSelection
@@ -281,7 +339,7 @@ export function createSessionsStore(api: AgentPeekApi) {
     openPane(this: void, pane: PaneId, key: SessionKey) {
       const snapshot = state.snapshot
       if (!snapshot) return
-      const groups = buildView(snapshot.sessions, state.view, state.filter).groups
+      const groups = currentGroups(state)
       const group = groups.find((g) => g.sessions.some((s) => sameKey(s.key, key)))
       const index = snapshot.sessions.findIndex((s) => sameKey(s.key, key))
       const session = snapshot.sessions[index]
@@ -372,7 +430,7 @@ export function createSessionsStore(api: AgentPeekApi) {
         emit({ reloadPending: false })
       }
     },
-    select(this: void, session: Session, groups: SessionGroup[]) {
+    select(this: void, session: Session, groups: ListGroup[]) {
       const pane = state.secondarySelection ? (state.activePane ?? state.returnPane) : 'main'
       const browsingSplit = !!state.secondarySelection && state.splitBrowsing
       const activePane = !browsingSplit && (!state.narrow || state.detailOpen) ? pane : null
@@ -436,18 +494,27 @@ function reconcileSelection(
   }
 }
 
-/** Keep the selected row's group and slot, even if it leaves the view or source. Counts stay live. */
-export function displayedGroups(state: RendererState): SessionGroup[] {
-  const groups = buildView(state.snapshot?.sessions ?? [], state.view, state.filter).groups
+/** Current membership only, excluding any retained selection. */
+export function currentGroups(state: RendererState): ListGroup[] {
+  return buildListGroups(state.snapshot?.sessions ?? [], state.view, state.filter, state.grouping)
+}
+
+/** Keep the selected row's group and slot, even if it leaves the view or source. */
+export function displayedGroups(state: RendererState): ListGroup[] {
+  const groups = currentGroups(state)
   const anchor = state.listSelection
   if (!anchor) return groups
   for (const group of groups)
     group.sessions = group.sessions.filter((s) => !sameKey(s.key, anchor.session.key))
   let group = groups.find((g) => g.id === anchor.group)
   if (!group) {
-    group = { id: anchor.group, sessions: [] }
+    group = listGroup(anchor.group)
     const order = ['waiting', 'errors', 'new-replies', 'running', 'unknown', 'pinned', 'all']
-    const index = groups.findIndex((g) => order.indexOf(g.id) > order.indexOf(anchor.group))
+    const index = groups.findIndex((g) =>
+      state.grouping === 'project'
+        ? g.id > anchor.group
+        : order.indexOf(g.id) > order.indexOf(anchor.group)
+    )
     groups.splice(index < 0 ? groups.length : index, 0, group)
   }
   group.sessions.splice(Math.min(anchor.index, group.sessions.length), 0, anchor.session)

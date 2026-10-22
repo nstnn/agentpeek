@@ -12,7 +12,9 @@ import { toolName, VIEW_NAMES } from './session-display'
 function mount(initial: AppSnapshot) {
   const fake = fakeApi(initial)
   Object.defineProperty(window, 'agentpeek', { value: fake.api, configurable: true })
-  render(<App store={createSessionsStore(fake.api)} />)
+  const store = createSessionsStore(fake.api)
+  store.setGrouping('status')
+  render(<App store={store} />)
   return fake
 }
 

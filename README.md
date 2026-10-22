@@ -10,6 +10,17 @@ actions, two session panes, keyboard navigation and a local macOS package. Autom
 built-app checks cover the implemented paths. VoiceOver speech, physical sleep/wake, external
 app/browser actions and a complete real-session comparison still need acceptance evidence.
 
+Sessions are grouped by **Project** by default. Click a project heading to collapse or expand it;
+its count, attention and running summaries stay visible while collapsed. **Group by → Status**
+restores the status sections. Projects use the full working-folder path, combine Codex and
+Claude Code sessions in the same folder, and keep different worktrees separate. Duplicate folder
+names show their full paths; sessions without a folder appear under **No folder**. Project order
+is stable by path; sessions within a project keep pinned/recent ordering. Views and tool filters
+apply before grouping. Grouping and collapsed projects are remembered until quit/reload.
+Use Up/Down/Home/End to navigate projects and sessions, Left/Right to collapse/expand or enter a
+project, and Enter/Space to toggle a project or open a session. Collapsing a project clears its
+list cursor while preserving any session already open in either reading pane.
+
 Right-click a session and choose **Open to the Right**, or drag its row into the right-side
 preview to split the view. Once split, the context menu and drag previews can replace either
 **Left pane** or **Right pane**. Clicking or focusing a pane makes it active; ordinary row

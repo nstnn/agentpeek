@@ -85,6 +85,7 @@ describe('two detail slots', () => {
     const c = session('c')
     const fake = fakeApi(snapshot([a, b, c]))
     const store = createSessionsStore(fake.api)
+    store.setGrouping('status')
     const off = store.subscribe(vi.fn())
     await Promise.resolve()
     const select = (s: typeof a) => store.select(s, displayedGroups(store.getSnapshot()))

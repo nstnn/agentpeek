@@ -116,6 +116,16 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     page = await application.firstWindow()
     await expect(page.locator('.fixture-banner')).toContainText(fixture.home)
     await expect(page.getByRole('heading', { name: 'Active', exact: true })).toBeVisible()
+    await expect(page.getByRole('radio', { name: 'Project', exact: true })).toBeChecked()
+    await expect(page.getByRole('tree')).toBeVisible()
+    const project = page.locator('.project-heading').first()
+    await project.click()
+    await expect(page.locator('.project-group').first()).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.getByRole('treeitem', { name: /^Fixture / })).toHaveCount(0)
+    await project.click()
+    await expect(page.getByRole('treeitem', { name: /^Fixture / })).not.toHaveCount(0)
+    // Keep the established smoke journeys exercising the Status presentation.
+    await page.getByRole('radio', { name: 'Status', exact: true }).click()
     const paths = await application.evaluate(({ app, BrowserWindow }) => ({
       userData: app.getPath('userData'),
       windows: BrowserWindow.getAllWindows().length,
@@ -390,7 +400,12 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     await expect(main).toBeVisible()
     await expect(second).toBeHidden()
     await save('split-compact-main')
-    await page.getByRole('button', { name: 'Close Right Pane', exact: true }).click()
+    // In compact mode Right is hidden while Left is active; close it through the available menu.
+    await application.evaluate(({ Menu }) => {
+      const close = Menu.getApplicationMenu().getMenuItemById('session-close-secondary')
+      if (!close.enabled) throw new Error('Close Right Pane is disabled')
+      close.click()
+    })
     await expect(second).toHaveCount(0)
     await expect(main.getByRole('heading', { level: 2 })).toHaveText('Fixture Claude busy')
     await expect(main.getByRole('button', { name: 'Show Sessions' })).toBeFocused()

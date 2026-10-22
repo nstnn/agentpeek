@@ -670,6 +670,7 @@ describe('detail navigation and request lifetime', () => {
     const fake = fakeApi(snapshot([session('a')]))
     Object.defineProperty(window, 'agentpeek', { value: fake.api, configurable: true })
     const store = createSessionsStore(fake.api)
+    store.setGrouping('status')
     render(<App store={store} />)
     await userEvent.click(await screen.findByRole('option'))
     expect(screen.getByRole('complementary', { name: 'Session detail' })).toBeTruthy()
@@ -685,6 +686,7 @@ describe('detail navigation and request lifetime', () => {
     const fake = fakeApi(snapshot([session('a'), session('b')]))
     Object.defineProperty(window, 'agentpeek', { value: fake.api, configurable: true })
     const store = createSessionsStore(fake.api)
+    store.setGrouping('status')
     return { ...fake, store, ...render(<App store={store} />) }
   }
 

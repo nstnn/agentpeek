@@ -19,6 +19,7 @@ function mount(width: number) {
   )
   Object.defineProperty(window, 'agentpeek', { value: f.api, configurable: true })
   const store = createSessionsStore(f.api)
+  store.setGrouping('status')
   const rendered = render(<App store={store} />)
   return {
     ...f,
