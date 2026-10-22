@@ -18,7 +18,7 @@ accent header showing its session title once; the metadata below starts with the
 Only a successfully loaded, active visible reply/error is marked read while the window is
 focused; waiting still requires action in the tool.
 
-Click the **Sessions** heading (⇧⌘B) to collapse the sidebar to a 56-pixel icon rail.
+Click the icon beside **Sessions** (⇧⌘B) to collapse the sidebar to a 56-pixel icon rail.
 The icon beside **Active**, **Pinned** or **All Sessions** (⇧⌘L) independently hides the
 session list. Its restore icon appears in the reading header while the list is hidden.
 Both controls use the existing headers, without a separate navigation toolbar or extra labels.

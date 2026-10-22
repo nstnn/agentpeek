@@ -28,10 +28,10 @@ export function Sidebar({
       className={`sidebar${collapsed ? ' sidebar-collapsed' : ''}`}
       aria-label="Session navigation and sources"
     >
-      <h2 className="sidebar-heading">
+      <div className="sidebar-heading">
         <button
           type="button"
-          className="sidebar-heading-toggle"
+          className="navigation-toggle sidebar-heading-toggle"
           aria-label={collapsed ? 'Expand Views' : 'Collapse Views'}
           title={`${collapsed ? 'Expand' : 'Collapse'} navigation (⇧⌘B)`}
           aria-expanded={!collapsed}
@@ -39,14 +39,12 @@ export function Sidebar({
           aria-keyshortcuts="Meta+Shift+B"
           onClick={onToggle}
         >
-          <span className="sidebar-heading-text" aria-hidden="true">
-            Sessions
-          </span>
-          <span className="sidebar-heading-icon" aria-hidden="true">
-            <NavigationIcon kind="views" />
-          </span>
+          <NavigationIcon kind="views" />
         </button>
-      </h2>
+        <h2 className="sidebar-heading-text" aria-hidden={collapsed || undefined}>
+          Sessions
+        </h2>
+      </div>
       <nav aria-label="Session views">
         {views.map((id) => {
           const count =

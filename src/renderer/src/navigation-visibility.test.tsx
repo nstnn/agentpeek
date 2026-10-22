@@ -33,7 +33,9 @@ describe('independent navigation visibility', () => {
   it('moves the icon between existing headers without changing the active pane or losing focus', async () => {
     const f = mount()
     await openSplit(f)
-    expect(screen.getByRole('button', { name: 'Collapse Views' }).textContent).toBe('Sessions')
+    expect(screen.getByRole('button', { name: 'Collapse Views' }).textContent).toBe('')
+    await userEvent.click(screen.getByRole('heading', { name: 'Sessions', level: 2 }))
+    expect(screen.getByRole('button', { name: 'Collapse Views' })).toBeTruthy()
     const hide = screen.getByRole('button', { name: 'Hide Sessions' })
     expect(hide.textContent).toBe('')
     expect(

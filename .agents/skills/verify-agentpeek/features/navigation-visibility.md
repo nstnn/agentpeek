@@ -1,6 +1,6 @@
 # Navigation visibility
 
-The Sessions heading collapses navigation to an icon rail independently of the session list. An icon beside Active/Pinned/All Sessions hides the list; a restore icon appears in the reading header while it is hidden. Controls use the existing headers, with accessible names/tooltips and no extra toolbar or text labels. Toggles preserve reading selections, scroll, disclosures and column preferences. Capacity follows the space left by navigation.
+An icon left of the Sessions heading collapses navigation to an icon rail independently of the session list. The Sessions title itself is not interactive. An icon beside Active/Pinned/All Sessions hides the list; a restore icon appears in the reading header while it is hidden. Controls use the existing headers, with accessible names/tooltips and no extra toolbar or text labels. Toggles preserve reading selections, scroll, disclosures and column preferences. Capacity follows the space left by navigation.
 
 ## Sub-features
 
@@ -13,7 +13,7 @@ The Sessions heading collapses navigation to an icon rail independently of the s
 
 ## How to get to it (user POV)
 
-- Click the Sessions heading to collapse navigation; click its rail icon to expand it, or press Shift-Command-B.
+- Click the icon left of Sessions to collapse navigation; click its rail icon to expand it, or press Shift-Command-B. Clicking the Sessions title does nothing.
 - Select a session, then click the icon beside Active/Pinned/All Sessions to hide the list. Click the restore icon in the reading header to show it again, or press Shift-Command-L. Accessible names remain Hide Sessions / Show Sessions.
 - In the rail, click Active, Pinned or All Sessions, or use View's existing commands.
 - Click a source initial (C for Codex, A for Claude Code), then Close or Escape to dismiss its health details.
