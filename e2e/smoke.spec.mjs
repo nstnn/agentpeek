@@ -393,7 +393,7 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     await page.getByRole('button', { name: 'Close Right Pane', exact: true }).click()
     await expect(second).toHaveCount(0)
     await expect(main.getByRole('heading', { level: 2 })).toHaveText('Fixture Claude busy')
-    await expect(main.getByRole('button', { name: '‹ All Sessions' })).toBeFocused()
+    await expect(main.getByRole('button', { name: 'Show Sessions' })).toBeFocused()
     await page.keyboard.press('Escape')
     await expect(page.getByRole('listbox')).toBeFocused()
     await save('split-closed-single')

@@ -743,7 +743,8 @@ describe('detail navigation and request lifetime', () => {
       await screen.findByRole('region', { name: 'Recent messages' })
       expect(f.api.setDetailOpen).toHaveBeenLastCalledWith(true)
       expect(screen.queryByRole('listbox')).toBeNull()
-      if (back === 'button') await userEvent.click(screen.getByRole('button', { name: '‹ Active' }))
+      if (back === 'button')
+        await userEvent.click(screen.getByRole('button', { name: 'Show Sessions' }))
       if (back === 'escape') await userEvent.keyboard('{Escape}')
       if (back === 'menu') act(() => f.command('back'))
       expect(document.activeElement).toBe(list)
@@ -751,7 +752,7 @@ describe('detail navigation and request lifetime', () => {
       expect(f.api.setDetailOpen).toHaveBeenLastCalledWith(false)
     }
     await userEvent.click(screen.getByRole('option', { name: /Synthetic b/ }))
-    expect(screen.getByRole('button', { name: '‹ Active' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Show Sessions' })).toBeTruthy()
     fireEvent.blur(window)
   })
 })

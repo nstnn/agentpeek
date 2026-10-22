@@ -1,4 +1,12 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX } from 'react'
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type JSX,
+  type ReactNode
+} from 'react'
 import type { RecentMessages, Session, SessionMessage } from '../../core/session'
 import type { AgentPeekApi } from '../../shared/api'
 import { rowStatus, sessionTitle, toolName, workspaceName } from './session-display'
@@ -58,6 +66,7 @@ export function SessionDetail({
   focused,
   paneLabel,
   showTitle = true,
+  leadingControl,
   canAutoRead,
   missing,
   lastSeenAt,
@@ -72,6 +81,7 @@ export function SessionDetail({
   focused: boolean
   paneLabel?: string
   showTitle?: boolean
+  leadingControl?: ReactNode
   canAutoRead: () => boolean
   missing: boolean
   lastSeenAt: number | null
@@ -230,7 +240,12 @@ export function SessionDetail({
   return (
     <>
       <header className="detail-header">
-        {showTitle && <DetailTitle title={sessionTitle(session)} />}
+        {showTitle && (
+          <div className="detail-heading">
+            {leadingControl}
+            <DetailTitle title={sessionTitle(session)} />
+          </div>
+        )}
         <p className="detail-meta" title={session.summary.workspacePath ?? 'No folder'}>
           {toolName(tool)} · {workspaceName(session)}
         </p>

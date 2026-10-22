@@ -1,6 +1,6 @@
 # Navigation visibility
 
-Views collapses to an icon rail independently of the session list. Hide Sessions and Show Sessions preserve reading selections, scroll, disclosures and column preferences. Capacity follows the space left by navigation, so the rail can reveal a second reading pane at the minimum window size.
+The Sessions heading collapses navigation to an icon rail independently of the session list. An icon beside Active/Pinned/All Sessions hides the list; a restore icon appears in the reading header while it is hidden. Controls use the existing headers, with accessible names/tooltips and no extra toolbar or text labels. Toggles preserve reading selections, scroll, disclosures and column preferences. Capacity follows the space left by navigation.
 
 ## Sub-features
 
@@ -12,8 +12,8 @@ Views collapses to an icon rail independently of the session list. Hide Sessions
 
 ## How to get to it (user POV)
 
-- Click Views in the top navigation controls, or press Shift-Command-B.
-- Select a session, then click Hide Sessions / Show Sessions or press Shift-Command-L.
+- Click the Sessions heading to collapse navigation; click its rail icon to expand it, or press Shift-Command-B.
+- Select a session, then click the icon beside Active/Pinned/All Sessions to hide the list. Click the restore icon in the reading header to show it again, or press Shift-Command-L. Accessible names remain Hide Sessions / Show Sessions.
 - In the rail, click Active, Pinned or All Sessions, or use View's existing commands.
 - Click a source initial (C for Codex, A for Claude Code), then Close or Escape to dismiss its health details.
 - Resize the window or expanded sidebar while reading one or two sessions.
@@ -29,6 +29,7 @@ Preconditions:
 - **Filtered list (`navigation-filter`).** Hide Sessions while both panes fit. Collapse Views, then click the exact observed Pinned button name. List returns with pinned rows only, while both reading selections remain. Repeat with native `menu-click "View > All Sessions"`. Verify source/attention updates still appear while the list is hidden; fixture updates must not acknowledge an inactive reply.
 - **Capacity (`navigation-capacity`).** With default expanded sidebar, visit content widths 799/800 (one-detail/list boundary), 839/840 (two-detail boundary) and 1124/1125 (list plus two-detail boundary). Save ARIA/PNG and zero document overflow. At 760 with two selections, expanded Views shows one detail with title radios. Collapse Views: both details fit, radios disappear and list remains hidden. Show Sessions replaces both details; resize to 1440 while browsing and verify details remain hidden until Hide Sessions restores them. With the rail, test 981/982 for list plus both details. Resize the expanded Sidebar width, then confirm thresholds follow the reserved width and preferred widths return when space permits. Repeat representative minimum/default/wide sizes in forced app Light/Dark and restore system appearance.
 - **Keyboard (`navigation-keyboard`).** Focus the visible list, run `key Meta+Shift+L`: list hides and focus leaves it for the retained detail. Run `key Meta+Shift+B`: rail appears. Tab to the named source control, press Return to show details, then Escape: details close, source control regains focus and session navigation is unchanged. Reopen and use its Close button. Verify named status includes source name and state; errors have an exclamation mark as well as color. With no session selected, Hide Sessions is disabled and the list remains available.
+- **Empty-list focus (`navigation-keyboard`).** Create a fresh fixture omitting Claude with `node scripts/fixture/index.mjs create claude`. Before selecting a session, drag an observed Codex row directly to Right using the path in session-detail.md. Select the Codex tool filter, then run `node scripts/fixture/index.mjs simulate <copied-home> missing-codex` and native `menu-click "View > Reload Sessions"`. Close Right Pane. With no rows or reading selection, Hide Sessions is disabled and keyboard focus lands on the selected Codex filter, rather than the page body or disabled control.
 - **Cleanup.** Run `doctor`, focus and choose `menu-click "Electron > Quit"` using the actual observed menu name, then `wait-exit --timeout 3000`. Require `cleanExit: true`, then run `stop` and retain artifacts. Clean the generator-owned original fixture separately.
 
 ## Gotchas
@@ -37,4 +38,5 @@ Preconditions:
 - Show Sessions replaces reading only when the list cannot fit alongside the required detail panes. Hide Sessions then restores the remembered pane and keeps the list hidden on later enlargement.
 - View changes retain reading selections but clear the list cursor, so a filtered-out reading session is not inserted into the filtered list.
 - Visibility and preferred dimensions reset on quit/reload. Pins and read markers retain their existing persistence.
+- The list restore icon occurs once in the visible reading headers; using it must not activate a different pane. Restoring the list transfers focus into that list. The compact pane selector remains available only when needed.
 - Component tests do not prove native key delivery, actual geometry, theme drawing or source-disclosure accessibility. Report missing live steps as unverified.
