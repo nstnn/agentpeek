@@ -39,7 +39,12 @@ export function Sidebar({
           aria-keyshortcuts="Meta+Shift+B"
           onClick={onToggle}
         >
-          {collapsed ? <NavigationIcon kind="views" /> : 'Sessions'}
+          <span className="sidebar-heading-text" aria-hidden="true">
+            Sessions
+          </span>
+          <span className="sidebar-heading-icon" aria-hidden="true">
+            <NavigationIcon kind="views" />
+          </span>
         </button>
       </h2>
       <nav aria-label="Session views">
@@ -81,7 +86,9 @@ export function Sidebar({
               ) : (
                 <NavigationIcon kind={id === 'active' ? 'active' : 'all'} />
               )}
-              <span className={collapsed ? 'sr-only' : undefined}>{VIEW_NAMES[id]}</span>
+              <span className="sidebar-view-label" aria-hidden="true">
+                {VIEW_NAMES[id]}
+              </span>
               {(id !== 'active' || count > 0) && (
                 <span
                   aria-hidden="true"

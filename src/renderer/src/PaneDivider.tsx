@@ -8,7 +8,9 @@ export function PaneDivider({
   min,
   max,
   onChange,
-  onReset
+  onReset,
+  hidden = false,
+  motionRegion
 }: {
   label: string
   controls: string
@@ -17,12 +19,19 @@ export function PaneDivider({
   max: number
   onChange: (value: number) => void
   onReset: () => void
+  hidden?: boolean
+  motionRegion?: string
 }): JSX.Element {
   const drag = useRef<{ id: number; x: number; value: number } | null>(null)
   const [dragging, setDragging] = useState(false)
   return (
     <div
       className="pane-divider"
+      data-motion-region={motionRegion}
+      style={{ flexBasis: hidden ? 0 : 5 }}
+      hidden={hidden}
+      inert={hidden}
+      aria-hidden={hidden || undefined}
       role="separator"
       aria-label={label}
       aria-controls={controls}
