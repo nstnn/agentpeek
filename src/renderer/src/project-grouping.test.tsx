@@ -72,6 +72,9 @@ describe('project grouping', () => {
     await screen.findByRole('tree')
     await clickHeader('app')
     expect(header('app').getAttribute('aria-expanded')).toBe('false')
+    const children = header('app').querySelector('.project-sessions')!
+    expect(children.hasAttribute('inert')).toBe(true)
+    expect(children.getAttribute('aria-hidden')).toBe('true')
     expect(screen.queryByRole('treeitem', { name: /^Synthetic/ })).toBeNull()
     const waiting: Session = {
       ...b,
@@ -90,6 +93,8 @@ describe('project grouping', () => {
     expect(header('app').getAttribute('aria-expanded')).toBe('false')
     await clickHeader('app')
     expect(row('a')).toBeTruthy()
+    expect(children.hasAttribute('inert')).toBe(false)
+    expect(children.hasAttribute('aria-hidden')).toBe(false)
     expect(screen.queryByRole('treeitem', { name: /^Synthetic b,/ })).toBeNull()
   })
 

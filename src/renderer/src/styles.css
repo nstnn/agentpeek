@@ -458,6 +458,7 @@ button[aria-disabled='true'] {
   padding: 0 3px;
 }
 .list-scroll {
+  container: session-list / inline-size;
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -489,12 +490,15 @@ button[aria-disabled='true'] {
   background: var(--fill);
   border-color: var(--accent);
 }
+.project-group {
+  margin-bottom: 8px;
+}
 .project-heading {
   display: grid;
-  grid-template-columns: 12px minmax(0, 1fr) auto;
+  grid-template-columns: 12px 16px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 3px 5px;
-  margin: 4px 6px 1px;
+  gap: 5px 8px;
+  margin: 4px 6px 3px;
   padding: 6px 8px;
   border-radius: 5px;
   cursor: default;
@@ -515,15 +519,27 @@ button[aria-disabled='true'] {
   white-space: nowrap;
 }
 .project-chevron,
+.project-folder,
 .project-count,
 .project-summary {
   color: var(--secondary);
 }
+.project-folder {
+  width: 16px;
+  height: 16px;
+}
 .project-count {
+  grid-column: 4;
+  grid-row: 1;
+  min-width: 22px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg);
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
 .project-summary {
-  grid-column: 2 / -1;
+  grid-column: 3 / -1;
   display: flex;
   flex-wrap: wrap;
   gap: 3px 8px;
@@ -532,6 +548,48 @@ button[aria-disabled='true'] {
 }
 .project-attention {
   color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 12%, var(--fill));
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.project-summary > span {
+  align-self: center;
+}
+.project-sessions {
+  padding-left: 20px;
+  height: auto;
+  interpolate-size: allow-keywords;
+  overflow: clip;
+  transition: height 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.project-sessions[hidden] {
+  /* Keep only the visual exit; hidden children leave the accessible tree immediately. */
+  display: block !important;
+  height: 0;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .project-sessions {
+    transition: none;
+  }
+}
+.project-sessions .session-row {
+  padding-block: 6px;
+  row-gap: 2px;
+}
+@container session-list (min-width: 400px) {
+  .project-heading {
+    grid-template-columns: 12px 16px minmax(0, 1fr) auto auto;
+  }
+  .project-count {
+    grid-column: 5;
+  }
+  .project-summary {
+    grid-column: 4;
+    grid-row: 1;
+    justify-content: flex-end;
+    max-width: 190px;
+  }
 }
 .group-heading {
   display: flex;

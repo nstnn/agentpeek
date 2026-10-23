@@ -253,6 +253,16 @@ export function SessionList({
               <span className="project-chevron" aria-hidden="true">
                 {collapsed(group) ? '▸' : '▾'}
               </span>
+              <svg
+                className="project-folder"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                aria-hidden="true"
+              >
+                <path d="M1.5 4V2.5h5L8 4h6.5v9h-13Z" />
+              </svg>
               <span className="project-name">{projectLabel(group)}</span>
               <span className="project-count">{members.length}</span>
               {(attention > 0 || running > 0) && (
@@ -264,7 +274,13 @@ export function SessionList({
                 </span>
               )}
             </div>
-            <div role="group" hidden={collapsed(group)}>
+            <div
+              className="project-sessions"
+              role="group"
+              hidden={collapsed(group)}
+              inert={collapsed(group)}
+              aria-hidden={collapsed(group) || undefined}
+            >
               {renderRows(group)}
             </div>
           </div>
