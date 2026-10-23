@@ -16,7 +16,7 @@ The local Apple Silicon build is `dist/mac-arm64/AgentPeek.app`. Finder shows th
 
 - Run `npm run package` to create the local app without launching it.
 - Open AgentPeek.app from Finder. Agent-run launches must use the isolated setup below first.
-- Choose AgentPeek > About AgentPeek, drag a window corner, open it again, or click its red close button.
+- Choose AgentPeek > About AgentPeek or Settings…, use View's Zoom controls, drag a window corner, open it again, or click its red close button.
 
 ## Driving it with agentpeek.mjs
 
@@ -28,7 +28,7 @@ Preconditions:
 
 - **Isolated launch.** Run `node scripts/fixture/index.mjs create`. Use the returned absolute `home` and `userData` in `open -n -a "$PWD/dist/mac-arm64/AgentPeek.app" --env AGENTPEEK_HOME=<home> --env AGENTPEEK_USER_DATA=<userData> --args --user-data-dir=<userData>`. Confirm that process is running before binding the native tool to the exact app path. The window must show the matching Fixture data banner, 100 total sessions and seven running sessions. Save synthetic-only accessibility and window captures.
 - **About.** Open the AgentPeek menu, refresh a full accessibility tree, then choose About AgentPeek from that tree. Capture the native panel showing AgentPeek and the package version. Close only the About panel with Command-W.
-- **Developer tools.** Open View and save its native menu tree. It must have the three views and Reload Sessions, with no Toggle Developer Tools. Dismiss the menu through its exposed Cancel action.
+- **Menus.** Open AgentPeek and save its native menu tree: About AgentPeek, Settings… and Quit AgentPeek are present. Open View and save its native menu tree. It must have the three views, Reload Sessions, Zoom In, Zoom Out, Actual Size and a disabled current Zoom percentage, with no Toggle Developer Tools. Dismiss each menu through its exposed Cancel action. Follow settings.md and zoom.md for their interaction paths; helper evidence alone does not prove packaged menu drawing or native shortcut delivery.
 - **Window sizes.** Save the initial window capture, drag its bottom-right corner below the minimum, and save the resulting layout. On a 2× display, whole-window captures are 2560 × 1600 and 1520 × 960 pixels respectively; confirm the capture scale before interpreting other displays. The narrow layout hides the detail placeholder and retains the source/sidebar and list controls.
 - **Single instance.** Record the exact main PID. Start the same bundle executable against the same two overrides and profile; the second process must exit with code 0 and the first PID must survive. Reopen the app from a new Finder window while that fixture process is running; confirm the same fixture banner and only one main PID/window.
 - **Close and clean up.** Click the main window's red close button, then inspect process exit outside the native app binding. No process with this bundle's exact path may remain. Close only the Finder window this run opened and run `node scripts/fixture/index.mjs clean <home>`. Retain evidence; keep the requested local build in ignored `dist/`.
