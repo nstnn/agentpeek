@@ -39,6 +39,7 @@ export interface RendererState {
   reloadPending: boolean
   reloadError: string | null
   reloadVersion: number
+  settingsOpen: boolean
 }
 
 /** One subscription pair per mounted app. A pushed snapshot always wins over the initial request. */
@@ -67,7 +68,8 @@ export function createSessionsStore(api: AgentPeekApi) {
     sessionsHidden: false,
     reloadPending: false,
     reloadError: null,
-    reloadVersion: 0
+    reloadVersion: 0,
+    settingsOpen: false
   }
   const listeners = new Set<() => void>()
   let disconnect: (() => void) | null = null
@@ -75,6 +77,7 @@ export function createSessionsStore(api: AgentPeekApi) {
   let visiblePanes: readonly PaneId[] = ['main']
   let targetSignature = ''
   const targetKey = (): SessionKey | null => {
+    if (state.settingsOpen) return null
     if (state.secondarySelection && state.splitBrowsing) return null
     if (!state.activePane || !visiblePanes.includes(state.activePane)) return null
     if (state.narrow && !state.detailOpen) return null
@@ -106,27 +109,30 @@ export function createSessionsStore(api: AgentPeekApi) {
       key,
       selected?.sourceEpoch,
       visiblePanes,
+      state.settingsOpen,
       !!state.secondarySelection
     ])
     if (signature !== targetSignature) {
       targetSignature = signature
       const generation = state.targetGeneration + 1
       state = { ...state, targetGeneration: generation, targetReady: false }
-      void api.setSelection(key, { secondPaneOpen: !!state.secondarySelection }).then(
-        () => {
-          if (generation === state.targetGeneration) emit({ targetReady: key !== null })
-        },
-        () => {
-          if (generation === state.targetGeneration)
-            emit({ actionError: "Couldn't select session. Try again." })
-        }
-      )
+      void api
+        .setSelection(key, { secondPaneOpen: !state.settingsOpen && !!state.secondarySelection })
+        .then(
+          () => {
+            if (generation === state.targetGeneration) emit({ targetReady: key !== null })
+          },
+          () => {
+            if (generation === state.targetGeneration)
+              emit({ actionError: "Couldn't select session. Try again." })
+          }
+        )
     }
     for (const listener of listeners) listener()
   }
   const sendDetailOpen = (open: boolean) => {
     void api
-      .setDetailOpen(open)
+      .setDetailOpen(open && !state.settingsOpen)
       .catch(() => emit({ actionError: "Couldn't update Back. Try again." }))
   }
   // Focusing a retained pane must not reinsert its row after a view/filter change.
@@ -170,6 +176,11 @@ export function createSessionsStore(api: AgentPeekApi) {
         }
         const offSnapshot = api.onSnapshot(receive)
         const offCommand = api.onCommand((command) => {
+          if (command === 'settings') {
+            store.openSettings()
+            return
+          }
+          if (state.settingsOpen) return
           if (typeof command === 'string') {
             if (command.startsWith('view:')) store.setView(command.slice(5) as ViewId)
             if (command === 'back') store.back()
@@ -201,6 +212,14 @@ export function createSessionsStore(api: AgentPeekApi) {
           disconnect = null
         }
       }
+    },
+    openSettings(this: void) {
+      emit({ settingsOpen: true })
+      sendDetailOpen(false)
+    },
+    closeSettings(this: void) {
+      emit({ settingsOpen: false })
+      sendDetailOpen(state.detailOpen)
     },
     setView(this: void, view: ViewId) {
       emit({ view, listSelection: null, focusedProject: null, actionError: null })

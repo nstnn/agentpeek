@@ -126,7 +126,20 @@ export function buildMenuTemplate(options: {
   }
 
   return [
-    { label: 'AgentPeek', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'quit' }] },
+    {
+      label: 'AgentPeek',
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        {
+          label: 'Settings…',
+          accelerator: 'CommandOrControl+,',
+          click: () => options.command('settings')
+        },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    },
     { label: 'Edit', submenu: [{ role: 'copy' }, { role: 'selectAll' }] },
     { label: 'View', submenu: viewItems },
     { label: 'Session', submenu: buildSessionMenu(options.session, options.actions, options) },

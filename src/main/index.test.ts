@@ -3,6 +3,7 @@ import type { IpcMain, IpcMainInvokeEvent, MenuItemConstructorOptions } from 'el
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IPC } from '../shared/ipc'
 import { testService, testSystem } from './test-support'
+import type { openPreferences, Preferences } from './preferences'
 
 function setup() {
   const frame = { url: 'file:///synthetic/index.html' }
@@ -34,6 +35,11 @@ function setup() {
   const powerMonitor = new EventEmitter()
   const service = testService()
   const open = vi.fn().mockResolvedValue(service)
+  const preferences = {
+    getTheme: vi.fn<Preferences['getTheme']>().mockResolvedValue('system'),
+    setTheme: vi.fn<Preferences['setTheme']>().mockResolvedValue(undefined),
+    flush: vi.fn<Preferences['flush']>().mockResolvedValue(undefined)
+  }
   const createWindow = vi.fn(() => window)
   const ipcMain = { handle: vi.fn<IpcMain['handle']>(), removeHandler: vi.fn() }
   const Menu = {
@@ -47,17 +53,35 @@ function setup() {
     powerMonitor,
     ipcMain,
     Menu,
+    nativeTheme: { themeSource: 'system' },
     session: {
       defaultSession: { setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn() }
     }
   }))
   vi.doMock('./sessions/open-sessions', () => ({ openSessionsService: open }))
+  vi.doMock('./preferences', () => ({
+    openPreferences: vi.fn<typeof openPreferences>().mockImplementation((_folder, apply) => {
+      apply('system')
+      return Promise.resolve(preferences)
+    })
+  }))
   vi.doMock('./window', () => ({
     createMainWindow: createWindow,
     rendererPageUrl: () => frame.url
   }))
   vi.doMock('./system-actions', () => ({ systemActions: testSystem() }))
-  return { app, powerMonitor, service, open, createWindow, window, contents, ipcMain, Menu }
+  return {
+    app,
+    powerMonitor,
+    service,
+    open,
+    createWindow,
+    window,
+    contents,
+    ipcMain,
+    Menu,
+    preferences
+  }
 }
 
 beforeEach(() => {
@@ -71,6 +95,23 @@ afterEach(() => {
 })
 
 describe('main process lifecycle', () => {
+  it('waits for an in-flight preference save even if session shutdown fails', async () => {
+    const s = setup()
+    await import('./index')
+    await vi.waitFor(() => expect(s.service.start).toHaveBeenCalledOnce())
+    let finish!: () => void
+    s.preferences.flush.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finish = resolve
+      })
+    )
+    s.service.stop.mockRejectedValue(new Error('Synthetic shutdown failure'))
+    s.app.emit('before-quit', { preventDefault: vi.fn() })
+    await Promise.resolve()
+    expect(s.app.quit).not.toHaveBeenCalled()
+    finish()
+    await vi.waitFor(() => expect(s.app.quit).toHaveBeenCalledOnce())
+  })
   it('wires replacement Back at default width and clears split/navigation on renderer navigation', async () => {
     const s = setup()
     await import('./index')
@@ -129,7 +170,7 @@ describe('main process lifecycle', () => {
       stateFolder: '/synthetic/state',
       fixture: true
     })
-    expect(s.ipcMain.handle).toHaveBeenCalledTimes(11)
+    expect(s.ipcMain.handle).toHaveBeenCalledTimes(13)
     vi.useFakeTimers()
     s.window.emit('focus')
     s.window.emit('focus')
@@ -164,7 +205,7 @@ describe('main process lifecycle', () => {
     expect(s.app.quit).not.toHaveBeenCalled()
     expect(s.service.stop).toHaveBeenCalledOnce()
     expect(s.powerMonitor.listenerCount('resume')).toBe(0)
-    expect(s.ipcMain.removeHandler).toHaveBeenCalledTimes(11)
+    expect(s.ipcMain.removeHandler).toHaveBeenCalledTimes(13)
     expect(vi.getTimerCount()).toBe(0)
     finish()
     await vi.advanceTimersByTimeAsync(0)

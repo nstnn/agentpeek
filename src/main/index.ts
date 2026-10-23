@@ -1,5 +1,13 @@
 import { homedir } from 'node:os'
-import { app, ipcMain, Menu, powerMonitor, session, type BrowserWindow } from 'electron'
+import {
+  app,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  powerMonitor,
+  session,
+  type BrowserWindow
+} from 'electron'
 import type { MenuCommand } from '../shared/api'
 import { IPC } from '../shared/ipc'
 import { registerSessionIpc } from './ipc'
@@ -12,6 +20,7 @@ import { openSessionsService } from './sessions/open-sessions'
 import type { SessionsService } from './sessions/service'
 import { systemActions } from './system-actions'
 import { createMainWindow, rendererPageUrl } from './window'
+import { openPreferences, type Preferences } from './preferences'
 
 app.enableSandbox()
 // Set userData before acquiring the single-instance lock, so fixture runs are fully isolated.
@@ -25,6 +34,7 @@ let controller: SessionController | null = null
 let removeIpc: (() => void) | null = null
 let quitting = false
 let quitReady = false
+let preferences: Preferences | null = null
 
 function send(channel: string, value: unknown): void {
   const contents = mainWindow?.webContents
@@ -73,8 +83,10 @@ if (!app.requestSingleInstanceLock()) {
     // A quit during the store open stops that service before it can start.
     void (async () => {
       try {
-        if (lifecycle) await lifecycle.stop()
-        else await (await opening)?.stop()
+        await Promise.allSettled([
+          lifecycle ? lifecycle.stop() : opening?.then((service) => service.stop()),
+          preferences?.flush()
+        ])
       } finally {
         quitReady = true
         app.quit()
@@ -91,6 +103,10 @@ if (!app.requestSingleInstanceLock()) {
         applicationVersion: app.getVersion()
       })
       denyAllPermissions(session.defaultSession)
+      preferences = await openPreferences(paths.stateFolder, (theme) => {
+        nativeTheme.themeSource = theme
+      })
+      if (quitting) return
       opening = openSessionsService({
         ...paths,
         onSnapshot: () => {
@@ -128,7 +144,8 @@ if (!app.requestSingleInstanceLock()) {
         ipc: ipcMain,
         contents: mainWindow.webContents,
         pageUrl: rendererPageUrl(),
-        controller
+        controller,
+        preferences
       })
       mainWindow.on('focus', () => lifecycle?.focus())
       mainWindow.on('resize', updateMenu)

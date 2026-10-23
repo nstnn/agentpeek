@@ -33,6 +33,12 @@ Click the icon beside **Sessions** (⇧⌘B) to collapse the sidebar to a 56-pix
 The icon beside **Active**, **Pinned** or **All Sessions** (⇧⌘L) independently hides the
 session list. Its restore icon appears in the reading header while the list is hidden.
 Both controls use the existing headers, without a separate navigation toolbar or extra labels.
+**Settings** stays at the bottom of the sidebar, including its collapsed icon rail. Open it
+there or with **AgentPeek → Settings…** (⌘,) to choose **System**, **Light** or **Dark** under
+Appearance. System is the default. Changes apply immediately and are saved for the next launch;
+Close or Escape returns to the same sessions and scroll positions. While Settings is open,
+covered conversations do not automatically acknowledge new replies. A failed preference save
+restores the previous appearance and shows a retry message.
 Navigation slides over 220 ms with a gentle deceleration; Reduce Motion makes it immediate.
 The rail keeps Active attention counts, view selection and source status; click a source
 initial to inspect its health, then Close or Escape to dismiss it. Choosing a view opens

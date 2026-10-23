@@ -7,6 +7,8 @@ import { testService, testSession, testSystem } from './test-support'
 
 const key = testSession().key
 const requests: [string, unknown[]][] = [
+  [IPC.getTheme, []],
+  [IPC.setTheme, ['dark']],
   [IPC.getSnapshot, []],
   [IPC.getMessages, [key, 20]],
   [IPC.setPinned, [key, true]],
@@ -45,11 +47,17 @@ function setup() {
     popup: vi.fn()
   }
   const controller = createSessionController(options)
+  const preferences = {
+    getTheme: vi.fn().mockResolvedValue('system'),
+    setTheme: vi.fn().mockResolvedValue(undefined),
+    flush: vi.fn().mockResolvedValue(undefined)
+  }
   const dispose = registerSessionIpc({
     ipc,
     contents: contents as unknown as WebContents,
     pageUrl: frame.url,
-    controller
+    controller,
+    preferences
   })
   async function invoke(channel: string, args: unknown[], sender = event) {
     const handler = handlers.get(channel)
@@ -67,7 +75,9 @@ function setup() {
       system.copyText,
       system.openLink,
       options.popup,
-      options.updateMenu
+      options.updateMenu,
+      preferences.getTheme,
+      preferences.setTheme
     ])
       expect(fn).not.toHaveBeenCalled()
   }
@@ -81,11 +91,29 @@ function setup() {
     dispose,
     ipc,
     controller,
+    preferences,
     expectNoEffects
   }
 }
 
 describe('IPC trust boundary', () => {
+  it.each([null, true, {}, [], 'Dark', 'auto', '../preferences.json', 1])(
+    'rejects invalid theme values without effects: %j',
+    async (theme) => {
+      const s = setup()
+      await expect(s.invoke(IPC.setTheme, [theme])).rejects.toThrow('Invalid AgentPeek request')
+      s.expectNoEffects()
+    }
+  )
+  it('accepts exactly the three appearance choices and sanitizes preference errors', async () => {
+    const s = setup()
+    for (const theme of ['system', 'light', 'dark']) await s.invoke(IPC.setTheme, [theme])
+    expect(s.preferences.setTheme.mock.calls).toEqual([['system'], ['light'], ['dark']])
+    s.preferences.setTheme.mockRejectedValue(new Error('Synthetic private filesystem path'))
+    await expect(s.invoke(IPC.setTheme, ['dark'])).rejects.toThrow(
+      'AgentPeek could not complete the request.'
+    )
+  })
   it.each([
     undefined,
     null,

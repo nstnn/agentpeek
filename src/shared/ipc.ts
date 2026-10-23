@@ -1,5 +1,7 @@
 /** Fixed channels: the page never chooses an IPC channel. */
 export const IPC = {
+  getTheme: 'agentpeek:get-theme',
+  setTheme: 'agentpeek:set-theme',
   getSnapshot: 'agentpeek:get-snapshot',
   snapshot: 'agentpeek:snapshot',
   getMessages: 'agentpeek:get-messages',

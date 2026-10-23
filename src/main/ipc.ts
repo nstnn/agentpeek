@@ -3,6 +3,8 @@ import type { SessionKey } from '../core/session'
 import { isAgentTool } from '../core/tools'
 import { IPC, MAX_MESSAGE_LIMIT } from '../shared/ipc'
 import type { SessionController } from './session-controller'
+import { isTheme } from '../shared/preferences'
+import type { Preferences } from './preferences'
 
 /** Every request must come from this exact top-level frame at the expected app URL. */
 export function isTrustedSender(
@@ -55,6 +57,7 @@ export function registerSessionIpc(options: {
   contents: WebContents
   pageUrl: string
   controller: SessionController
+  preferences: Preferences
 }): () => void {
   const { ipc, controller: c } = options
   const channels: string[] = []
@@ -77,6 +80,12 @@ export function registerSessionIpc(options: {
   }
   const none = (args: unknown[]) => args.length === 0
   const key = (args: unknown[]) => args.length === 1 && isKey(args[0])
+  register(IPC.getTheme, none, options.preferences.getTheme)
+  register(
+    IPC.setTheme,
+    (args) => args.length === 1 && isTheme(args[0]),
+    options.preferences.setTheme
+  )
   register(IPC.getSnapshot, none, () => c.snapshot())
   register(
     IPC.getMessages,
