@@ -677,6 +677,10 @@ async function motion() {
         transcriptWidth:e.querySelector('.transcript')?.clientWidth,scroll:e.querySelector('.transcript')?.scrollTop
       })),
       sidebarText:Array.from(document.querySelectorAll('.sidebar .source p')).map(e=>({width:e.getBoundingClientRect().width,height:e.getBoundingClientRect().height})),
+      projects:Array.from(document.querySelectorAll('.project-sessions')).map(e=>({
+        id:e.parentElement.id,height:e.getBoundingClientRect().height,
+        hidden:e.hidden,inert:e.inert,ariaHidden:e.getAttribute('aria-hidden')
+      })),
       animations:document.getAnimations().map(a=>({state:a.playState,time:a.currentTime,progress:a.effect?.getComputedTiming().progress}))
     })`
         )
