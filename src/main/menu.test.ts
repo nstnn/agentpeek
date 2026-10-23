@@ -33,6 +33,15 @@ const click = (item: MenuItemConstructorOptions | undefined) => {
 }
 
 describe('application menu', () => {
+  it('opens Settings through the application menu with Command-comma', () => {
+    const opts = options()
+    const settings = submenuOf(buildMenuTemplate(opts), 'AgentPeek').find(
+      (item) => item.label === 'Settings…'
+    )
+    expect(settings?.accelerator).toBe('CommandOrControl+,')
+    click(settings)
+    expect(opts.command).toHaveBeenCalledWith('settings')
+  })
   it('keeps the platform roles and includes the new Session menu in order', () => {
     const template = buildMenuTemplate(options())
     expect(template.map((item) => item.label)).toEqual([

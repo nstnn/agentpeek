@@ -6,6 +6,7 @@ import type { RendererState } from './sessions-store'
 import { healthCopy, toolHome, toolName, VIEW_NAMES } from './session-display'
 import { NavigationIcon } from './NavigationIcon'
 import { SessionIcon } from './SessionIcon'
+import { SettingsIcon } from './SettingsDialog'
 
 export function Sidebar({
   snapshot,
@@ -13,7 +14,8 @@ export function Sidebar({
   onView,
   collapsed = false,
   onToggle,
-  controls
+  controls,
+  onSettings
 }: {
   snapshot: AppSnapshot | null
   view: ViewId
@@ -21,6 +23,7 @@ export function Sidebar({
   collapsed?: boolean
   onToggle: () => void
   controls: string
+  onSettings: () => void
 }): JSX.Element {
   const views = ['active', 'pinned', 'all'] as const
   return (
@@ -28,141 +31,161 @@ export function Sidebar({
       className={`sidebar${collapsed ? ' sidebar-collapsed' : ''}`}
       aria-label="Session navigation and sources"
     >
-      <div className="sidebar-heading">
-        <button
-          type="button"
-          className="navigation-toggle sidebar-heading-toggle"
-          aria-label={collapsed ? 'Expand Views' : 'Collapse Views'}
-          title={`${collapsed ? 'Expand' : 'Collapse'} navigation (⇧⌘B)`}
-          aria-expanded={!collapsed}
-          aria-controls={controls}
-          aria-keyshortcuts="Meta+Shift+B"
-          onClick={onToggle}
-        >
-          <NavigationIcon kind="views" />
-        </button>
-        <h2 className="sidebar-heading-text" aria-hidden={collapsed || undefined}>
-          Sessions
-        </h2>
-      </div>
-      <nav aria-label="Session views">
-        {views.map((id) => {
-          const count =
-            id === 'active' ? (snapshot?.needsAttention ?? 0) : (snapshot?.groupCounts[id] ?? 0)
-          const label =
-            id === 'active'
-              ? `Active, ${count} ${count === 1 ? 'session needs' : 'sessions need'} attention`
-              : `${VIEW_NAMES[id]} ${count}`
-          return (
-            <button
-              key={id}
-              type="button"
-              aria-label={label}
-              title={
-                id === 'active'
-                  ? `${label}. Waiting, unread replies or errors across both tools. Running alone doesn't need attention.`
-                  : label
-              }
-              aria-current={view === id ? 'page' : undefined}
-              tabIndex={view === id ? 0 : -1}
-              onClick={() => onView(id)}
-              onKeyDown={(event) => {
-                if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
-                event.preventDefault()
-                const index =
-                  event.key === 'Home'
-                    ? 0
-                    : event.key === 'End'
-                      ? 2
-                      : (views.indexOf(id) + (event.key === 'ArrowDown' ? 1 : 2)) % 3
-                onView(views[index]!)
-                event.currentTarget.parentElement?.querySelectorAll('button')[index]?.focus()
-              }}
-            >
-              {id === 'pinned' ? (
-                <SessionIcon kind="pin" />
-              ) : (
-                <NavigationIcon kind={id === 'active' ? 'active' : 'all'} />
-              )}
-              <span className="sidebar-view-label" aria-hidden="true">
-                {VIEW_NAMES[id]}
-              </span>
-              {(id !== 'active' || count > 0) && (
-                <span
-                  aria-hidden="true"
-                  className={id === 'active' ? 'badge' : collapsed ? 'sr-only' : 'count'}
-                >
-                  {count > 99 && collapsed ? '99+' : count}
-                </span>
-              )}
-            </button>
-          )
-        })}
-      </nav>
-      <h2 className={collapsed ? 'sr-only' : 'sources-heading'}>Sources</h2>
-      <div className="sources-list">
-        {AGENT_TOOLS.map((tool) => {
-          const health = snapshot?.health[tool] ?? { state: 'checking' }
-          const copy = healthCopy(tool, health)
-          if (collapsed)
+      <div className="sidebar-content">
+        <div className="sidebar-heading">
+          <button
+            type="button"
+            className="navigation-toggle sidebar-heading-toggle"
+            aria-label={collapsed ? 'Expand Views' : 'Collapse Views'}
+            title={`${collapsed ? 'Expand' : 'Collapse'} navigation (⇧⌘B)`}
+            aria-expanded={!collapsed}
+            aria-controls={controls}
+            aria-keyshortcuts="Meta+Shift+B"
+            onClick={onToggle}
+          >
+            <NavigationIcon kind="views" />
+          </button>
+          <h2 className="sidebar-heading-text" aria-hidden={collapsed || undefined}>
+            Sessions
+          </h2>
+        </div>
+        <nav aria-label="Session views">
+          {views.map((id) => {
+            const count =
+              id === 'active' ? (snapshot?.needsAttention ?? 0) : (snapshot?.groupCounts[id] ?? 0)
+            const label =
+              id === 'active'
+                ? `Active, ${count} ${count === 1 ? 'session needs' : 'sessions need'} attention`
+                : `${VIEW_NAMES[id]} ${count}`
             return (
-              <details
-                className="source-disclosure"
-                key={tool}
+              <button
+                key={id}
+                type="button"
+                aria-label={label}
+                title={
+                  id === 'active'
+                    ? `${label}. Waiting, unread replies or errors across both tools. Running alone doesn't need attention.`
+                    : label
+                }
+                aria-current={view === id ? 'page' : undefined}
+                tabIndex={view === id ? 0 : -1}
+                onClick={() => onView(id)}
                 onKeyDown={(event) => {
-                  if (event.key !== 'Escape' || !event.currentTarget.open) return
+                  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
                   event.preventDefault()
-                  event.stopPropagation()
-                  event.currentTarget.open = false
-                  event.currentTarget.querySelector('summary')?.focus()
+                  const index =
+                    event.key === 'Home'
+                      ? 0
+                      : event.key === 'End'
+                        ? 2
+                        : (views.indexOf(id) + (event.key === 'ArrowDown' ? 1 : 2)) % 3
+                  onView(views[index]!)
+                  event.currentTarget.parentElement?.querySelectorAll('button')[index]?.focus()
                 }}
               >
-                <summary
-                  aria-label={`${toolName(tool)} source: ${copy.label}`}
-                  title={`${toolName(tool)}: ${copy.label}. ${copy.detail}`}
-                >
-                  <span className="source-monogram" aria-hidden="true">
-                    {tool === 'codex' ? 'C' : 'A'}
-                  </span>
-                  <span className={`source-status ${health.state}`} aria-hidden="true">
-                    {health.state === 'connected'
-                      ? '✓'
-                      : health.state === 'checking'
-                        ? '…'
-                        : health.state === 'not-installed'
-                          ? '−'
-                          : '!'}
-                  </span>
-                </summary>
-                <section className="source source-details" aria-label={`${toolName(tool)} source`}>
-                  <h3>{toolName(tool)}</h3>
-                  <p>{copy.label}</p>
-                  <p>{copy.detail}</p>
-                  <button
-                    type="button"
-                    aria-label={`Close ${toolName(tool)} source details`}
-                    onClick={(event) => {
-                      const disclosure = event.currentTarget.closest('details')!
-                      disclosure.open = false
-                      disclosure.querySelector('summary')?.focus()
-                    }}
+                {id === 'pinned' ? (
+                  <SessionIcon kind="pin" />
+                ) : (
+                  <NavigationIcon kind={id === 'active' ? 'active' : 'all'} />
+                )}
+                <span className="sidebar-view-label" aria-hidden="true">
+                  {VIEW_NAMES[id]}
+                </span>
+                {(id !== 'active' || count > 0) && (
+                  <span
+                    aria-hidden="true"
+                    className={id === 'active' ? 'badge' : collapsed ? 'sr-only' : 'count'}
                   >
-                    Close
-                  </button>
-                </section>
-              </details>
+                    {count > 99 && collapsed ? '99+' : count}
+                  </span>
+                )}
+              </button>
             )
-          return (
-            <section key={tool} className="source" aria-label={`${toolName(tool)} source`}>
-              <h3>{toolName(tool)}</h3>
-              <p>
-                <span className={`health-dot ${health.state}`} aria-hidden="true" />
-                {copy.label}
-              </p>
-              <p className="source-detail">{copy.detail}</p>
-            </section>
-          )
-        })}
+          })}
+        </nav>
+        <h2 className={collapsed ? 'sr-only' : 'sources-heading'}>Sources</h2>
+        <div className="sources-list">
+          {AGENT_TOOLS.map((tool) => {
+            const health = snapshot?.health[tool] ?? { state: 'checking' }
+            const copy = healthCopy(tool, health)
+            if (collapsed)
+              return (
+                <details
+                  className="source-disclosure"
+                  key={tool}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Escape' || !event.currentTarget.open) return
+                    event.preventDefault()
+                    event.stopPropagation()
+                    event.currentTarget.open = false
+                    event.currentTarget.querySelector('summary')?.focus()
+                  }}
+                >
+                  <summary
+                    aria-label={`${toolName(tool)} source: ${copy.label}`}
+                    title={`${toolName(tool)}: ${copy.label}. ${copy.detail}`}
+                  >
+                    <span className="source-monogram" aria-hidden="true">
+                      {tool === 'codex' ? 'C' : 'A'}
+                    </span>
+                    <span className={`source-status ${health.state}`} aria-hidden="true">
+                      {health.state === 'connected'
+                        ? '✓'
+                        : health.state === 'checking'
+                          ? '…'
+                          : health.state === 'not-installed'
+                            ? '−'
+                            : '!'}
+                    </span>
+                  </summary>
+                  <section
+                    className="source source-details"
+                    aria-label={`${toolName(tool)} source`}
+                  >
+                    <h3>{toolName(tool)}</h3>
+                    <p>{copy.label}</p>
+                    <p>{copy.detail}</p>
+                    <button
+                      type="button"
+                      aria-label={`Close ${toolName(tool)} source details`}
+                      onClick={(event) => {
+                        const disclosure = event.currentTarget.closest('details')!
+                        disclosure.open = false
+                        disclosure.querySelector('summary')?.focus()
+                      }}
+                    >
+                      Close
+                    </button>
+                  </section>
+                </details>
+              )
+            return (
+              <section key={tool} className="source" aria-label={`${toolName(tool)} source`}>
+                <h3>{toolName(tool)}</h3>
+                <p>
+                  <span className={`health-dot ${health.state}`} aria-hidden="true" />
+                  {copy.label}
+                </p>
+                <p className="source-detail">{copy.detail}</p>
+              </section>
+            )
+          })}
+        </div>
+      </div>
+      <div className="sidebar-footer">
+        <button
+          type="button"
+          className="sidebar-settings"
+          aria-label="Settings"
+          title="Settings (⌘,)"
+          aria-haspopup="dialog"
+          onClick={onSettings}
+        >
+          <SettingsIcon />
+          <span className="sidebar-view-label" aria-hidden="true">
+            Settings
+          </span>
+        </button>
       </div>
     </aside>
   )

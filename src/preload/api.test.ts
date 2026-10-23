@@ -15,6 +15,8 @@ describe('preload API', () => {
     const { api } = setup()
     expect(Object.keys(api).sort()).toEqual(
       [
+        'getTheme',
+        'setTheme',
         'getSnapshot',
         'onSnapshot',
         'getMessages',
@@ -36,6 +38,8 @@ describe('preload API', () => {
     const { api, transport } = setup()
     const key = { tool: 'codex', id: 'synthetic' } as const
     await api.getSnapshot()
+    await api.getTheme()
+    await api.setTheme('dark')
     await api.getMessages(key, 10)
     await api.setPinned(key, true)
     await api.markRead(key)
@@ -49,6 +53,8 @@ describe('preload API', () => {
     await api.showSessionMenu(key)
     expect(transport.invoke.mock.calls).toEqual([
       [IPC.getSnapshot],
+      [IPC.getTheme],
+      [IPC.setTheme, 'dark'],
       [IPC.getMessages, key, 10],
       [IPC.setPinned, key, true],
       [IPC.markRead, key],

@@ -1,6 +1,7 @@
 import type { RecentMessages, SessionKey } from '../core/session'
 import type { SessionsSnapshot } from '../core/snapshot'
 import type { AgentTool } from '../core/tools'
+import type { Theme } from './preferences'
 
 export interface AppSnapshot extends SessionsSnapshot {
   /** The synthetic home, for the fixture banner; null in a normal run. */
@@ -12,6 +13,7 @@ export type MenuCommand =
   | 'view:pinned'
   | 'view:all'
   | 'back'
+  | 'settings'
   | { type: 'open-primary'; key: SessionKey }
   | { type: 'open-secondary'; key: SessionKey }
   | { type: 'close-secondary' }
@@ -22,6 +24,8 @@ export interface SelectionPresentation {
 
 /** The renderer's entire capability surface. Only plain values cross the bridge. */
 export interface AgentPeekApi {
+  getTheme(): Promise<Theme>
+  setTheme(theme: Theme): Promise<void>
   getSnapshot(): Promise<AppSnapshot>
   onSnapshot(callback: (snapshot: AppSnapshot) => void): () => void
   getMessages(key: SessionKey, limit: number): Promise<RecentMessages>

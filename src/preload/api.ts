@@ -21,6 +21,8 @@ export function createPreloadApi(transport: PreloadTransport): AgentPeekApi {
   }
 
   const api: AgentPeekApi = {
+    getTheme: () => invoke(IPC.getTheme),
+    setTheme: (theme) => invoke(IPC.setTheme, theme),
     getSnapshot: () => invoke(IPC.getSnapshot),
     onSnapshot: (callback: (snapshot: AppSnapshot) => void) => subscribe(IPC.snapshot, callback),
     getMessages: (key, limit) => invoke(IPC.getMessages, key, limit),

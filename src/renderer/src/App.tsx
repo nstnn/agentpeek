@@ -21,6 +21,7 @@ import { PaneDivider } from './PaneDivider'
 import { clamp, layoutCapacity, paneLayout, type PaneSizes } from './pane-layout'
 import { NavigationIcon } from './NavigationIcon'
 import { useNavigationMotion } from './use-navigation-motion'
+import { SettingsDialog } from './SettingsDialog'
 
 export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.Element {
   const [store] = useState(() => suppliedStore ?? createSessionsStore(window.agentpeek))
@@ -142,6 +143,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     : null
   useLayoutEffect(() => {
     const placed = previousPlacement.current !== state.placementVersion
+    if (state.settingsOpen) return
     const previous = previousLayout.current
     const active = document.activeElement as HTMLElement | null
     const hiddenFocus = !!active?.closest('[hidden]')
@@ -196,7 +198,8 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     state.narrow,
     state.roomy,
     navigationVisible,
-    sidebarCollapsed
+    sidebarCollapsed,
+    state.settingsOpen
   ])
   const stopNavigationMotion = useNavigationMotion(
     workspace,
@@ -218,6 +221,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
       if (
+        state.settingsOpen ||
         event.defaultPrevented ||
         !event.metaKey ||
         !event.shiftKey ||
@@ -236,7 +240,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     }
     window.addEventListener('keydown', shortcut)
     return () => window.removeEventListener('keydown', shortcut)
-  }, [store, navigationVisible])
+  }, [store, navigationVisible, state.settingsOpen])
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000)
     return () => window.clearInterval(timer)
@@ -287,6 +291,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
       className="app-shell"
       data-window-focused={windowFocused}
       onKeyDown={(event) => {
+        if (state.settingsOpen) return
         if (event.key === 'Escape' && dragSession) {
           event.preventDefault()
           setDragSession(null)
@@ -397,6 +402,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
             collapsed={sidebarCollapsed}
             onToggle={() => setSidebarCollapsed((collapsed) => !collapsed)}
             controls={`${regionId}-sidebar`}
+            onSettings={store.openSettings}
           />
         </div>
         <PaneDivider
@@ -665,8 +671,8 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                       key={`${paneInstances[pane]}:${sessionKeyToString(selected.key)}`}
                       session={selected}
                       api={window.agentpeek}
-                      visible={visible}
-                      focused={windowFocused}
+                      visible={visible && !state.settingsOpen}
+                      focused={windowFocused && !state.settingsOpen}
                       paneLabel={split ? label : undefined}
                       showTitle={!split}
                       leadingControl={!split && !navigationVisible ? sessionsToggle : undefined}
@@ -713,6 +719,9 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
           </div>
         )}
       </div>
+      {state.settingsOpen && (
+        <SettingsDialog api={window.agentpeek} onClose={store.closeSettings} />
+      )}
     </div>
   )
 }

@@ -4,7 +4,7 @@ AgentPeek has five native menus: AgentPeek, Edit, View, Session, and Window. Vie
 
 ## Sub-features
 
-- `menu-structure` lists About, Quit (Command-Q), Copy (Command-C), Select All (Command-A), Active/Pinned/All Sessions (Command-1/2/3), Reload Sessions (Command-R), the Session actions, and the existing Window items. Developer tools (Option-Command-I) appear only in development.
+- `menu-structure` lists About, Settings… (Command-comma), Quit (Command-Q), Copy (Command-C), Select All (Command-A), Active/Pinned/All Sessions (Command-1/2/3), Reload Sessions (Command-R), the Session actions, and the existing Window items. Developer tools (Option-Command-I) appear only in development. Settings entry and modal behavior follow settings.md.
 - `menu-reload` refreshes sessions through the enabled Reload Sessions item.
 - `menu-session-unselected` disables source actions and placement actions without an active visible source target.
 - `menu-secondary` sends explicit-key placement and close events; Close depends on split presence independently of source availability.
