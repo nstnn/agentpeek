@@ -15,8 +15,19 @@ This folder is the maintained source for verifying what a user of AgentPeek can 
 - Find handles with `aria` (page roles and names) and `menu` (menu labels). Use them literally, including case and spacing.
 - Act through `click`, `key`, `type`, `menu-click`, `focus`, and `relaunch`. Observe through `aria`, `menu`, `eval`, `main-eval`, `screenshot`, and `wait-exit`.
 - Menu items need the window focused: run `focus` before `menu-click` when `menu-click` reports `window not focused`.
+- Before default layout measurements, choose View > Actual Size, expand Views, and reset the observed Sidebar width separator with Enter or a double-click. Focus before resizing; read the actual content width and wait for the visible layout to settle before collecting boundary evidence. Show Sessions/Hide Sessions is retained state: establish the required browsing or reading state at each width instead of assuming enlargement reveals the list.
 - After a failed drive, run `doctor` before continuing. Restore a known UI state if the process is healthy but the page/menu is stuck. Expected CSP probe errors belong at the end of their run.
 - Never change the Mac's settings to reach a state. Use the overrides a feature file names instead, and report them as overrides.
+
+Capacity thresholds use renderer CSS width. At 100% zoom with the default 190-pixel expanded sidebar, or the fixed 56-pixel rail:
+
+| Space required               | Expanded Views | Icon rail |
+| ---------------------------- | -------------- | --------- |
+| List plus one detail         | 800            | 661       |
+| Two details without the list | 840            | 701       |
+| List plus two details        | 1125           | 986       |
+
+Resizing the expanded sidebar moves its thresholds; zoom changes the available CSS width. Rail thresholds below 760 cannot be crossed by native resizing at 100% zoom because the window has a 760-point minimum. Window height includes the native title bar; use `getContentSize()` or `innerWidth`/`innerHeight` when reporting page geometry.
 
 ## Proof and skip reporting
 
@@ -25,6 +36,7 @@ This folder is the maintained source for verifying what a user of AgentPeek can 
 - When a step cannot run, report the command you tried and the unmet precondition. Never report a skipped entry point as verified through a different one.
 - A step whose observed result differs from the recipe is a failure to report, not a recipe to rewrite. Change a recipe only when the product's intended behavior changed.
 - `wait-exit` observes natural shutdown before cleanup; require `cleanExit: true`. `stop` then removes scratch data and any residue. Its `clean: true` alone does not prove the app exited cleanly on its own.
+- Playwright recipes create separately owned isolated runs. Use a fresh `--output <new-evidence-dir>` for every invocation: Playwright clears that directory before running. Check that earlier helper, native and E2E evidence still exists after all cleanup.
 
 ## Feature entry contract
 
