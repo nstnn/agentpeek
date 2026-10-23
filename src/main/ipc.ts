@@ -57,7 +57,7 @@ export function registerSessionIpc(options: {
   contents: WebContents
   pageUrl: string
   controller: SessionController
-  preferences: Preferences
+  preferences: Pick<Preferences, 'getTheme' | 'setTheme'>
 }): () => void {
   const { ipc, controller: c } = options
   const channels: string[] = []

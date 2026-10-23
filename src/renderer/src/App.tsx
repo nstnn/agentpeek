@@ -33,12 +33,26 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
   const [dragSession, setDragSession] = useState<Session | null>(null)
   const [dropPane, setDropPane] = useState<'main' | 'second' | null>(null)
   const [dropLeft, setDropLeft] = useState(0)
+  const [zoomNotice, setZoomNotice] = useState<{ percent: number; failed?: boolean } | null>(null)
   const workspace = useRef<HTMLDivElement>(null)
   const regionId = useId()
   const [workspaceWidth, setWorkspaceWidth] = useState(() => window.innerWidth)
   const [paneSizes, setPaneSizes] = useState<PaneSizes>({})
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [paneInstances, setPaneInstances] = useState({ main: 'main', second: 'second' })
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const unsubscribe = window.agentpeek.onCommand((command) => {
+      if (typeof command !== 'object' || command.type !== 'zoom') return
+      clearTimeout(timer)
+      setZoomNotice(command)
+      timer = setTimeout(() => setZoomNotice(null), command.failed ? 6000 : 1800)
+    })
+    return () => {
+      unsubscribe()
+      clearTimeout(timer)
+    }
+  }, [])
   const mainPane = useRef<HTMLElement>(null)
   const secondPane = useRef<HTMLElement>(null)
   const navigation = useRef<HTMLElement>(null)
@@ -285,6 +299,13 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     >
       <NavigationIcon kind="sessions" />
     </button>
+  )
+  const zoomFeedback = zoomNotice && (
+    <div className="zoom-notice" role="status">
+      {zoomNotice.failed
+        ? `Couldn't save zoom. Restored to ${zoomNotice.percent}%. Try again.`
+        : `Zoom ${zoomNotice.percent}%`}
+    </div>
   )
   return (
     <div
@@ -720,8 +741,13 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
         )}
       </div>
       {state.settingsOpen && (
-        <SettingsDialog api={window.agentpeek} onClose={store.closeSettings} />
+        <SettingsDialog
+          api={window.agentpeek}
+          onClose={store.closeSettings}
+          feedback={zoomFeedback}
+        />
       )}
+      {!state.settingsOpen && zoomFeedback}
     </div>
   )
 }

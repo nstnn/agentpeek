@@ -74,6 +74,20 @@ summary:focus-visible,
   clip-path: inset(50%);
   white-space: nowrap;
 }
+.zoom-notice {
+  position: fixed;
+  right: 16px;
+  top: 16px;
+  z-index: 20;
+  max-width: calc(100% - 32px);
+  padding: 8px 12px;
+  border: 1px solid var(--sep);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 2px 8px #0002;
+  pointer-events: none;
+}
 .navigation-icon {
   width: 18px;
   height: 18px;

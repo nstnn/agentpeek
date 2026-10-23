@@ -11,7 +11,10 @@ export const MIN_WINDOW_SIZE = { width: 760, height: 480 } as const
  * cannot reach Node.js, and talks to the main process only through the object the preload
  * script exposes as `window.agentpeek`. Do not relax these settings.
  */
-export function mainWindowOptions(preloadPath: string): BrowserWindowConstructorOptions {
+export function mainWindowOptions(
+  preloadPath: string,
+  zoomPercent = 100
+): BrowserWindowConstructorOptions {
   return {
     title: 'AgentPeek',
     width: DEFAULT_WINDOW_SIZE.width,
@@ -22,6 +25,7 @@ export function mainWindowOptions(preloadPath: string): BrowserWindowConstructor
     show: false,
     webPreferences: {
       preload: preloadPath,
+      zoomFactor: zoomPercent / 100,
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,

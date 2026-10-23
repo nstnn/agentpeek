@@ -39,7 +39,7 @@ export function snapshot(sessions: Session[] = [], change: Partial<AppSnapshot> 
 }
 export function fakeApi(initial = snapshot()) {
   let receive: ((s: AppSnapshot) => void) | null = null
-  let command: ((c: MenuCommand) => void) | null = null
+  const commands = new Set<(c: MenuCommand) => void>()
   const offSnapshot = vi.fn()
   const offCommand = vi.fn()
   const api = {
@@ -51,8 +51,11 @@ export function fakeApi(initial = snapshot()) {
       return offSnapshot
     }),
     onCommand: vi.fn((fn: (c: MenuCommand) => void) => {
-      command = fn
-      return offCommand
+      commands.add(fn)
+      return () => {
+        commands.delete(fn)
+        offCommand()
+      }
     }),
     getMessages: vi
       .fn<AgentPeekApi['getMessages']>()
@@ -70,7 +73,7 @@ export function fakeApi(initial = snapshot()) {
   return {
     api,
     push: (s: AppSnapshot) => receive?.(s),
-    command: (c: MenuCommand) => command?.(c),
+    command: (c: MenuCommand) => commands.forEach((fn) => fn(c)),
     offSnapshot,
     offCommand
   }

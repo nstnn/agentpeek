@@ -10,8 +10,10 @@ export function rendererPageUrl(): string {
     : pathToFileURL(join(__dirname, '../renderer/index.html')).href
 }
 
-export function createMainWindow(): BrowserWindow {
-  const window = new BrowserWindow(mainWindowOptions(join(__dirname, '../preload/index.js')))
+export function createMainWindow(zoomPercent = 100): BrowserWindow {
+  const window = new BrowserWindow(
+    mainWindowOptions(join(__dirname, '../preload/index.js'), zoomPercent)
+  )
 
   window.once('ready-to-show', () => window.show())
 

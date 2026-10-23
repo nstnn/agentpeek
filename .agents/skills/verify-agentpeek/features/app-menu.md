@@ -1,6 +1,6 @@
 # Application menu
 
-AgentPeek has five native menus: AgentPeek, Edit, View, Session, and Window. View offers Active, Pinned, All Sessions, and enabled Reload Sessions, plus developer tools in development only. Session actions use the active visible session. Open to the Right creates split; Open in Left Pane / Open in Right Pane replace explicit slots; Close Right Pane remains available during browsing and source loss. Back returns from replacement reading to the shared list in both single and split navigation.
+AgentPeek has five native menus: AgentPeek, Edit, View, Session, and Window. View offers Active, Pinned, All Sessions, enabled Reload Sessions, Zoom In, Zoom Out, Actual Size and the current zoom percentage, plus developer tools in development only. Zoom steps, shortcuts and persistence follow zoom.md. Session actions use the active visible session. Open to the Right creates split; Open in Left Pane / Open in Right Pane replace explicit slots; Close Right Pane remains available during browsing and source loss. Back returns from replacement reading to the shared list in both single and split navigation.
 
 ## Sub-features
 

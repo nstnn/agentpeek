@@ -43,6 +43,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Settings and appearance](./settings.md) covers sidebar/rail/menu entry, System/Light/Dark selection, modal keyboard and read isolation, saved preferences and recovery.
 - [Main window](./main-window.md) covers the window that opens at launch, its sidebar/list layout, its sizes, and its Light and Dark appearance.
 - [Application menu](./app-menu.md) covers the menu bar's items, shortcuts, and disabled states.
+- [Interface zoom](./zoom.md) covers exact zoom steps, shortcuts, bounds, Settings feedback, responsive reading, persistence and failed-save recovery.
 - [Window and app lifecycle](./window-lifecycle.md) covers closing the window, quitting, and minimizing.
 - [Single instance](./single-instance.md) covers opening AgentPeek while it is already open.
 - [Renderer lockdown](./renderer-lockdown.md) covers what the page can and cannot do: no Node.js, no navigation, no new windows, no remote loads, no permissions.

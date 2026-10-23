@@ -21,7 +21,9 @@ function options(isDev = false) {
     session: null,
     actions: actions(),
     canGoBack: false,
-    canCloseSecondary: false
+    canCloseSecondary: false,
+    zoomPercent: 100,
+    zoom: vi.fn()
   }
 }
 function submenuOf(template: MenuItemConstructorOptions[], label: string) {
@@ -65,18 +67,43 @@ describe('application menu', () => {
   it('enables Reload Sessions on Command-R and dispatches each View command', () => {
     const opts = options()
     const view = submenuOf(buildMenuTemplate(opts), 'View')
-    expect(view.filter((item) => item.label).map((item) => [item.label, item.accelerator])).toEqual(
-      [
-        ['Active', 'CommandOrControl+1'],
-        ['Pinned', 'CommandOrControl+2'],
-        ['All Sessions', 'CommandOrControl+3'],
-        ['Reload Sessions', 'CommandOrControl+R']
-      ]
+    const navigation = view.filter(
+      (item) => item.label && !item.id?.startsWith('zoom-') && item.enabled !== false
     )
-    for (const item of view.filter((item) => item.label)) click(item)
+    expect(navigation.map((item) => [item.label, item.accelerator])).toEqual([
+      ['Active', 'CommandOrControl+1'],
+      ['Pinned', 'CommandOrControl+2'],
+      ['All Sessions', 'CommandOrControl+3'],
+      ['Reload Sessions', 'CommandOrControl+R']
+    ])
+    for (const item of navigation) click(item)
     expect(opts.command.mock.calls).toEqual([['view:active'], ['view:pinned'], ['view:all']])
     expect(opts.reload).toHaveBeenCalledOnce()
     expect(view.find((item) => item.id === 'reload-sessions')?.enabled).toBe(true)
+  })
+  it('dispatches zoom independently of session selection and disables each bound', () => {
+    const opts = options()
+    for (const percent of [80, 100, 150]) {
+      const view = submenuOf(buildMenuTemplate({ ...opts, zoomPercent: percent }), 'View')
+      const item = (id: string) => view.find((entry) => entry.id === id)
+      expect(item('zoom-in')?.enabled).toBe(percent < 150)
+      expect(item('zoom-in-equals')?.enabled).toBe(percent < 150)
+      expect(item('zoom-out')?.enabled).toBe(percent > 80)
+      expect(item('zoom-in')?.accelerator).toBe('CommandOrControl+Plus')
+      expect(item('zoom-in-equals')).toMatchObject({
+        visible: false,
+        accelerator: 'CommandOrControl+='
+      })
+      expect(item('zoom-reset')?.accelerator).toBe('CommandOrControl+0')
+      click(item('zoom-in'))
+      click(item('zoom-out'))
+      click(item('zoom-reset'))
+    }
+    expect(opts.zoom.mock.calls).toEqual(
+      Array(3)
+        .fill([['in'], ['out'], ['reset']])
+        .flat()
+    )
   })
   it('shows developer tools only in development', () => {
     for (const isDev of [true, false])
