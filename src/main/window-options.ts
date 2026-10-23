@@ -1,7 +1,7 @@
 import type { BrowserWindowConstructorOptions } from 'electron'
 
 /** Default and minimum window sizes, in points. */
-export const DEFAULT_WINDOW_SIZE = { width: 1100, height: 720 } as const
+export const DEFAULT_WINDOW_SIZE = { width: 1280, height: 800 } as const
 export const MIN_WINDOW_SIZE = { width: 760, height: 480 } as const
 
 /**

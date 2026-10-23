@@ -9,7 +9,7 @@ The local Apple Silicon build is `dist/mac-arm64/AgentPeek.app`. Finder shows th
 - `package-fuses` disables RunAsNode, NODE_OPTIONS and the main-process inspector, and enables ASAR-only loading and embedded ASAR integrity validation.
 - `package-launch` opens the packaged window through LaunchServices with synthetic overrides, and Finder can reopen that running instance.
 - `package-about` shows AgentPeek and its version in the native About panel.
-- `package-window` opens at 1100 × 720 points, clamps a native resize to 760 × 480, and shows one window when opened again.
+- `package-window` opens at 1280 × 800 points, clamps a native resize to 760 × 480, and shows one window when opened again.
 - `package-close` exits all processes from this bundle when its red close button is clicked.
 
 ## How to get to it (user POV)
@@ -29,7 +29,7 @@ Preconditions:
 - **Isolated launch.** Run `node scripts/fixture/index.mjs create`. Use the returned absolute `home` and `userData` in `open -n -a "$PWD/dist/mac-arm64/AgentPeek.app" --env AGENTPEEK_HOME=<home> --env AGENTPEEK_USER_DATA=<userData> --args --user-data-dir=<userData>`. Confirm that process is running before binding the native tool to the exact app path. The window must show the matching Fixture data banner, 100 total sessions and seven running sessions. Save synthetic-only accessibility and window captures.
 - **About.** Open the AgentPeek menu, refresh a full accessibility tree, then choose About AgentPeek from that tree. Capture the native panel showing AgentPeek and the package version. Close only the About panel with Command-W.
 - **Developer tools.** Open View and save its native menu tree. It must have the three views and Reload Sessions, with no Toggle Developer Tools. Dismiss the menu through its exposed Cancel action.
-- **Window sizes.** Save the initial window capture, drag its bottom-right corner below the minimum, and save the resulting layout. On a 2× display, whole-window captures are 2200 × 1440 and 1520 × 960 pixels respectively; confirm the capture scale before interpreting other displays. The narrow layout hides the detail placeholder and retains the source/sidebar and list controls.
+- **Window sizes.** Save the initial window capture, drag its bottom-right corner below the minimum, and save the resulting layout. On a 2× display, whole-window captures are 2560 × 1600 and 1520 × 960 pixels respectively; confirm the capture scale before interpreting other displays. The narrow layout hides the detail placeholder and retains the source/sidebar and list controls.
 - **Single instance.** Record the exact main PID. Start the same bundle executable against the same two overrides and profile; the second process must exit with code 0 and the first PID must survive. Reopen the app from a new Finder window while that fixture process is running; confirm the same fixture banner and only one main PID/window.
 - **Close and clean up.** Click the main window's red close button, then inspect process exit outside the native app binding. No process with this bundle's exact path may remain. Close only the Finder window this run opened and run `node scripts/fixture/index.mjs clean <home>`. Retain evidence; keep the requested local build in ignored `dist/`.
 

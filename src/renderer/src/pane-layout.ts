@@ -61,7 +61,7 @@ export function paneLayout(
   const listWidth = list
     ? details
       ? clamp(
-          (split ? sizes.splitList : sizes.singleList) ?? (split ? 300 : 420),
+          (split ? sizes.splitList : sizes.singleList) ?? (split ? 300 : 360),
           LIST_MIN,
           listMax
         )

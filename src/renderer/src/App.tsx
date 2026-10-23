@@ -580,7 +580,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
           min={layout.listMin}
           max={listMax}
           onChange={resizeList}
-          onReset={() => resizeList(split ? 300 : 420)}
+          onReset={() => resizeList(split ? 300 : 360)}
         />
         {(['main', 'second'] as const).map((pane) => {
           const selection = pane === 'main' ? state.selection : state.secondarySelection
