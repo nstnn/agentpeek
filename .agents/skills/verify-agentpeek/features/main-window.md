@@ -6,7 +6,7 @@ Opening AgentPeek shows one window titled AgentPeek with a sidebar, sessions lis
 
 - `window-open` shows exactly one window, titled AgentPeek, once its content has rendered.
 - `window-layout` shows Active and source health; an empty synthetic home says "No sessions yet".
-- `window-size` opens at 1100 × 720 points and refuses to shrink below 760 × 480.
+- `window-size` opens at 1280 × 800 points and refuses to shrink below 760 × 480.
 - `window-appearance` follows system appearance with paired Light and Dark palettes.
 - `window-scrollbars` uses slim platform scrollbars with neutral thumbs and transparent tracks in both themes, including the list, both transcripts and horizontal Markdown overflow.
 - `window-reading-space` bounds initial titles to two lines and keeps long-message controls usable across default/minimum sizes and capacity boundaries.
@@ -29,7 +29,7 @@ Preconditions:
 
 - **Open.** Launch AgentPeek. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs launch --label main-window`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs doctor`. Launch prints a run id, and doctor prints `doctor: OK` with `one visible window: [{"visible":true,"title":"AgentPeek"}]`.
 - **Layout.** Look at the window. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs aria main-window-initial` and `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs screenshot main-window-initial`. The tree holds `main "Sessions"`, `heading "Active" [level=1]`, sidebar view buttons and both sources. An empty home shows "No sessions yet". At the default width the detail placeholder says "No session selected".
-- **Default size.** Check the size the window opened at. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "BrowserWindow.getAllWindows()[0].getSize()"`. The result is `[1100, 720]`.
+- **Default size.** Check the size the window opened at. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "BrowserWindow.getAllWindows()[0].getSize()"`. The result is `[1280, 800]`. With the expanded 190-pixel sidebar and one detail region, the Active sessions list starts at 360 pixels, leaving 720 pixels for detail. Read the Sessions width separator's `aria-valuenow` and the regions' bounding widths with `eval`, and capture `aria window-size-initial` plus `screenshot window-size-initial`. Drag the Sessions width separator, then press Enter or double-click it: it returns to 360 pixels. Two-detail split mode retains its separate 300-pixel list default. Repeat representative default/minimum sizes with populated synthetic projects; controls remain reachable and the document has no horizontal overflow.
 - **Smallest size.** Try to make the window smaller than allowed. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "(BrowserWindow.getAllWindows()[0].setSize(400, 300), BrowserWindow.getAllWindows()[0].getSize())"`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs screenshot main-window-minimum`. The result is `[760, 480]`, and the screenshot shows a 190-point sidebar and list filling the remaining width; the detail is hidden. No horizontal page overflow or clipped controls.
 - **Layout boundary.** Follow navigation-visibility.md at expanded Views widths 799/800, 839/840 and 1124/1125, plus rail 981/982. Capture ARIA/PNG and zero document overflow. Resizing preserves the reading target; Show Sessions opens replacement navigation only when needed.
 - **Light appearance.** Force the light theme. Run `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs main-eval "electron.nativeTheme.themeSource = 'light'"`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs eval "matchMedia('(prefers-color-scheme: dark)').matches"` and `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs screenshot main-window-light`. The media query is `false` and the screenshot shows dark text on a light background.
@@ -42,9 +42,9 @@ Preconditions:
 
 ## Gotchas
 
-- Screenshots cover the page only, not the title bar. The 720-point window height includes a 32-point title bar, so the page is 1100 × 688 points, and on a Retina display the PNG is 2200 × 1376 pixels.
+- Screenshots cover the page only, not the title bar. The 800-point window height includes a 32-point title bar, so the page is 1280 × 768 points, and on a Retina display the PNG is 2560 × 1536 pixels.
 - Do not assert the window's position. macOS places it, and it differs between runs.
 - `setSize` stands in for dragging a corner, which this harness cannot do. It proves the minimum size and the layout at that size, not the drag itself.
 - Never change the Mac's appearance setting. The `nativeTheme.themeSource` override is AgentPeek's own and ends when the app quits, but restore it before driving other features in the same run.
 - Scrollbar width and overlay visibility follow Chromium/macOS behavior and the user's system preference. `thin` requests the platform's smaller variant rather than a fixed pixel width; a still screenshot may miss an auto-hidden thumb. Do not change the system scrollbar preference for verification. Computed styles alone do not prove thumb drawing, dragging or trackpad behavior.
-- Expanded sidebar starts at 190 pixels; list preferences start at 420 single / 300 split. Minimum sidebar/list/detail sizes are 170/280/320 and sidebar maximum is 320. The 56-pixel rail has no divider. Capacity depends on reserved sidebar width; see navigation-visibility.md. Preferences survive toggles/resizes until quit/reload.
+- Expanded sidebar starts at 190 pixels; list preferences start at 360 single / 300 split. Minimum sidebar/list/detail sizes are 170/280/320 and sidebar maximum is 320. The 56-pixel rail has no divider. Capacity depends on reserved sidebar width; see navigation-visibility.md. Preferences survive toggles/resizes until quit/reload.
