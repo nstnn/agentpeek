@@ -261,7 +261,7 @@ describe('sessions interface', () => {
     expect(screen.queryByText(/First launch:/)).toBeNull()
     fake.unmount()
     expect(fake.offSnapshot).toHaveBeenCalledOnce()
-    expect(fake.offCommand).toHaveBeenCalledOnce()
+    expect(fake.offCommand).toHaveBeenCalledTimes(2)
   })
 
   it('presents two details and replacement navigation in the middle split band', async () => {

@@ -15,6 +15,65 @@ afterEach(async () => {
 })
 
 describe('appearance preferences', () => {
+  it('loads older theme-only preferences and keeps theme and zoom through interleaved saves', async () => {
+    const folder = await fixture()
+    const file = join(folder, 'preferences.json')
+    await writeFile(file, JSON.stringify({ version: 1, theme: 'dark' }))
+    const applyZoom = vi.fn()
+    const preferences = await openPreferences(folder, vi.fn(), applyZoom)
+    expect(preferences.getZoom()).toBe(100)
+    expect(await preferences.getTheme()).toBe('dark')
+    await Promise.all([
+      preferences.changeZoom('in'),
+      preferences.setTheme('light'),
+      preferences.changeZoom('in'),
+      preferences.changeZoom('in')
+    ])
+    expect(preferences.getZoom()).toBe(130)
+    expect(applyZoom.mock.calls).toEqual([[100], [110], [120], [130]])
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({
+      version: 1,
+      theme: 'light',
+      zoomPercent: 130
+    })
+    const reopened = await openPreferences(folder, vi.fn(), vi.fn())
+    expect(reopened.getZoom()).toBe(130)
+    expect(await reopened.getTheme()).toBe('light')
+  })
+  it.each([null, '110', 0, 79, 81, 109.5, 160])(
+    'ignores invalid saved zoom %j without losing the theme',
+    async (zoomPercent) => {
+      const folder = await fixture()
+      const file = join(folder, 'preferences.json')
+      const contents = JSON.stringify({ version: 1, theme: 'dark', zoomPercent })
+      await writeFile(file, contents)
+      const preferences = await openPreferences(folder, vi.fn())
+      expect(preferences.getZoom()).toBe(100)
+      expect(await preferences.getTheme()).toBe('dark')
+      expect(await readFile(file, 'utf8')).toBe(contents)
+    }
+  )
+  it('clamps repeated zoom actions, resets exactly and rolls back a failed save before retrying', async () => {
+    const folder = await fixture()
+    const applyZoom = vi.fn()
+    const preferences = await openPreferences(folder, vi.fn(), applyZoom)
+    await Promise.all(Array.from({ length: 10 }, () => preferences.changeZoom('in')))
+    expect(preferences.getZoom()).toBe(150)
+    await Promise.all(Array.from({ length: 10 }, () => preferences.changeZoom('out')))
+    expect(preferences.getZoom()).toBe(80)
+    await preferences.changeZoom('reset')
+    expect(preferences.getZoom()).toBe(100)
+    const file = join(folder, 'preferences.json')
+    const before = await readFile(file, 'utf8')
+    await mkdir(`${file}.tmp`)
+    await expect(preferences.changeZoom('in')).rejects.toThrow('Could not save preferences.')
+    expect(preferences.getZoom()).toBe(100)
+    expect(applyZoom.mock.calls.slice(-2)).toEqual([[110], [100]])
+    expect(await readFile(file, 'utf8')).toBe(before)
+    await rm(`${file}.tmp`, { recursive: true })
+    await preferences.changeZoom('in')
+    expect((await openPreferences(folder, vi.fn())).getZoom()).toBe(110)
+  })
   it('defaults to System without creating a preference file, persists choices and restores on reopen', async () => {
     const folder = await fixture()
     const state = join(folder, 'state.json')
@@ -33,7 +92,8 @@ describe('appearance preferences', () => {
       expect(reopenedApply).toHaveBeenCalledWith(theme)
       expect(JSON.parse(await readFile(join(folder, 'preferences.json'), 'utf8'))).toEqual({
         version: 1,
-        theme
+        theme,
+        zoomPercent: 100
       })
     }
     expect(await readFile(state, 'utf8')).toBe('synthetic session state')

@@ -1,6 +1,7 @@
 import type { MenuItemConstructorOptions } from 'electron'
 import type { Session } from '../core/session'
 import type { MenuCommand } from '../shared/api'
+import { MIN_ZOOM, MAX_ZOOM, type ZoomAction } from '../shared/preferences'
 
 export interface SessionMenuActions {
   open(this: void): void
@@ -95,6 +96,8 @@ export function buildMenuTemplate(options: {
   actions: SessionMenuActions
   canGoBack: boolean
   canCloseSecondary: boolean
+  zoomPercent: number
+  zoom: (action: ZoomAction) => void
 }): MenuItemConstructorOptions[] {
   const viewItems: MenuItemConstructorOptions[] = [
     {
@@ -119,7 +122,38 @@ export function buildMenuTemplate(options: {
       accelerator: 'CommandOrControl+R',
       enabled: true,
       click: options.reload
-    }
+    },
+    { type: 'separator' },
+    {
+      id: 'zoom-in',
+      label: 'Zoom In',
+      accelerator: 'CommandOrControl+Plus',
+      enabled: options.zoomPercent < MAX_ZOOM,
+      click: () => options.zoom('in')
+    },
+    {
+      id: 'zoom-in-equals',
+      label: 'Zoom In',
+      accelerator: 'CommandOrControl+=',
+      visible: false,
+      acceleratorWorksWhenHidden: true,
+      enabled: options.zoomPercent < MAX_ZOOM,
+      click: () => options.zoom('in')
+    },
+    {
+      id: 'zoom-out',
+      label: 'Zoom Out',
+      accelerator: 'CommandOrControl+-',
+      enabled: options.zoomPercent > MIN_ZOOM,
+      click: () => options.zoom('out')
+    },
+    {
+      id: 'zoom-reset',
+      label: 'Actual Size',
+      accelerator: 'CommandOrControl+0',
+      click: () => options.zoom('reset')
+    },
+    { label: `Zoom: ${options.zoomPercent}%`, enabled: false }
   ]
   if (options.isDev) {
     viewItems.push({ type: 'separator' }, { role: 'toggleDevTools' })

@@ -38,6 +38,8 @@ function setup() {
   const preferences = {
     getTheme: vi.fn<Preferences['getTheme']>().mockResolvedValue('system'),
     setTheme: vi.fn<Preferences['setTheme']>().mockResolvedValue(undefined),
+    getZoom: vi.fn<Preferences['getZoom']>().mockReturnValue(100),
+    changeZoom: vi.fn<Preferences['changeZoom']>().mockResolvedValue(undefined),
     flush: vi.fn<Preferences['flush']>().mockResolvedValue(undefined)
   }
   const createWindow = vi.fn(() => window)

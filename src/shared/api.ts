@@ -17,6 +17,7 @@ export type MenuCommand =
   | { type: 'open-primary'; key: SessionKey }
   | { type: 'open-secondary'; key: SessionKey }
   | { type: 'close-secondary' }
+  | { type: 'zoom'; percent: number; failed?: boolean }
 
 export interface SelectionPresentation {
   readonly secondPaneOpen: boolean

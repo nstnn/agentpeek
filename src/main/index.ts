@@ -21,6 +21,7 @@ import type { SessionsService } from './sessions/service'
 import { systemActions } from './system-actions'
 import { createMainWindow, rendererPageUrl } from './window'
 import { openPreferences, type Preferences } from './preferences'
+import type { ZoomAction } from '../shared/preferences'
 
 app.enableSandbox()
 // Set userData before acquiring the single-instance lock, so fixture runs are fully isolated.
@@ -56,7 +57,20 @@ function updateMenu(): void {
         session: controller.selected(),
         actions: controller.actions(),
         canGoBack: controller.canGoBack(),
-        canCloseSecondary: controller.canCloseSecondary()
+        canCloseSecondary: controller.canCloseSecondary(),
+        zoomPercent: preferences?.getZoom() ?? 100,
+        zoom: (action: ZoomAction) => {
+          void preferences
+            ?.changeZoom(action)
+            .then(() => send(IPC.command, { type: 'zoom', percent: preferences?.getZoom() ?? 100 }))
+            .catch(() => {
+              send(IPC.command, {
+                type: 'zoom',
+                percent: preferences?.getZoom() ?? 100,
+                failed: true
+              })
+            })
+        }
       })
     )
   )
@@ -103,9 +117,17 @@ if (!app.requestSingleInstanceLock()) {
         applicationVersion: app.getVersion()
       })
       denyAllPermissions(session.defaultSession)
-      preferences = await openPreferences(paths.stateFolder, (theme) => {
-        nativeTheme.themeSource = theme
-      })
+      preferences = await openPreferences(
+        paths.stateFolder,
+        (theme) => {
+          nativeTheme.themeSource = theme
+        },
+        (percent) => {
+          if (!mainWindow || quitting || mainWindow.webContents.isDestroyed()) return
+          mainWindow.webContents.setZoomFactor(percent / 100)
+          updateMenu()
+        }
+      )
       if (quitting) return
       opening = openSessionsService({
         ...paths,
@@ -124,7 +146,7 @@ if (!app.requestSingleInstanceLock()) {
       const service = await opening
       if (quitting) return
       lifecycle = createServiceLifecycle(service)
-      mainWindow = createMainWindow()
+      mainWindow = createMainWindow(preferences.getZoom())
       controller = createSessionController({
         service,
         system: systemActions,

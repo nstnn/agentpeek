@@ -39,6 +39,13 @@ Appearance. System is the default. Changes apply immediately and are saved for t
 Close or Escape returns to the same sessions and scroll positions. While Settings is open,
 covered conversations do not automatically acknowledge new replies. A failed preference save
 restores the previous appearance and shows a retry message.
+
+**View → Zoom In / Zoom Out / Actual Size** scales the whole interface with ⌘+ (also ⌘=),
+⌘− and ⌘0. Zoom uses exact 10-point steps from 80% to 150%, defaults to 100%, and is saved
+independently of Theme for the next launch. A brief notice and the View menu show the percentage.
+Zoom also works while Settings is open. Larger zoom can switch to the existing compact layout;
+it retains the selected sessions. A failed save restores the previous zoom and shows a retry message.
+
 Navigation slides over 220 ms with a gentle deceleration; Reduce Motion makes it immediate.
 The rail keeps Active attention counts, view selection and source status; click a source
 initial to inspect its health, then Close or Escape to dismiss it. Choosing a view opens

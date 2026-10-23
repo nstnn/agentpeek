@@ -1,4 +1,12 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX } from 'react'
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type JSX,
+  type ReactNode
+} from 'react'
 import type { AgentPeekApi } from '../../shared/api'
 import { THEMES, type Theme } from '../../shared/preferences'
 
@@ -20,10 +28,12 @@ export function SettingsIcon(): JSX.Element {
 
 export function SettingsDialog({
   api,
-  onClose
+  onClose,
+  feedback
 }: {
   api: AgentPeekApi
   onClose: () => void
+  feedback?: ReactNode
 }): JSX.Element {
   const id = useId()
   const dialog = useRef<HTMLDialogElement>(null)
@@ -164,6 +174,7 @@ export function SettingsDialog({
           </div>
         )}
       </section>
+      {feedback}
     </dialog>
   )
 }
