@@ -27,6 +27,7 @@ export function createPreloadApi(transport: PreloadTransport): AgentPeekApi {
     getSnapshot: () => invoke(IPC.getSnapshot),
     onSnapshot: (callback: (snapshot: AppSnapshot) => void) => subscribe(IPC.snapshot, callback),
     getMessages: (key, limit) => invoke(IPC.getMessages, key, limit),
+    getSkill: (key, request) => invoke(IPC.getSkill, key, request),
     setPinned: (key, pinned) => invoke(IPC.setPinned, key, pinned),
     markRead: (key, cursor) =>
       cursor === undefined ? invoke(IPC.markRead, key) : invoke(IPC.markRead, key, cursor),

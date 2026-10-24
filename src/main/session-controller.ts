@@ -4,6 +4,7 @@ import type { SessionsService } from './sessions/service'
 import { buildSessionMenu, type SessionMenuActions } from './menu'
 import type { MenuItemConstructorOptions } from 'electron'
 import type { SystemActions } from './system-actions'
+import type { SkillRequest } from '../core/skills'
 
 /** Owns selection and actions; menu callbacks look up the latest published session. */
 export function createSessionController(options: {
@@ -88,6 +89,10 @@ export function createSessionController(options: {
       find(key) === null
         ? Promise.resolve({ kind: 'not-found' } as const)
         : service.recentMessages(key, limit),
+    getSkill: (key: SessionKey, request: SkillRequest) =>
+      find(key) === null
+        ? Promise.resolve({ kind: 'unavailable', reason: 'not-found' } as const)
+        : service.getSkill(key, request),
     setPinned: (key: SessionKey, pinned: boolean) => service.setPinned(key, pinned),
     markRead: (key: SessionKey, expectedCursor?: string) => {
       const session = find(key)

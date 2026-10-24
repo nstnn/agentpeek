@@ -31,24 +31,27 @@ npm run fixture -- simulate <absolute-home> codex-complete
 Each command writes once and exits; there is no polling or automatic scenario loop. Wait for
 the expected UI result between steps. Fresh fixtures avoid stale state between scenarios.
 
-| Step                             | Session and expected result                                                                      |
-| -------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `codex-complete`                 | Codex complete: Running → Idle, New reply when unselected.                                       |
-| `codex-error`                    | Codex error: Running → Idle, Error.                                                              |
-| `codex-aborted`                  | Codex aborted: Running → Idle, no reply/error attention.                                         |
-| `codex-reply`                    | Codex complete: a fresh completed turn, new unread cursor.                                       |
-| `codex-new-turn`                 | Codex complete: starts a newer turn, clearing unseen attention.                                  |
-| `claude-waiting`                 | Claude busy: Running → Waiting for you (permission).                                             |
-| `claude-denied`                  | Claude busy: denied tool result + interrupt, then Idle, no reply/error.                          |
-| `claude-stopped`                 | Claude stopped: interrupt, then Idle, no reply/error.                                            |
-| `claude-api-error`               | Claude apiError: API error, then Idle, Error.                                                    |
-| `claude-reply`                   | Claude busy: human prompt + completed reply, then Idle, New reply.                               |
-| `claude-new-turn`                | Claude busy: newer human prompt + busy registry, clearing attention.                             |
-| `registry-removed`               | Claude dead: removes the synthetic non-existent PID's registry; catalog-backed row becomes Idle. |
-| `old-resumed`                    | Old Codex thread: starts a turn; Reload Sessions discovers it as Running.                        |
-| `malformed-line`                 | Appends invalid JSON to Codex malformed; ignored without affecting the other source.             |
-| `read-failure`, `read-restored`  | Removes/restores permission on Codex retry's transcript for failed-read/Try Again.               |
-| `missing-codex`, `restore-codex` | Hides/restores only the generated Codex tree; Reload Sessions updates health.                    |
+| Step                             | Session and expected result                                                                                                                                    |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `codex-complete`                 | Codex complete: Running → Idle, New reply when unselected.                                                                                                     |
+| `codex-error`                    | Codex error: Running → Idle, Error.                                                                                                                            |
+| `codex-aborted`                  | Codex aborted: Running → Idle, no reply/error attention.                                                                                                       |
+| `codex-reply`                    | Codex complete: a fresh completed turn, new unread cursor.                                                                                                     |
+| `codex-new-turn`                 | Codex complete: starts a newer turn, clearing unseen attention.                                                                                                |
+| `skill-references`               | Codex retry: append explicit skill cards for recorded, current, missing, long, empty and blocked content. Use the helper's copied home so paths stay isolated. |
+| `skill-local-updated`            | Replace the generated current local skill; Reload Skill shows the updated version.                                                                             |
+| `skill-missing-restored`         | Create the generated missing skill; Try Again recovers its current local content.                                                                              |
+| `claude-waiting`                 | Claude busy: Running → Waiting for you (permission).                                                                                                           |
+| `claude-denied`                  | Claude busy: denied tool result + interrupt, then Idle, no reply/error.                                                                                        |
+| `claude-stopped`                 | Claude stopped: interrupt, then Idle, no reply/error.                                                                                                          |
+| `claude-api-error`               | Claude apiError: API error, then Idle, Error.                                                                                                                  |
+| `claude-reply`                   | Claude busy: human prompt + completed reply, then Idle, New reply.                                                                                             |
+| `claude-new-turn`                | Claude busy: newer human prompt + busy registry, clearing attention.                                                                                           |
+| `registry-removed`               | Claude dead: removes the synthetic non-existent PID's registry; catalog-backed row becomes Idle.                                                               |
+| `old-resumed`                    | Old Codex thread: starts a turn; Reload Sessions discovers it as Running.                                                                                      |
+| `malformed-line`                 | Appends invalid JSON to Codex malformed; ignored without affecting the other source.                                                                           |
+| `read-failure`, `read-restored`  | Removes/restores permission on Codex retry's transcript for failed-read/Try Again.                                                                             |
+| `missing-codex`, `restore-codex` | Hides/restores only the generated Codex tree; Reload Sessions updates health.                                                                                  |
 
 Codex long has more than 20 messages, a tool summary, a long title, and a 211,200-character reply.
 Codex hostile has literal HTML, an unsafe link, a remote image, a table, and a code block.

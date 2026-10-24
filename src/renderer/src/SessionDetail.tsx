@@ -15,6 +15,7 @@ import { SessionIcon } from './SessionIcon'
 import { SafeMarkdown } from './SafeMarkdown'
 import { ReloadSessions } from './session-panels'
 import { ToolCalls } from './ToolCalls'
+import { PromptSkills, type PromptSkillContext } from './PromptSkills'
 
 const PREVIEW_LIMIT = 6000
 const FULL_LIMIT = 200_000
@@ -421,7 +422,16 @@ export function SessionDetail({
                     Latest exchange
                   </div>
                 )}
-                <Message message={message} tool={tool} onLink={onLink} />
+                <Message
+                  message={message}
+                  tool={tool}
+                  onLink={onLink}
+                  promptContext={
+                    tool === 'codex'
+                      ? { sessionKey: session.key, at: message.at, api, visible }
+                      : undefined
+                  }
+                />
               </div>
             ))}
             {tool === 'claude' &&
@@ -487,11 +497,13 @@ function DetailTitle({ title }: { title: string }): JSX.Element {
 function Message({
   message,
   tool,
-  onLink
+  onLink,
+  promptContext
 }: {
   message: SessionMessage
   tool: Session['key']['tool']
   onLink: (url: string) => void
+  promptContext?: PromptSkillContext
 }): JSX.Element {
   if (message.kind === 'tool-calls') return <ToolCalls message={message} />
   return (
@@ -505,6 +517,7 @@ function Message({
         tool={tool}
         onLink={onLink}
         markdown={message.kind === 'reply'}
+        promptContext={message.kind === 'prompt' ? promptContext : undefined}
       />
     </article>
   )
@@ -514,12 +527,14 @@ function MessageText({
   text,
   tool,
   onLink,
-  markdown
+  markdown,
+  promptContext
 }: {
   text: string
   tool: Session['key']['tool']
   onLink: (url: string) => void
   markdown: boolean
+  promptContext?: PromptSkillContext
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false)
   const id = useId()
@@ -614,6 +629,8 @@ function MessageText({
       <div id={id}>
         {markdown ? (
           <SafeMarkdown text={text.slice(0, limit)} onLink={onLink} />
+        ) : promptContext ? (
+          <PromptSkills text={text} limit={limit} context={promptContext} onLink={onLink} />
         ) : (
           <div className="prompt-text">{text.slice(0, limit)}</div>
         )}

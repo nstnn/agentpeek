@@ -3,7 +3,12 @@ import { mkdir, mkdtemp, open, realpath, rm, symlink, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AccessRefusedError, createAccessGate, type RefusalReason } from './access'
+import {
+  AccessRefusedError,
+  createAccessGate,
+  createSkillAccessGate,
+  type RefusalReason
+} from './access'
 
 // Spy on the real `open` and `realpath`, to prove that a refused path is never opened.
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -65,6 +70,60 @@ const ALLOWED_FILES = [
 ] as const
 
 describe('createAccessGate', () => {
+  it('opens only SKILL.md in approved user/plugin/project skill roots, separately from tool reads', async () => {
+    const workspace = join(root, 'project')
+    for (const path of [
+      homePath('.agents', 'skills', 'pr', 'SKILL.md'),
+      homePath('.codex', 'skills', '.system', 'imagegen', 'SKILL.md'),
+      homePath('.codex', 'plugins', 'cache', 'example', '1.0', 'skills', 'pr', 'SKILL.md'),
+      join(workspace, '.agents', 'skills', 'pr', 'SKILL.md')
+    ]) {
+      await createFile(path, '# Synthetic skill')
+      await expect(createAccessGate(home).open(path)).rejects.toMatchObject({
+        reason: 'not-allowed'
+      })
+      const handle = await createSkillAccessGate(home, workspace, false).open(path)
+      try {
+        await expect(handle.writeFile('modified')).rejects.toMatchObject({ code: 'EBADF' })
+      } finally {
+        await handle.close()
+      }
+    }
+  })
+  it('refuses arbitrary files, symlink escapes and fixture reads outside the synthetic home', async () => {
+    const workspace = join(root, 'project')
+    const projectSkill = await createFile(join(workspace, '.agents', 'skills', 'pr', 'SKILL.md'))
+    const escaped = homePath('.agents', 'skills', 'escape', 'SKILL.md')
+    await mkdir(dirname(escaped), { recursive: true })
+    await symlink(projectSkill, escaped)
+    const gate = createSkillAccessGate(home, workspace, true)
+    await expect(gate.open(projectSkill)).rejects.toMatchObject({ reason: 'not-allowed' })
+    await expect(gate.open(escaped)).rejects.toMatchObject({ reason: 'symlink-escape' })
+    for (const path of [
+      homePath('SKILL.md'),
+      homePath('.agents', 'skills', 'pr', 'auth.json'),
+      homePath('.agents', 'skills', 'pr', 'secret.key')
+    ]) {
+      vi.mocked(open).mockClear()
+      await expect(gate.open(path)).rejects.toBeInstanceOf(AccessRefusedError)
+      expect(open).not.toHaveBeenCalled()
+    }
+  })
+  it('rejects a synthetic skill-root symlink to a real external tree before opening content', async () => {
+    const external = join(root, 'external-skills')
+    const path = await createFile(join(external, 'pr', 'SKILL.md'))
+    await mkdir(homePath('.agents'), { recursive: true })
+    await symlink(external, homePath('.agents', 'skills'))
+    const alias = homePath('.agents', 'skills', 'pr', 'SKILL.md')
+    vi.mocked(open).mockClear()
+    await expect(createSkillAccessGate(home, null, true).open(alias)).rejects.toMatchObject({
+      reason: 'symlink-escape'
+    })
+    expect(open).not.toHaveBeenCalled()
+    const handle = await createSkillAccessGate(home, null, false).open(alias)
+    await handle.close()
+    expect(path).toContain('external-skills')
+  })
   it.each(ALLOWED_FILES)('allows %s and opens it read-only', async (_, names) => {
     const path = await createFile(homePath(...names))
     const gate = createAccessGate(home)

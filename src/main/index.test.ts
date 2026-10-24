@@ -174,7 +174,7 @@ describe('main process lifecycle', () => {
       stateFolder: '/synthetic/state',
       fixture: true
     })
-    expect(s.ipcMain.handle).toHaveBeenCalledTimes(14)
+    expect(s.ipcMain.handle).toHaveBeenCalledTimes(15)
     vi.useFakeTimers()
     s.window.emit('focus')
     s.window.emit('focus')
@@ -209,7 +209,7 @@ describe('main process lifecycle', () => {
     expect(s.app.quit).not.toHaveBeenCalled()
     expect(s.service.stop).toHaveBeenCalledOnce()
     expect(s.powerMonitor.listenerCount('resume')).toBe(0)
-    expect(s.ipcMain.removeHandler).toHaveBeenCalledTimes(14)
+    expect(s.ipcMain.removeHandler).toHaveBeenCalledTimes(15)
     expect(vi.getTimerCount()).toBe(0)
     finish()
     await vi.advanceTimersByTimeAsync(0)

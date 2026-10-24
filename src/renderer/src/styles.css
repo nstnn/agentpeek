@@ -1295,6 +1295,79 @@ button[aria-disabled='true'] {
 .tool-summary {
   padding: 6px 0;
 }
+.skill-card {
+  margin: 4px 0;
+  border: 1px solid var(--sep);
+  border-radius: 6px;
+  background: var(--bg);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.skill-card > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border-radius: 5px;
+  list-style: none;
+  cursor: default;
+}
+.skill-card > summary::-webkit-details-marker {
+  display: none;
+}
+.skill-card > summary::before {
+  content: '›';
+}
+.skill-card[open] > summary::before {
+  transform: rotate(90deg);
+}
+.skill-card[open] > summary {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg);
+  border-bottom: 1px solid var(--sep);
+}
+.skill-card > summary:hover {
+  background: var(--sidebar);
+}
+.skill-card-name {
+  font-weight: 600;
+}
+.skill-card-trigger {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--secondary);
+}
+.skill-card-content {
+  padding: 0 12px 12px;
+}
+.skill-card-origin {
+  font-size: 11px;
+  font-weight: 600;
+}
+.skill-card-note,
+.skill-file-details {
+  font-size: 11px;
+  color: var(--secondary);
+}
+.skill-card-description {
+  color: var(--secondary);
+}
+.skill-file-details {
+  margin-top: 12px;
+}
+.skill-file-details > summary {
+  padding: 4px 0;
+  cursor: default;
+}
+.skill-file-details code {
+  display: block;
+  padding: 5px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .tool-calls {
   container: tool-calls / inline-size;
   margin: 6px 0 12px;

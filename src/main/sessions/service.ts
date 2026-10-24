@@ -15,6 +15,7 @@ import type { ChangeListener, SessionWatcher } from './file-watcher'
 import type { RecentMessages, SessionSource } from './session-source'
 import type { StateStore } from './state-store'
 import { DEFAULT_SOURCES, type SourcePreferences } from '../../shared/preferences'
+import type { SkillContent, SkillRequest } from '../../core/skills'
 
 // The sessions service (TASK-010). It runs while the window is open and ties together:
 // - both sources, which read the tools' files and report facts;
@@ -69,6 +70,7 @@ export interface SessionsService {
    * it reads nothing and finds nothing.
    */
   recentMessages(key: SessionKey, limit: number): Promise<RecentMessages>
+  getSkill(key: SessionKey, request: SkillRequest): Promise<SkillContent>
   /** Pins or unpins a listed session. False when it is not listed or cannot be stored. */
   setPinned(key: SessionKey, pinned: boolean): boolean
   /**
@@ -332,6 +334,17 @@ export function createSessionsService(options: SessionsServiceOptions): Sessions
       const result = await state.source.recentMessages(key, limit)
       return stopped !== null || !state.enabled || state.epoch !== epoch
         ? { kind: 'not-found' }
+        : result
+    },
+
+    async getSkill(key, request) {
+      const state = tools.get(key.tool)
+      if (!state?.source.getSkill || !listedSession(key))
+        return { kind: 'unavailable', reason: 'not-found' }
+      const epoch = state.epoch
+      const result = await state.source.getSkill(key, request)
+      return stopped !== null || !state.enabled || state.epoch !== epoch || !listedSession(key)
+        ? { kind: 'unavailable', reason: 'not-found' }
         : result
     },
 

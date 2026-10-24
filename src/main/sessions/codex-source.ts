@@ -16,6 +16,8 @@ import {
 } from '../../core/codex/turn-state'
 import type { ToolHealth } from '../../core/health'
 import type { SessionFacts, SessionKey } from '../../core/session'
+import type { SkillContent, SkillRequest } from '../../core/skills'
+import { readRequestedSkill } from './skill-reader'
 import { type AccessGate, createAccessGate } from './access'
 import { isCodexAppRunning } from './codex-app'
 import { codexPaths, isRolloutPath, type RolloutFile, sweepRollouts } from './codex-files'
@@ -44,6 +46,7 @@ import { createQueue, isMissing } from './source-support'
 export interface CodexSourceOptions {
   /** The home folder: the user's, or `AGENTPEEK_HOME` in fixture mode. */
   home: string
+  fixture?: boolean
   /** The access gate for `home`. Tests pass one that records what it opens. */
   gate?: AccessGate
   /** Whether the Codex app is running. Tests and fixture mode pass their own. */
@@ -385,6 +388,28 @@ export function createCodexSource(options: CodexSourceOptions): SessionSource {
     catalog: () => serialized(reconcile),
     refresh: (changedPaths) => serialized(() => refresh(changedPaths)),
     recentMessages,
+    async getSkill(key: SessionKey, request: SkillRequest): Promise<SkillContent> {
+      const entry =
+        key.tool === 'codex'
+          ? [...tracked.values()].find((item) => item.meta.id === key.id)
+          : undefined
+      if (!entry) return { kind: 'unavailable', reason: 'not-found' }
+      try {
+        const tail = await readLastLines(gate, entry.path, {
+          maxLines: ALL_LINES,
+          maxBytes: MESSAGES_TAIL_BYTES
+        })
+        return await readRequestedSkill({
+          lines: tail.lines,
+          request,
+          home: options.home,
+          workspace: entry.meta.cwd,
+          fixture: options.fixture === true
+        })
+      } catch {
+        return { kind: 'unavailable', reason: 'unreadable' }
+      }
+    },
     health: () => health,
     watchedFiles: () => [...tracked.keys(), ...pending]
   }

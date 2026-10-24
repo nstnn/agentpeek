@@ -71,6 +71,66 @@ it('bootstraps both observed formats, caps each tool, baselines old replies and 
   expect(hostile.messages.some((m) => m.kind === 'reply' && m.text === HOSTILE)).toBe(true)
 })
 
+it('loads explicit skill fixtures through the service and keeps their bodies out of snapshots and state', async () => {
+  const created = await fixture()
+  await start(created)
+  await simulate(created.home, 'skill-references', clock)
+  await service.reconcile()
+  const messages = await service.recentMessages(key('retry'), 20)
+  const message = messages.messages.find(
+    (m) => m.kind === 'prompt' && m.text.startsWith('Review these synthetic skills:')
+  )
+  expect(message).toBeTruthy()
+  const request = (name, path = join(created.home, '.agents', 'skills', name, 'SKILL.md')) => ({
+    at: message.at,
+    name,
+    path
+  })
+  expect(await service.getSkill(key('retry'), request('synthetic-recorded'))).toMatchObject({
+    kind: 'skill',
+    source: 'conversation',
+    description: 'Synthetic recorded skill copy.'
+  })
+  expect(await service.getSkill(key('retry'), request('synthetic-local'))).toMatchObject({
+    kind: 'skill',
+    source: 'local',
+    description: 'Synthetic current local skill.'
+  })
+  expect(await service.getSkill(key('retry'), request('synthetic-long'))).toMatchObject({
+    kind: 'skill',
+    truncated: true
+  })
+  const empty = await service.getSkill(key('retry'), request('synthetic-empty'))
+  expect(empty.kind).toBe('skill')
+  expect(empty.text.trim()).toBe('')
+  expect(await service.getSkill(key('retry'), request('synthetic-missing'))).toMatchObject({
+    kind: 'unavailable',
+    reason: 'not-found'
+  })
+  expect(
+    await service.getSkill(
+      key('retry'),
+      request('synthetic-blocked', join(created.home, 'synthetic-other', 'SKILL.md'))
+    )
+  ).toMatchObject({ kind: 'unavailable', reason: 'not-allowed' })
+  await simulate(created.home, 'skill-local-updated', clock + 10)
+  expect(await service.getSkill(key('retry'), request('synthetic-local'))).toMatchObject({
+    text: '# Synthetic updated local skill\n\nUpdated current instructions.'
+  })
+  await simulate(created.home, 'skill-missing-restored', clock + 20)
+  expect(await service.getSkill(key('retry'), request('synthetic-missing'))).toMatchObject({
+    kind: 'skill',
+    source: 'local'
+  })
+  expect(JSON.stringify(service.snapshot())).not.toContain(
+    'Original instructions from the conversation'
+  )
+  await service.stop()
+  const state = await readFile(join(created.userData, 'state.json'), 'utf8')
+  expect(state).not.toContain('Original instructions from the conversation')
+  expect(state).not.toContain('Current local instructions')
+})
+
 it('plays every activity/attention scenario through the real readers and service without storing synthetic text', async () => {
   const created = await fixture()
   await start(created, true)

@@ -2,6 +2,7 @@ import type { ToolHealth } from '../../core/health'
 import type { RecentMessages, SessionFacts, SessionKey } from '../../core/session'
 export type { RecentMessages } from '../../core/session'
 import type { AgentTool } from '../../core/tools'
+import type { SkillContent, SkillRequest } from '../../core/skills'
 
 // The interface each tool's source implements: Codex (codex-source.ts) and Claude Code (TASK-008).
 // A source reads its tool's files through the access gate and reports normalized facts. The
@@ -30,6 +31,8 @@ export interface SessionSource {
   refresh(changedPaths: readonly string[]): Promise<SessionFacts[]>
   /** Reads a session's recent messages for the detail, at most `limit`. Nothing is cached. */
   recentMessages(key: SessionKey, limit: number): Promise<RecentMessages>
+  /** Only an explicit skill reference in a recent prompt can authorize this on-demand read. */
+  getSkill?(key: SessionKey, request: SkillRequest): Promise<SkillContent>
   /** The tool's health line, as of the last `catalog` or `refresh`. */
   health(): ToolHealth
   /**

@@ -39,6 +39,9 @@ export function testService(sessions: Session[] = [testSession()]) {
     recentMessages: vi
       .fn<SessionsService['recentMessages']>()
       .mockResolvedValue({ kind: 'messages', messages: [], hasOlder: false }),
+    getSkill: vi
+      .fn<SessionsService['getSkill']>()
+      .mockResolvedValue({ kind: 'unavailable', reason: 'not-found' }),
     setPinned: vi.fn(() => true),
     markRead: vi.fn(() => true),
     stop: vi.fn<SessionsService['stop']>().mockResolvedValue(undefined)

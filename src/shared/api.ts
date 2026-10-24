@@ -2,6 +2,7 @@ import type { RecentMessages, SessionKey } from '../core/session'
 import type { SessionsSnapshot } from '../core/snapshot'
 import type { AgentTool } from '../core/tools'
 import type { Theme } from './preferences'
+import type { SkillContent, SkillRequest } from '../core/skills'
 
 export interface AppSnapshot extends SessionsSnapshot {
   /** The synthetic home, for the fixture banner; null in a normal run. */
@@ -31,6 +32,7 @@ export interface AgentPeekApi {
   getSnapshot(): Promise<AppSnapshot>
   onSnapshot(callback: (snapshot: AppSnapshot) => void): () => void
   getMessages(key: SessionKey, limit: number): Promise<RecentMessages>
+  getSkill(key: SessionKey, request: SkillRequest): Promise<SkillContent>
   setPinned(key: SessionKey, pinned: boolean): Promise<boolean>
   markRead(key: SessionKey, expectedCursor?: string): Promise<boolean>
   openTool(tool: AgentTool): Promise<boolean>
