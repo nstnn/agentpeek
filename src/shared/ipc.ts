@@ -6,6 +6,7 @@ export const IPC = {
   getSnapshot: 'agentpeek:get-snapshot',
   snapshot: 'agentpeek:snapshot',
   getMessages: 'agentpeek:get-messages',
+  getSkill: 'agentpeek:get-skill',
   setPinned: 'agentpeek:set-pinned',
   markRead: 'agentpeek:mark-read',
   openTool: 'agentpeek:open-tool',

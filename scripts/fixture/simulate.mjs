@@ -32,7 +32,10 @@ export const STEPS = Object.freeze([
   'read-failure',
   'read-restored',
   'missing-codex',
-  'restore-codex'
+  'restore-codex',
+  'skill-references',
+  'skill-local-updated',
+  'skill-missing-restored'
 ])
 
 export async function simulate(home, step, at = Date.now()) {
@@ -55,6 +58,58 @@ export async function simulate(home, step, at = Date.now()) {
   const codex = (name, lines) => append(codexPath(home, IDS[name]), lines)
   const transcript = (name, lines) => append(transcriptPath(home, IDS[name]), lines)
   switch (step) {
+    case 'skill-references': {
+      const skill = (name) => join(home, '.agents', 'skills', name, 'SKILL.md')
+      const names = [
+        'synthetic-recorded',
+        'synthetic-local',
+        'synthetic-missing',
+        'synthetic-long',
+        'synthetic-empty'
+      ]
+      const text =
+        'Review these synthetic skills:\n' +
+        names.map((name) => `[$${name}](${skill(name)})`).join('\n') +
+        `\n[$synthetic-blocked](${join(home, 'synthetic-other', 'SKILL.md')})\nKeep this surrounding text.`
+      const body =
+        '---\nname: synthetic-recorded\ndescription: Synthetic recorded skill copy.\n---\n# Synthetic recorded skill\n\nOriginal instructions from the conversation.\n\n<script>globalThis.fixtureInjected=true</script>\n\n![Synthetic image](https://example.invalid/skill.png)'
+      await codex('retry', [
+        started(id(at), at),
+        codexMessage(text, at + 1, 'UserMessage'),
+        JSON.stringify({
+          timestamp: new Date(at + 2).toISOString(),
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [
+              {
+                type: 'input_text',
+                text: `<skill>\n<name>synthetic-recorded</name>\n<path>${skill('synthetic-recorded')}</path>\n${body}\n</skill>`
+              }
+            ]
+          }
+        }),
+        codexMessage('Synthetic skill preview is ready.', at + 3),
+        complete(id(at), at + 4)
+      ])
+      break
+    }
+    case 'skill-local-updated':
+      await writeFile(
+        await fixtureTarget(home, join(home, '.agents', 'skills', 'synthetic-local', 'SKILL.md')),
+        '# Synthetic updated local skill\n\nUpdated current instructions.'
+      )
+      break
+    case 'skill-missing-restored': {
+      const folder = await fixtureTarget(home, join(home, '.agents', 'skills', 'synthetic-missing'))
+      await writeFile(
+        join(folder, 'SKILL.md'),
+        '# Synthetic restored skill\n\nRecovered local content.',
+        { flag: 'wx' }
+      )
+      break
+    }
     case 'codex-complete':
       await codex('complete', [
         codexMessage('Synthetic completed reply.', at),

@@ -38,7 +38,13 @@ export async function openSessionsService(options: OpenSessionsOptions): Promise
   const gate = createAccessGate(home)
   return createSessionsService({
     sources: [
-      createCodexSource({ home, gate, isAppRunning: options.isCodexAppRunning, now }),
+      createCodexSource({
+        home,
+        gate,
+        isAppRunning: options.isCodexAppRunning,
+        now,
+        fixture: options.fixture
+      }),
       createClaudeSource({ home, gate, probe: options.probe, now })
     ],
     store,

@@ -21,6 +21,7 @@ describe('preload API', () => {
         'getSnapshot',
         'onSnapshot',
         'getMessages',
+        'getSkill',
         'setPinned',
         'markRead',
         'openTool',
@@ -43,6 +44,8 @@ describe('preload API', () => {
     await api.setTheme('dark')
     await api.setSourceEnabled('codex', false)
     await api.getMessages(key, 10)
+    const skill = { at: 1, name: 'pr', path: '/synthetic/.agents/skills/pr/SKILL.md' }
+    await api.getSkill(key, skill)
     await api.setPinned(key, true)
     await api.markRead(key)
     await api.openTool('claude')
@@ -59,6 +62,7 @@ describe('preload API', () => {
       [IPC.setTheme, 'dark'],
       [IPC.setSourceEnabled, 'codex', false],
       [IPC.getMessages, key, 10],
+      [IPC.getSkill, key, skill],
       [IPC.setPinned, key, true],
       [IPC.markRead, key],
       [IPC.openTool, 'claude'],

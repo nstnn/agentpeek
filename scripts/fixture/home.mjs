@@ -56,6 +56,21 @@ export async function createFixture({ now = Date.now(), missingTool } = {}) {
 }
 
 async function createCodex(home, now) {
+  for (const [name, body] of [
+    [
+      'synthetic-recorded',
+      '# Synthetic current recorded file\nThis differs from the conversation copy.'
+    ],
+    [
+      'synthetic-local',
+      '---\nname: synthetic-local\ndescription: Synthetic current local skill.\n---\n# Synthetic local skill\n\nCurrent local instructions.'
+    ],
+    ['synthetic-long', '# Synthetic long skill\n\n' + 'x'.repeat(70_000)],
+    ['synthetic-empty', '']
+  ])
+    await writeLines(join(home, '.agents', 'skills', name, 'SKILL.md'), [body], now)
+  await mkdir(join(home, '.agents', 'skills', 'synthetic-missing'), { recursive: true })
+  await writeLines(join(home, 'synthetic-other', 'SKILL.md'), ['# Synthetic blocked file'], now)
   const titles = []
   for (const name of [
     'complete',

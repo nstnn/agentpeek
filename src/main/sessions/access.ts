@@ -74,22 +74,61 @@ export function createAccessGate(home: string): AccessGate {
   }
 }
 
-async function resolveToolFile(home: string, path: string): Promise<string> {
+/** A separate, reference-checked reader for SKILL.md only; ordinary tool reads stay unchanged. */
+export function createSkillAccessGate(
+  home: string,
+  workspace: string | null,
+  fixture: boolean
+): AccessGate {
+  if (!isAbsolute(home)) throw new Error('The home folder must be an absolute path.')
+  const entries: AllowedFiles[] = [
+    { folder: '.agents/skills', pattern: '**/SKILL.md' },
+    { folder: '.codex/skills', pattern: '**/SKILL.md' },
+    { folder: '.codex/skills/.system', pattern: '**/SKILL.md' },
+    { folder: '.claude/skills', pattern: '**/SKILL.md' },
+    { folder: '.codex/plugins/cache', pattern: '**/skills/**/SKILL.md' }
+  ]
+  if (
+    !fixture &&
+    workspace &&
+    isAbsolute(workspace) &&
+    resolve(workspace) === workspace &&
+    workspace !== sep
+  ) {
+    for (const folder of ['.agents/skills', '.codex/skills', '.claude/skills']) {
+      entries.push({ folder: join(workspace, folder), pattern: '**/SKILL.md' })
+    }
+  }
+  const resolveSkill = async (path: string) => {
+    const resolved = await resolveToolFile(resolve(home), path, entries)
+    if (fixture) {
+      const inside = relative(await realpath(home), resolved)
+      if (inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
+        throw new AccessRefusedError('symlink-escape')
+      }
+    }
+    return resolved
+  }
+  return { resolve: resolveSkill, open: async (path) => openRegularFile(await resolveSkill(path)) }
+}
+
+async function resolveToolFile(
+  home: string,
+  path: string,
+  entries: readonly AllowedFiles[] = ALLOWLIST
+): Promise<string> {
   // These checks only look at the path, so a refused path never reaches the disk.
   if (!isAbsolute(path) || resolve(path) !== path) throw new AccessRefusedError('not-normalized')
   if (isCredentialName(basename(path))) throw new AccessRefusedError('credential')
-  const entry = ALLOWLIST.find((allowed) =>
-    matchesAllowed(join(home, allowed.folder), path, allowed.pattern)
-  )
+  const folderOf = (entry: AllowedFiles) =>
+    isAbsolute(entry.folder) ? entry.folder : join(home, entry.folder)
+  const entry = entries.find((allowed) => matchesAllowed(folderOf(allowed), path, allowed.pattern))
   if (entry === undefined) throw new AccessRefusedError('not-allowed')
 
   // Follow symlinks, then check the real path against the folder's own real path. This catches a
   // symlink inside the tool's folder that leads anywhere else. It reads only folder entries, never
   // the file itself.
-  const [realFolder, realPath] = await Promise.all([
-    realpath(join(home, entry.folder)),
-    realpath(path)
-  ])
+  const [realFolder, realPath] = await Promise.all([realpath(folderOf(entry)), realpath(path)])
   if (!matchesAllowed(realFolder, realPath, entry.pattern)) {
     throw new AccessRefusedError('symlink-escape')
   }
@@ -98,6 +137,10 @@ async function resolveToolFile(home: string, path: string): Promise<string> {
 
 async function openToolFile(home: string, path: string): Promise<FileHandle> {
   const realPath = await resolveToolFile(home, path)
+  return openRegularFile(realPath)
+}
+
+async function openRegularFile(realPath: string): Promise<FileHandle> {
   // Read-only. O_NOFOLLOW refuses a symlink swapped in after the check, and O_NONBLOCK keeps a
   // named pipe from blocking the open.
   const flags = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK

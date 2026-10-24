@@ -12,6 +12,7 @@ const requests: [string, unknown[]][] = [
   [IPC.setSourceEnabled, ['codex', false]],
   [IPC.getSnapshot, []],
   [IPC.getMessages, [key, 20]],
+  [IPC.getSkill, [key, { at: 1, name: 'pr', path: '/synthetic/.agents/skills/pr/SKILL.md' }]],
   [IPC.setPinned, [key, true]],
   [IPC.markRead, [key]],
   [IPC.openTool, ['codex']],
@@ -71,6 +72,7 @@ function setup() {
     for (const fn of [
       service.snapshot,
       service.recentMessages,
+      service.getSkill,
       service.setPinned,
       service.markRead,
       service.reconcile,
@@ -102,6 +104,37 @@ function setup() {
 }
 
 describe('IPC trust boundary', () => {
+  it.each([
+    {},
+    { at: NaN, name: 'pr', path: '/synthetic/.agents/skills/pr/SKILL.md' },
+    { at: -1, name: 'pr', path: '/synthetic/.agents/skills/pr/SKILL.md' },
+    { at: 1, name: '../pr', path: '/synthetic/.agents/skills/pr/SKILL.md' },
+    { at: 1, name: 'pr', path: '/synthetic/.agents/skills/pr/../auth.json' },
+    { at: 1, name: 'pr', path: '/synthetic/auth.json' },
+    { at: 1, name: 'pr', path: 'file:///synthetic/.agents/skills/pr/SKILL.md' },
+    { at: 1, name: 'pr', path: '/synthetic/.agents/skills/pr/SKILL.md', extra: true }
+  ])('rejects malformed skill requests before any controller effect: %j', async (request) => {
+    const s = setup()
+    await expect(s.invoke(IPC.getSkill, [key, request])).rejects.toThrow(
+      'Invalid AgentPeek request'
+    )
+    s.expectNoEffects()
+  })
+  it('rejects unsupported sources and missing sessions, and sanitizes skill read failures', async () => {
+    const s = setup()
+    const request = { at: 1, name: 'pr', path: '/synthetic/.agents/skills/pr/SKILL.md' }
+    await expect(
+      s.invoke(IPC.getSkill, [{ tool: 'claude', id: 'synthetic' }, request])
+    ).rejects.toThrow('Invalid AgentPeek request')
+    await expect(
+      s.invoke(IPC.getSkill, [{ tool: 'codex', id: 'missing' }, request])
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'not-found' })
+    expect(s.service.getSkill).not.toHaveBeenCalled()
+    s.service.getSkill.mockRejectedValueOnce(new Error('/synthetic/private-path'))
+    await expect(s.invoke(IPC.getSkill, [key, request])).rejects.toThrow(
+      'AgentPeek could not complete the request.'
+    )
+  })
   it.each([['other', false], ['codex', 'false'], ['claude', null], ['codex'], [null, true]])(
     'rejects malformed source changes: %j',
     async (...args) => {

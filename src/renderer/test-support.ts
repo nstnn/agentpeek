@@ -61,6 +61,9 @@ export function fakeApi(initial = snapshot()) {
     getMessages: vi
       .fn<AgentPeekApi['getMessages']>()
       .mockResolvedValue({ kind: 'messages', messages: [], hasOlder: false }),
+    getSkill: vi
+      .fn<AgentPeekApi['getSkill']>()
+      .mockResolvedValue({ kind: 'unavailable', reason: 'not-found' }),
     setPinned: vi.fn(() => Promise.resolve(true)),
     markRead: vi.fn(() => Promise.resolve(true)),
     openTool: vi.fn(() => Promise.resolve(true)),

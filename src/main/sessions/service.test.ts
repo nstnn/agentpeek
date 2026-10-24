@@ -21,6 +21,7 @@ import {
 import type { RecentMessages, SessionSource } from './session-source'
 import { isStoredId } from './state-file'
 import type { StateStore } from './state-store'
+import type { SkillContent } from '../../core/skills'
 
 // The service with fake sources, a fake watcher, and a fake store, on fake timers. Every ID, path,
 // and time is synthetic. The real parts are put together in open-sessions.test.ts.
@@ -923,6 +924,45 @@ describe('stop', () => {
 })
 
 describe('source monitoring switches', () => {
+  it('blocks disabled/missing skill reads and discards in-flight content across source epochs', async () => {
+    codex.facts = [codexFacts(1)]
+    let finish!: (value: SkillContent) => void
+    const readSkill = vi.fn(
+      () =>
+        new Promise<SkillContent>((resolve) => {
+          finish = resolve
+        })
+    )
+    codex.source.getSkill = readSkill
+    const running = await started()
+    await settle()
+    const request = { at: NOW, name: 'pr', path: '/Users/synthetic/.agents/skills/pr/SKILL.md' }
+    const key = codex.facts[0]!.key
+    expect(await running.getSkill({ tool: 'codex', id: id(99) }, request)).toEqual({
+      kind: 'unavailable',
+      reason: 'not-found'
+    })
+    expect(readSkill).not.toHaveBeenCalled()
+    const pending = running.getSkill(key, request)
+    expect(readSkill).toHaveBeenCalledTimes(1)
+    await running.setSourceEnabled('codex', false)
+    expect(await running.getSkill(key, request)).toEqual({
+      kind: 'unavailable',
+      reason: 'not-found'
+    })
+    expect(readSkill).toHaveBeenCalledTimes(1)
+    await running.setSourceEnabled('codex', true)
+    await settle()
+    finish({
+      kind: 'skill',
+      source: 'local',
+      text: 'Synthetic transient content',
+      description: null,
+      truncated: false
+    })
+    expect(await pending).toEqual({ kind: 'unavailable', reason: 'not-found' })
+    expect(JSON.stringify(running.snapshot())).not.toContain('Synthetic transient content')
+  })
   it('skips saved-off sources at startup and every later refresh', async () => {
     const running = await started({ enabledSources: { codex: false, claude: true } })
     await settle()

@@ -6,6 +6,7 @@ import type { SessionController } from './session-controller'
 import { isTheme } from '../shared/preferences'
 import type { Preferences } from './preferences'
 import type { SessionsService } from './sessions/service'
+import { isSkillName, isSkillPath, type SkillRequest } from '../core/skills'
 
 /** Every request must come from this exact top-level frame at the expected app URL. */
 export function isTrustedSender(
@@ -52,7 +53,23 @@ function isWebLink(value: unknown): value is string {
   }
 }
 
-/** No generic channels, Electron events, paths, or raw error messages reach the renderer. */
+function isSkillRequest(value: unknown): value is SkillRequest {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const request = value as Record<string, unknown>
+  return (
+    Object.keys(request).length === 3 &&
+    Object.hasOwn(request, 'at') &&
+    Object.hasOwn(request, 'name') &&
+    Object.hasOwn(request, 'path') &&
+    typeof request.at === 'number' &&
+    Number.isSafeInteger(request.at) &&
+    request.at >= 0 &&
+    isSkillName(request.name) &&
+    isSkillPath(request.path)
+  )
+}
+
+/** No generic channels, Electron events, file-open capabilities or raw errors reach the renderer. */
 export function registerSessionIpc(options: {
   ipc: Pick<IpcMain, 'handle' | 'removeHandler'>
   contents: WebContents
@@ -113,6 +130,12 @@ export function registerSessionIpc(options: {
     IPC.setPinned,
     (a) => a.length === 2 && isKey(a[0]) && typeof a[1] === 'boolean',
     c.setPinned
+  )
+  register(
+    IPC.getSkill,
+    (args) =>
+      args.length === 2 && isKey(args[0]) && args[0].tool === 'codex' && isSkillRequest(args[1]),
+    c.getSkill
   )
   register(
     IPC.markRead,
