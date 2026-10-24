@@ -356,7 +356,7 @@ export function createCodexSource(options: CodexSourceOptions): SessionSource {
         maxLines: ALL_LINES,
         maxBytes: MESSAGES_TAIL_BYTES
       })
-      const records = parseRecords(tail.lines)
+      const records = parseRecords(tail.lines, { includeToolInputs: true })
       const messages = codexMessages(records)
       const lastTurn = records.findLast(
         (record) =>
@@ -394,10 +394,13 @@ function newEntry(path: string, meta: CodexThreadMeta, modifiedAt: number): Trac
   return { path, meta, modifiedAt, cursor: null, state: EMPTY_CODEX_TURN_STATE, status: 'read' }
 }
 
-function parseRecords(lines: readonly string[]): CodexRecord[] {
+function parseRecords(
+  lines: readonly string[],
+  options: { includeToolInputs?: boolean } = {}
+): CodexRecord[] {
   const records: CodexRecord[] = []
   for (const line of lines) {
-    const record = parseRecord(line)
+    const record = parseRecord(line, options)
     if (record !== null) records.push(record)
   }
   return records

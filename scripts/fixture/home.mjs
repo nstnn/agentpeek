@@ -14,6 +14,7 @@ import {
   complete,
   codexMessage,
   toolCall,
+  toolDetailCalls,
   index,
   prompt,
   assistant,
@@ -80,7 +81,7 @@ async function createCodex(home, now) {
         lines.push(codexMessage('Synthetic latest prompt.', at + 28, 'UserMessage'))
       }
       lines.push(
-        toolCall(at + 29),
+        ...(name === 'retry' ? toolDetailCalls(at + 29) : [toolCall(at + 29)]),
         codexMessage(
           name === 'long' ? LONG_REPLY : name === 'hostile' ? HOSTILE : 'Synthetic retry reply.',
           at + 30

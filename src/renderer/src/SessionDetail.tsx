@@ -14,6 +14,7 @@ import { clockTime, detailStatus } from './detail-status'
 import { SessionIcon } from './SessionIcon'
 import { SafeMarkdown } from './SafeMarkdown'
 import { ReloadSessions } from './session-panels'
+import { ToolCalls } from './ToolCalls'
 
 const PREVIEW_LIMIT = 6000
 const FULL_LIMIT = 200_000
@@ -34,7 +35,21 @@ function messageEntries(previous: MessageEntry[], messages: SessionMessage[]): M
   const sameContent = (a: SessionMessage, b: SessionMessage) =>
     sameTimestamp(a, b) &&
     (a.kind === 'tool-calls'
-      ? b.kind === 'tool-calls' && a.count === b.count && a.names.join('\0') === b.names.join('\0')
+      ? b.kind === 'tool-calls' &&
+        a.count === b.count &&
+        a.names.join('\0') === b.names.join('\0') &&
+        a.calls?.length === b.calls?.length &&
+        (a.calls ?? []).every((call, i) => {
+          const other = b.calls?.[i]
+          return (
+            other &&
+            call.name === other.name &&
+            call.at === other.at &&
+            call.input === other.input &&
+            call.inputLength === other.inputLength &&
+            call.nestedNames?.join('\0') === other.nestedNames?.join('\0')
+          )
+        })
       : b.kind !== 'tool-calls' && a.text === b.text)
   const matches = messages.map((message) => {
     const candidates = previous.filter((entry) => sameContent(entry.message, message))
@@ -478,12 +493,7 @@ function Message({
   tool: Session['key']['tool']
   onLink: (url: string) => void
 }): JSX.Element {
-  if (message.kind === 'tool-calls')
-    return (
-      <p className="tool-summary">
-        {message.count} tool {message.count === 1 ? 'call' : 'calls'} · {message.names.join(', ')}
-      </p>
-    )
+  if (message.kind === 'tool-calls') return <ToolCalls message={message} />
   return (
     <article className={`message ${message.kind}`}>
       <header>

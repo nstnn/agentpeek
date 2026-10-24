@@ -52,6 +52,8 @@ the expected UI result between steps. Fresh fixtures avoid stale state between s
 
 Codex long has more than 20 messages, a tool summary, a long title, and a 211,200-character reply.
 Codex hostile has literal HTML, an unsafe link, a remote image, a table, and a code block.
+Codex retry has five `exec` calls: multiple literal nested names, comment/string lookalikes,
+a dynamic call, a truncated long input, and missing input. These inputs are synthetic text only.
 The simulator accepts only marked synthetic homes under the OS temp folder and rejects
 symlinked targets. It cannot operate on the real home folder.
 

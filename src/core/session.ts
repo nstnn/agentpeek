@@ -146,6 +146,16 @@ export interface Session {
   pinned: boolean
 }
 
+/** On-demand tool input is conversation data, never snapshot or persisted state. */
+export interface ToolCallDetail {
+  name: string
+  at: number
+  input: string | null
+  inputLength: number
+  /** Names found in exec input, not proof of execution. Null for other tools. */
+  nestedNames: string[] | null
+}
+
 /**
  * One entry of a session's recent messages. The text is conversation text: it may be shown in the
  * window only, and never logged, stored, or sent anywhere.
@@ -153,9 +163,8 @@ export interface Session {
 export type SessionMessage =
   | { kind: 'prompt'; text: string; at: number }
   | { kind: 'reply'; text: string; at: number }
-  // A run of consecutive tool calls, shown as one line: how many, and their unique names in order.
-  // Never their input or output.
-  | { kind: 'tool-calls'; count: number; names: string[]; at: number }
+  // Calls can include bounded Codex details. Claude retains its name-only summary. Never output.
+  | { kind: 'tool-calls'; count: number; names: string[]; at: number; calls?: ToolCallDetail[] }
 
 /** Recent conversation text, returned only on request and never included in a snapshot. */
 export type RecentMessages =

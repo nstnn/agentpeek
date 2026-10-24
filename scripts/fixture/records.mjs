@@ -73,6 +73,26 @@ export const toolCall = (at) =>
     type: 'response_item',
     payload: { type: 'function_call', name: 'synthetic_tool' }
   })
+// Inputs are invented and displayed only; AgentPeek must never execute them.
+export const toolDetailCalls = (at) =>
+  [
+    'await tools.exec_command({ cmd: "git status --short" });\nawait tools.mcp__example__read({});',
+    '// tools.NotCalled({})\nconst text = "tools.NotCalled({}) <script>globalThis.fixtureInjected = true</script>";',
+    'const selectedTool = tools[toolName];\nawait selectedTool(args);',
+    'await tools.Truncated({});\n//' + 'Synthetic long input. '.repeat(320),
+    undefined
+  ].map((input, i) =>
+    JSON.stringify({
+      timestamp: iso(at + i / 10),
+      type: 'response_item',
+      payload: {
+        type: 'custom_tool_call',
+        name: 'exec',
+        call_id: `synthetic-call-${i}`,
+        ...(input === undefined ? {} : { input })
+      }
+    })
+  )
 export const index = (sessionId, title, at) =>
   JSON.stringify({ id: sessionId, thread_name: title, updated_at: iso(at) })
 export const claude = (sessionId, type, at, extra = {}) =>

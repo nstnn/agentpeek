@@ -1,5 +1,6 @@
 import type { SessionMessage } from '../session'
 import type { CodexRecord } from './records'
+import { TOOL_GROUP_LIMIT } from './tool-details'
 
 /**
  * Turns records, oldest first, into the detail's messages: prompts, replies, and one entry per run
@@ -20,9 +21,22 @@ export function codexMessages(records: readonly CodexRecord[]): SessionMessage[]
         const last = messages.at(-1)
         if (last?.kind === 'tool-calls') {
           const names = last.names.includes(record.name) ? last.names : [...last.names, record.name]
-          messages[messages.length - 1] = { ...last, count: last.count + 1, names }
+          messages[messages.length - 1] = {
+            ...last,
+            count: last.count + 1,
+            names,
+            ...(record.detail && (last.calls?.length ?? 0) < TOOL_GROUP_LIMIT
+              ? { calls: [...(last.calls ?? []), record.detail] }
+              : {})
+          }
         } else {
-          messages.push({ kind: 'tool-calls', count: 1, names: [record.name], at: record.at })
+          messages.push({
+            kind: 'tool-calls',
+            count: 1,
+            names: [record.name],
+            at: record.at,
+            ...(record.detail ? { calls: [record.detail] } : {})
+          })
         }
         break
       }
