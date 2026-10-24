@@ -17,6 +17,7 @@ describe('preload API', () => {
       [
         'getTheme',
         'setTheme',
+        'setSourceEnabled',
         'getSnapshot',
         'onSnapshot',
         'getMessages',
@@ -40,6 +41,7 @@ describe('preload API', () => {
     await api.getSnapshot()
     await api.getTheme()
     await api.setTheme('dark')
+    await api.setSourceEnabled('codex', false)
     await api.getMessages(key, 10)
     await api.setPinned(key, true)
     await api.markRead(key)
@@ -55,6 +57,7 @@ describe('preload API', () => {
       [IPC.getSnapshot],
       [IPC.getTheme],
       [IPC.setTheme, 'dark'],
+      [IPC.setSourceEnabled, 'codex', false],
       [IPC.getMessages, key, 10],
       [IPC.setPinned, key, true],
       [IPC.markRead, key],

@@ -155,70 +155,39 @@ summary:focus-visible,
   background: var(--accent);
   color: var(--bg);
 }
-.sidebar-collapsed .sources-list {
-  margin-top: auto;
-  padding-top: 16px;
-}
-.source-disclosure summary {
-  position: relative;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 40px;
-  border-radius: 6px;
-  list-style: none;
-}
-.source-disclosure summary::-webkit-details-marker {
-  display: none;
-}
-.source-disclosure[open] summary {
-  background: var(--selection-inactive);
-}
 .source-monogram {
   font-weight: 600;
   font-size: 13px;
-  border: 1px solid var(--secondary);
-  border-radius: 5px;
-  width: 23px;
-  height: 23px;
-  display: grid;
-  place-items: center;
 }
-.source-status {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  background: var(--sidebar);
-  font-size: 12px;
-  font-weight: 700;
+.connected-sources {
+  padding-bottom: 8px;
 }
-.source-status.connected {
-  color: var(--green);
+.connected-source {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  white-space: nowrap;
 }
-.source-status.no-access {
-  color: var(--red);
+.connected-source:hover {
+  background: var(--fill);
 }
-.source-status.unsupported {
-  color: var(--orange);
+.sidebar-collapsed .connected-source {
+  justify-content: center;
+  min-height: 36px;
+  gap: 4px;
+  padding: 4px 0;
 }
-.source-details {
-  position: fixed;
-  left: 64px;
-  bottom: 16px;
-  width: 280px;
-  z-index: 10;
-  padding: 12px;
-  border: 1px solid var(--sep);
-  border-radius: 8px;
-  background: var(--bg);
-  box-shadow: 0 4px 16px #0002;
-  overflow-wrap: anywhere;
-}
-.source-details p {
-  margin-top: 4px;
-}
-.source-details button {
-  margin-top: 8px;
+.sources-empty {
+  margin: 4px 8px;
+  color: var(--secondary);
+  font-size: 11px;
 }
 .list-scroll:focus,
 .detail-pane:focus,
@@ -368,6 +337,10 @@ button[aria-disabled='true'] {
   background: #0005;
 }
 .settings-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -482,6 +455,66 @@ button[aria-disabled='true'] {
 .theme-preview-system {
   background: linear-gradient(120deg, #fff 50%, #1e1e1f 50%);
 }
+.settings-sources {
+  border-top: 1px solid var(--sep);
+}
+.settings-sources h2 {
+  margin-bottom: 8px;
+}
+.settings-source {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+}
+.settings-source + .settings-source {
+  border-top: 1px solid var(--sep);
+}
+.settings-source label {
+  font-weight: 500;
+}
+.settings-source-status {
+  margin: 3px 0 0;
+  color: var(--secondary);
+  font-size: 12px;
+}
+.source-switch {
+  width: 40px;
+  height: 24px;
+  flex: none;
+  padding: 2px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--secondary);
+}
+.source-switch[aria-checked='true'] {
+  background: var(--accent);
+}
+.source-switch span {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px #0003;
+  transition: transform 140ms ease-out;
+}
+.source-switch[aria-checked='true'] span {
+  transform: translateX(16px);
+}
+.source-switch:disabled,
+.source-switch[aria-disabled='true'] {
+  opacity: 0.5;
+}
+.source-switch:focus-visible {
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .source-switch span {
+    transition: none;
+  }
+}
 .settings-hint {
   min-height: 36px;
   margin: 16px 0 0;
@@ -505,9 +538,6 @@ button[aria-disabled='true'] {
   font-size: 11px;
   font-weight: 600;
   margin: 6px 8px 4px;
-}
-.sidebar .sources-heading {
-  margin-top: 24px;
 }
 .sidebar nav {
   display: flex;
@@ -540,40 +570,15 @@ button[aria-disabled='true'] {
   background: var(--fill);
   font-weight: 600;
 }
-.source {
-  padding: 5px 8px;
-}
-.source h3 {
-  font-size: 13px;
-  font-weight: 500;
-  margin: 0 0 2px;
-}
-.source p {
-  font-size: 11.5px;
-  color: var(--secondary);
-  margin: 0;
-}
-.source .source-detail {
-  padding-left: 13px;
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
 .health-dot {
   display: inline-block;
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--secondary);
-  margin-right: 6px;
 }
 .health-dot.connected {
   background: var(--green);
-}
-.health-dot.no-access {
-  background: var(--red);
-}
-.health-dot.unsupported {
-  background: var(--orange);
 }
 .sessions-pane {
   min-width: 0;

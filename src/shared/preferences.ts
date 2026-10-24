@@ -18,3 +18,7 @@ export function isZoomPercent(value: unknown): value is number {
     value % 10 === 0
   )
 }
+import type { AgentTool } from '../core/tools'
+
+export type SourcePreferences = Record<AgentTool, boolean>
+export const DEFAULT_SOURCES: Readonly<SourcePreferences> = { codex: true, claude: true }

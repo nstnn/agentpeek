@@ -584,6 +584,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                     .querySelector<HTMLButtonElement>('.tool-filter [aria-checked=true]')
                     ?.focus()
                 }}
+                onSettings={store.openSettings}
                 onClearFilter={() => {
                   store.setFilter('all')
                   document.querySelector<HTMLButtonElement>('.tool-filter [role=radio]')?.focus()
@@ -700,6 +701,8 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                       canAutoRead={() =>
                         store.canAutoRead(pane, selected.key, state.targetGeneration)
                       }
+                      monitoringOff={snapshot?.health[selected.key.tool].state === 'off'}
+                      onSettings={store.openSettings}
                       missing={!snapshot?.sessions.some((s) => sameKey(s.key, selected.key))}
                       lastSeenAt={selection.lastSeenAt}
                       sourceEpoch={selection.sourceEpoch}
@@ -743,6 +746,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
       {state.settingsOpen && (
         <SettingsDialog
           api={window.agentpeek}
+          snapshot={snapshot}
           onClose={store.closeSettings}
           feedback={zoomFeedback}
         />

@@ -69,6 +69,8 @@ export function SessionDetail({
   leadingControl,
   canAutoRead,
   missing,
+  monitoringOff = false,
+  onSettings,
   lastSeenAt,
   sourceEpoch,
   reloadPending,
@@ -84,6 +86,8 @@ export function SessionDetail({
   leadingControl?: ReactNode
   canAutoRead: () => boolean
   missing: boolean
+  monitoringOff?: boolean
+  onSettings?: () => void
   lastSeenAt: number | null
   sourceEpoch: number
   reloadPending: boolean
@@ -225,7 +229,11 @@ export function SessionDetail({
     }
   }
   const status = missing
-    ? { ...rowStatus(session, true), callout: undefined }
+    ? {
+        ...rowStatus(session, true),
+        ...(monitoringOff ? { label: 'Monitoring off' } : {}),
+        callout: undefined
+      }
     : detailStatus(session)
   const openName = tool === 'codex' ? 'Open Codex' : 'Open Claude'
   const messages = result?.kind === 'messages' ? result.messages : []
@@ -350,6 +358,14 @@ export function SessionDetail({
             <div className="placeholder-bar" />
             <div className="placeholder-bar short" />
             <div className="placeholder-bar" />
+          </div>
+        ) : monitoringOff ? (
+          <div className="message-state">
+            <h3>{toolName(tool)} monitoring is off</h3>
+            <p>Turn this source on in Settings to continue reading.</p>
+            <button type="button" onClick={onSettings}>
+              Open Settings
+            </button>
           </div>
         ) : result.kind !== 'messages' ? (
           <div className="message-state">

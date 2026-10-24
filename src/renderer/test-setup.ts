@@ -19,3 +19,19 @@ Object.defineProperty(window, 'matchMedia', {
     removeEventListener: vi.fn()
   }))
 })
+
+// jsdom cannot supply native modal focus/inertness; those need the built app.
+Object.defineProperties(HTMLDialogElement.prototype, {
+  showModal: {
+    configurable: true,
+    value: function (this: HTMLDialogElement) {
+      this.setAttribute('open', '')
+    }
+  },
+  close: {
+    configurable: true,
+    value: function (this: HTMLDialogElement) {
+      this.removeAttribute('open')
+    }
+  }
+})

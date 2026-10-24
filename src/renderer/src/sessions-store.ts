@@ -166,7 +166,11 @@ export function createSessionsStore(api: AgentPeekApi) {
             snapshot,
             failed: false,
             selection,
-            listSelection: reconcileSelection(state.listSelection, state.snapshot, snapshot),
+            listSelection:
+              state.listSelection &&
+              snapshot.health[state.listSelection.session.key.tool].state === 'off'
+                ? null
+                : reconcileSelection(state.listSelection, state.snapshot, snapshot),
             secondarySelection: reconcileSelection(
               state.secondarySelection,
               state.snapshot,
@@ -518,11 +522,11 @@ export function currentGroups(state: RendererState): ListGroup[] {
   return buildListGroups(state.snapshot?.sessions ?? [], state.view, state.filter, state.grouping)
 }
 
-/** Keep the selected row's group and slot, even if it leaves the view or source. */
+/** Keep the selected row's slot across live changes, except when monitoring is explicitly off. */
 export function displayedGroups(state: RendererState): ListGroup[] {
   const groups = currentGroups(state)
   const anchor = state.listSelection
-  if (!anchor) return groups
+  if (!anchor || state.snapshot?.health[anchor.session.key.tool].state === 'off') return groups
   for (const group of groups)
     group.sessions = group.sessions.filter((s) => !sameKey(s.key, anchor.session.key))
   let group = groups.find((g) => g.id === anchor.group)

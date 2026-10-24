@@ -83,6 +83,8 @@ export function relativeTime(at: number, now: number): string {
 
 export function healthCopy(tool: AgentTool, health: ToolHealth): { label: string; detail: string } {
   switch (health.state) {
+    case 'off':
+      return { label: 'Monitoring off', detail: '' }
     case 'checking':
       return { label: 'Checking…', detail: '—' }
     case 'connected':

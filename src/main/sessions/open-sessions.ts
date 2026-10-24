@@ -7,6 +7,7 @@ import { createFileWatcher, type ChangeListener, type SessionWatcher } from './f
 import { createSessionsService, type SessionsService } from './service'
 import { openStateStore } from './state-store'
 import { sessionFolderWatches } from './watch-folders'
+import type { SourcePreferences } from '../../shared/preferences'
 
 // Puts the sessions service together from the real parts. The main process (TASK-011) calls this
 // once, then `start()`; tests and fixture mode swap in their own process checks.
@@ -18,6 +19,7 @@ export interface OpenSessionsOptions {
   stateFolder: string
   /** True when `home` holds synthetic data, for the "Fixture data" banner. */
   fixture: boolean
+  enabledSources?: SourcePreferences
   onSnapshot: (snapshot: SessionsSnapshot) => void
   /** Whether the Codex app is running. The real check by default. */
   isCodexAppRunning?: () => Promise<boolean>
@@ -45,6 +47,7 @@ export async function openSessionsService(options: OpenSessionsOptions): Promise
       ((onChange) => createFileWatcher({ folders: sessionFolderWatches(home), onChange, gate })),
     onSnapshot: options.onSnapshot,
     fixture: options.fixture,
+    enabledSources: options.enabledSources,
     now
   })
 }

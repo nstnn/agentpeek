@@ -5,6 +5,7 @@ import { IPC, MAX_MESSAGE_LIMIT } from '../shared/ipc'
 import type { SessionController } from './session-controller'
 import { isTheme } from '../shared/preferences'
 import type { Preferences } from './preferences'
+import type { SessionsService } from './sessions/service'
 
 /** Every request must come from this exact top-level frame at the expected app URL. */
 export function isTrustedSender(
@@ -57,7 +58,8 @@ export function registerSessionIpc(options: {
   contents: WebContents
   pageUrl: string
   controller: SessionController
-  preferences: Pick<Preferences, 'getTheme' | 'setTheme'>
+  preferences: Pick<Preferences, 'getTheme' | 'setTheme' | 'setSourceEnabled'>
+  setSourceEnabled: SessionsService['setSourceEnabled']
 }): () => void {
   const { ipc, controller: c } = options
   const channels: string[] = []
@@ -87,6 +89,15 @@ export function registerSessionIpc(options: {
     options.preferences.setTheme
   )
   register(IPC.getSnapshot, none, () => c.snapshot())
+  register(
+    IPC.setSourceEnabled,
+    (args) => args.length === 2 && isAgentTool(args[0]) && typeof args[1] === 'boolean',
+    async (tool, enabled) => {
+      // Persist first: a failed save leaves the running source and UI unchanged.
+      await options.preferences.setSourceEnabled(tool, enabled)
+      await options.setSourceEnabled(tool, enabled)
+    }
+  )
   register(
     IPC.getMessages,
     (a) =>

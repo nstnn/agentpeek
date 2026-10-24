@@ -3,7 +3,7 @@ import type { AppSnapshot } from '../../shared/api'
 import { AGENT_TOOLS } from '../../core/tools'
 import type { ViewId } from '../../core/views'
 import type { RendererState } from './sessions-store'
-import { healthCopy, toolHome, toolName, VIEW_NAMES } from './session-display'
+import { toolHome, toolName, VIEW_NAMES } from './session-display'
 import { NavigationIcon } from './NavigationIcon'
 import { SessionIcon } from './SessionIcon'
 import { SettingsIcon } from './SettingsDialog'
@@ -103,76 +103,34 @@ export function Sidebar({
             )
           })}
         </nav>
-        <h2 className={collapsed ? 'sr-only' : 'sources-heading'}>Sources</h2>
-        <div className="sources-list">
-          {AGENT_TOOLS.map((tool) => {
-            const health = snapshot?.health[tool] ?? { state: 'checking' }
-            const copy = healthCopy(tool, health)
-            if (collapsed)
-              return (
-                <details
-                  className="source-disclosure"
-                  key={tool}
-                  onKeyDown={(event) => {
-                    if (event.key !== 'Escape' || !event.currentTarget.open) return
-                    event.preventDefault()
-                    event.stopPropagation()
-                    event.currentTarget.open = false
-                    event.currentTarget.querySelector('summary')?.focus()
-                  }}
-                >
-                  <summary
-                    aria-label={`${toolName(tool)} source: ${copy.label}`}
-                    title={`${toolName(tool)}: ${copy.label}. ${copy.detail}`}
-                  >
-                    <span className="source-monogram" aria-hidden="true">
-                      {tool === 'codex' ? 'C' : 'A'}
-                    </span>
-                    <span className={`source-status ${health.state}`} aria-hidden="true">
-                      {health.state === 'connected'
-                        ? '✓'
-                        : health.state === 'checking'
-                          ? '…'
-                          : health.state === 'not-installed'
-                            ? '−'
-                            : '!'}
-                    </span>
-                  </summary>
-                  <section
-                    className="source source-details"
-                    aria-label={`${toolName(tool)} source`}
-                  >
-                    <h3>{toolName(tool)}</h3>
-                    <p>{copy.label}</p>
-                    <p>{copy.detail}</p>
-                    <button
-                      type="button"
-                      aria-label={`Close ${toolName(tool)} source details`}
-                      onClick={(event) => {
-                        const disclosure = event.currentTarget.closest('details')!
-                        disclosure.open = false
-                        disclosure.querySelector('summary')?.focus()
-                      }}
-                    >
-                      Close
-                    </button>
-                  </section>
-                </details>
-              )
-            return (
-              <section key={tool} className="source" aria-label={`${toolName(tool)} source`}>
-                <h3>{toolName(tool)}</h3>
-                <p>
-                  <span className={`health-dot ${health.state}`} aria-hidden="true" />
-                  {copy.label}
-                </p>
-                <p className="source-detail">{copy.detail}</p>
-              </section>
-            )
-          })}
-        </div>
       </div>
       <div className="sidebar-footer">
+        <div className="connected-sources" aria-label="Connected sources">
+          {AGENT_TOOLS.filter((tool) => snapshot?.health[tool].state === 'connected').map(
+            (tool) => (
+              <button
+                key={tool}
+                type="button"
+                className="connected-source"
+                aria-label={`${toolName(tool)} source: Connected`}
+                title={`${toolName(tool)} connected · Manage in Settings`}
+                onClick={onSettings}
+              >
+                <span className="health-dot connected" aria-hidden="true" />
+                {collapsed ? (
+                  <span className="source-monogram" aria-hidden="true">
+                    {tool === 'codex' ? 'C' : 'A'}
+                  </span>
+                ) : (
+                  <span>{toolName(tool)}</span>
+                )}
+              </button>
+            )
+          )}
+          {!AGENT_TOOLS.some((tool) => snapshot?.health[tool].state === 'connected') && (
+            <p className={collapsed ? 'sr-only' : 'sources-empty'}>No sources connected</p>
+          )}
+        </div>
         <button
           type="button"
           className="sidebar-settings"
@@ -300,12 +258,14 @@ export function EmptyList({
   state,
   unfilteredCount,
   onShowAll,
-  onClearFilter
+  onClearFilter,
+  onSettings
 }: {
   state: RendererState
   unfilteredCount: number
   onShowAll: () => void
   onClearFilter: () => void
+  onSettings: () => void
 }): JSX.Element {
   const { snapshot, view, filter } = state
   let title: string
@@ -320,6 +280,16 @@ export function EmptyList({
   } else if (checking || health?.state === 'checking') {
     title = 'Reading sessions…'
     body = 'Checking Codex and Claude Code files on this Mac. AgentPeek only reads them.'
+  } else if (
+    health?.state === 'off' ||
+    (snapshot && AGENT_TOOLS.every((tool) => snapshot.health[tool].state === 'off'))
+  ) {
+    title =
+      health?.state === 'off' && filter !== 'all'
+        ? `${toolName(filter)} monitoring is off`
+        : 'Monitoring is off'
+    body = 'Turn on a source in Settings to see its sessions.'
+    action = { label: 'Open Settings', onClick: onSettings }
   } else if (filter !== 'all' && health?.state === 'not-installed') {
     title = `${toolName(filter)} isn't installed`
     body = `AgentPeek looks for ${toolName(filter)} files in ${toolHome(filter)}. If you install ${toolName(filter)}, choose View > Reload Sessions.`

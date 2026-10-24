@@ -40,6 +40,10 @@ Both controls use the existing headers, without a separate navigation toolbar or
 **Settings** stays at the bottom of the sidebar, including its collapsed icon rail. Open it
 there or with **AgentPeek → Settings…** (⌘,) to choose **System**, **Light** or **Dark** under
 Appearance. System is the default. Changes apply immediately and are saved for the next launch;
+**Sources** in Settings has independent **Monitor Codex** and **Monitor Claude Code** switches.
+Both start on. Turning one off stops its file monitoring and message reads, hides its sessions
+and counts, and retains pins/read markers. An open reading pane shows Monitoring off; turn the
+source back on to rediscover its current sessions. These choices are saved across launches.
 Close or Escape returns to the same sessions and scroll positions. While Settings is open,
 covered conversations do not automatically acknowledge new replies. A failed preference save
 restores the previous appearance and shows a retry message.
@@ -51,8 +55,10 @@ Zoom also works while Settings is open. Larger zoom can switch to the existing c
 it retains the selected sessions. A failed save restores the previous zoom and shows a retry message.
 
 Navigation slides over 220 ms with a gentle deceleration; Reduce Motion makes it immediate.
-The rail keeps Active attention counts, view selection and source status; click a source
-initial to inspect its health, then Close or Escape to dismiss it. Choosing a view opens
+Connected tools appear as a dot and name directly above Settings; the rail uses their initials.
+Click a connected source to open Settings, where all tools and their current status are shown.
+With no connected source, the expanded sidebar shows No sources connected. The rail keeps
+Active attention counts and view selection. Choosing a view opens
 its filtered list while retaining the sessions being read.
 
 The layout uses the remaining width after navigation: with the default 190-pixel sidebar,
