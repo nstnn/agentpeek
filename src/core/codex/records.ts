@@ -13,8 +13,12 @@
 // - `item_completed` events with a `UserMessage` or `AgentMessage` item: prompts and replies as the
 //   Codex app shows them. The `response_item` messages are not used for text, because Codex also
 //   puts context it adds itself there (the environment, AGENTS.md) as user messages;
-// - the names of tool calls (`response_item` types ending in `_call`), never their input or output.
+// - tool-call names; bounded input is included only when the detail explicitly requests it.
+// Tool output is always ignored.
 // Text in these records is conversation data: show it in the window only, never log it.
+
+import type { ToolCallDetail } from '../session'
+import { toolCallDetail } from './tool-details'
 
 /** What a rollout's first line says about its thread. */
 export interface CodexThreadMeta {
@@ -53,7 +57,7 @@ export type CodexRecord =
   | { kind: 'turn-aborted'; at: number }
   | { kind: 'user-message'; at: number; text: string }
   | { kind: 'agent-message'; at: number; text: string }
-  | { kind: 'tool-call'; at: number; name: string }
+  | { kind: 'tool-call'; at: number; name: string; detail?: ToolCallDetail }
   // Any other line with the record envelope. It still counts as activity.
   | { kind: 'other'; at: number }
 
@@ -84,7 +88,10 @@ export function parseSessionMeta(line: string): SessionMetaResult {
 }
 
 /** Reads one rollout line. Returns null for a line that is not JSON or lacks the envelope. */
-export function parseRecord(line: string): CodexRecord | null {
+export function parseRecord(
+  line: string,
+  options: { includeToolInputs?: boolean } = {}
+): CodexRecord | null {
   const value = parseJson(line)
   if (!isObject(value) || typeof value.type !== 'string' || typeof value.timestamp !== 'string') {
     return null
@@ -93,7 +100,8 @@ export function parseRecord(line: string): CodexRecord | null {
   if (Number.isNaN(at)) return null
   const payload = isObject(value.payload) ? value.payload : {}
   if (value.type === 'event_msg') return eventRecord(payload, at)
-  if (value.type === 'response_item') return responseItemRecord(payload, at)
+  if (value.type === 'response_item')
+    return responseItemRecord(payload, at, options.includeToolInputs === true)
   return { kind: 'other', at }
 }
 
@@ -168,13 +176,23 @@ function itemRecord(item: unknown, at: number): CodexRecord {
   return { kind: 'other', at }
 }
 
-function responseItemRecord(payload: JsonObject, at: number): CodexRecord {
+function responseItemRecord(
+  payload: JsonObject,
+  at: number,
+  includeToolInputs: boolean
+): CodexRecord {
   const { type } = payload
   // `function_call` and `custom_tool_call` carry a name. Other calls, such as a web search, are
   // named after their type.
   if (typeof type === 'string' && type.endsWith('_call')) {
     const name = stringOrNull(payload.name) ?? type.slice(0, -'_call'.length)
-    return { kind: 'tool-call', at, name }
+    const input = type === 'custom_tool_call' ? payload.input : payload.arguments
+    return {
+      kind: 'tool-call',
+      at,
+      name,
+      ...(includeToolInputs ? { detail: toolCallDetail(name, at, input) } : {})
+    }
   }
   return { kind: 'other', at }
 }

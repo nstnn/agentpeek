@@ -180,14 +180,43 @@ describe('the observed format (fixture codex-0.162)', () => {
           at: T0 + 3 * SECOND
         },
         { kind: 'reply', text: 'Synthetic note: I will look at the folder.', at: T0 + 5 * SECOND },
-        { kind: 'tool-calls', count: 2, names: ['exec', 'js'], at: T0 + 6 * SECOND },
+        {
+          kind: 'tool-calls',
+          count: 2,
+          names: ['exec', 'js'],
+          at: T0 + 6 * SECOND,
+          calls: [
+            {
+              name: 'exec',
+              at: T0 + 6 * SECOND,
+              input: 'synthetic command',
+              inputLength: 17,
+              nestedNames: []
+            },
+            { name: 'js', at: T0 + 8 * SECOND, input: '{}', inputLength: 2, nestedNames: null }
+          ]
+        },
         {
           kind: 'reply',
           text: 'Synthetic answer: the folder holds two files.',
           at: T0 + 9 * SECOND
         },
         { kind: 'prompt', text: 'Synthetic prompt: wait for a minute.', at: T0 + 62 * SECOND },
-        { kind: 'tool-calls', count: 1, names: ['exec'], at: T0 + 63 * SECOND },
+        {
+          kind: 'tool-calls',
+          count: 1,
+          names: ['exec'],
+          at: T0 + 63 * SECOND,
+          calls: [
+            {
+              name: 'exec',
+              at: T0 + 63 * SECOND,
+              input: 'synthetic command',
+              inputLength: 17,
+              nestedNames: []
+            }
+          ]
+        },
         { kind: 'prompt', text: 'Synthetic prompt: try again.', at: T0 + 121 * SECOND }
       ]
     })
@@ -623,6 +652,25 @@ describe('refresh', () => {
 })
 
 describe('recentMessages', () => {
+  it('returns tool input only on demand, without retaining it in catalog facts or exposing output', async () => {
+    const input = 'await tools.Read({ text: "Synthetic private input" })'
+    await writeRollout(USER, [
+      sessionMetaLine({ id: USER }),
+      taskStartedLine(TURN_A, T0),
+      rolloutLine('response_item', { type: 'custom_tool_call', name: 'exec', input }, T0 + SECOND),
+      rolloutLine(
+        'response_item',
+        { type: 'custom_tool_call_output', output: 'Synthetic private output' },
+        T0 + 2 * SECOND
+      )
+    ])
+    const source = createSource()
+    expect(JSON.stringify(await source.catalog())).not.toContain('Synthetic private')
+    const detail = await source.recentMessages({ tool: 'codex', id: USER }, 20)
+    expect(detail).toMatchObject({ messages: [{ calls: [{ input, nestedNames: ['Read'] }] }] })
+    expect(JSON.stringify(detail)).not.toContain('Synthetic private output')
+    expect(JSON.stringify(await source.catalog())).not.toContain('Synthetic private')
+  })
   it('returns error text only on demand, never in facts, and drops it when a newer turn starts', async () => {
     const key = { tool: 'codex', id: USER } as const
     const path = await writeRollout(USER, [
@@ -655,7 +703,21 @@ describe('recentMessages', () => {
       kind: 'messages',
       hasOlder: true,
       messages: [
-        { kind: 'tool-calls', count: 1, names: ['exec'], at: T0 + 2 * SECOND },
+        {
+          kind: 'tool-calls',
+          count: 1,
+          names: ['exec'],
+          at: T0 + 2 * SECOND,
+          calls: [
+            {
+              name: 'exec',
+              at: T0 + 2 * SECOND,
+              input: 'synthetic input',
+              inputLength: 15,
+              nestedNames: []
+            }
+          ]
+        },
         { kind: 'reply', text: 'Synthetic answer one.', at: T0 + 3 * SECOND }
       ]
     })
