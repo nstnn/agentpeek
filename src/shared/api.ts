@@ -27,6 +27,7 @@ export interface SelectionPresentation {
 export interface AgentPeekApi {
   getTheme(): Promise<Theme>
   setTheme(theme: Theme): Promise<void>
+  setSourceEnabled(tool: AgentTool, enabled: boolean): Promise<void>
   getSnapshot(): Promise<AppSnapshot>
   onSnapshot(callback: (snapshot: AppSnapshot) => void): () => void
   getMessages(key: SessionKey, limit: number): Promise<RecentMessages>

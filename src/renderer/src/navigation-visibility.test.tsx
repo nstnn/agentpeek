@@ -76,7 +76,7 @@ describe('independent navigation visibility', () => {
   })
 
   it.each(['separator', 'source'] as const)(
-    'restores list focus when toggling Views removes a focused %s during browsing',
+    'retains reachable focus when toggling Views with a focused %s during browsing',
     async (origin) => {
       const f = mount(760)
       await openSplit(f)
@@ -89,7 +89,9 @@ describe('independent navigation visibility', () => {
           : screen.getByRole('separator', { name: 'Sidebar width' })
       control.focus()
       fireEvent.keyDown(control, { key: 'B', metaKey: true, shiftKey: true })
-      expect(document.activeElement).toBe(screen.getByRole('listbox'))
+      expect(document.activeElement).toBe(
+        origin === 'source' ? control : screen.getByRole('listbox')
+      )
       expect(f.store.getSnapshot().activePane).toBeNull()
       expect(screen.queryByRole('complementary', { name: 'Right pane' })).toBeNull()
     }
@@ -208,7 +210,7 @@ describe('independent navigation visibility', () => {
     expect(f.api.getMessages).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps source errors named and opens keyboard-dismissible source details in the rail', async () => {
+  it('shows only connected tools in the footer and opens Settings from a source in the rail', async () => {
     const f = mount()
     await screen.findByRole('option', { name: /Synthetic a,/ })
     act(() =>
@@ -222,14 +224,10 @@ describe('independent navigation visibility', () => {
       )
     )
     await userEvent.click(screen.getByRole('button', { name: 'Collapse Views' }))
-    const trigger = screen.getByLabelText('Codex source: No access')
+    expect(screen.queryByLabelText('Codex source: No access')).toBeNull()
+    const trigger = screen.getByRole('button', { name: 'Claude Code source: Connected' })
+    expect(trigger.closest('.sidebar-footer')).toBeTruthy()
     await userEvent.click(trigger)
-    const disclosure = trigger.closest('details')!
-    expect(disclosure.open).toBe(true)
-    expect(within(disclosure).getByRole('heading', { name: 'Codex' })).toBeTruthy()
-    fireEvent.keyDown(trigger, { key: 'Escape' })
-    expect(disclosure.open).toBe(false)
-    expect(document.activeElement).toBe(trigger)
-    expect(screen.getByRole('listbox')).toBeTruthy()
+    expect(f.store.getSnapshot().settingsOpen).toBe(true)
   })
 })

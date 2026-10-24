@@ -45,6 +45,7 @@ export function fakeApi(initial = snapshot()) {
   const api = {
     getTheme: vi.fn<AgentPeekApi['getTheme']>().mockResolvedValue('system'),
     setTheme: vi.fn<AgentPeekApi['setTheme']>().mockResolvedValue(undefined),
+    setSourceEnabled: vi.fn<AgentPeekApi['setSourceEnabled']>().mockResolvedValue(undefined),
     getSnapshot: vi.fn(() => Promise.resolve(initial)),
     onSnapshot: vi.fn((fn: (s: AppSnapshot) => void) => {
       receive = fn

@@ -7,8 +7,10 @@ import {
   type JSX,
   type ReactNode
 } from 'react'
-import type { AgentPeekApi } from '../../shared/api'
+import type { AgentPeekApi, AppSnapshot } from '../../shared/api'
 import { THEMES, type Theme } from '../../shared/preferences'
+import { AGENT_TOOLS, type AgentTool } from '../../core/tools'
+import { healthCopy, toolName } from './session-display'
 
 const LABELS = { system: 'System', light: 'Light', dark: 'Dark' }
 
@@ -28,10 +30,12 @@ export function SettingsIcon(): JSX.Element {
 
 export function SettingsDialog({
   api,
+  snapshot,
   onClose,
   feedback
 }: {
   api: AgentPeekApi
+  snapshot: AppSnapshot | null
   onClose: () => void
   feedback?: ReactNode
 }): JSX.Element {
@@ -43,14 +47,21 @@ export function SettingsDialog({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [retry, setRetry] = useState(0)
+  const [savingSource, setSavingSource] = useState<AgentTool | null>(null)
+  const [sourceError, setSourceError] = useState<string | null>(null)
 
   useLayoutEffect(() => {
     mounted.current = true
     const element = dialog.current!
+    const trigger = document.activeElement
     element.showModal()
     return () => {
       mounted.current = false
       element.close()
+      if (!trigger?.isConnected)
+        document
+          .querySelector<HTMLButtonElement>('.sidebar-settings')
+          ?.focus({ preventScroll: true })
     }
   }, [])
   useEffect(() => {
@@ -87,6 +98,20 @@ export function SettingsDialog({
       }
     } finally {
       if (mounted.current) setSaving(false)
+    }
+  }
+
+  const toggleSource = async (tool: AgentTool, enabled: boolean) => {
+    if (savingSource !== null) return
+    setSavingSource(tool)
+    setSourceError(null)
+    try {
+      await api.setSourceEnabled(tool, enabled)
+    } catch {
+      if (mounted.current)
+        setSourceError(`Couldn't update ${toolName(tool)} monitoring. Try again.`)
+    } finally {
+      if (mounted.current) setSavingSource(null)
     }
   }
 
@@ -172,6 +197,53 @@ export function SettingsDialog({
               </button>
             )}
           </div>
+        )}
+      </section>
+      <section className="settings-body settings-sources" aria-labelledby={`${id}-sources`}>
+        <h2 id={`${id}-sources`}>Sources</h2>
+        <p className="settings-hint">Choose which tools AgentPeek monitors on this Mac.</p>
+        {AGENT_TOOLS.map((tool) => {
+          const health = snapshot?.health[tool]
+          const enabled = health !== undefined && health.state !== 'off'
+          return (
+            <div className="settings-source" key={tool}>
+              <div>
+                <label id={`${id}-${tool}-name`} htmlFor={`${id}-${tool}`}>
+                  {toolName(tool)}
+                </label>
+                <p
+                  id={`${id}-${tool}-status`}
+                  className="settings-source-status"
+                  aria-live="polite"
+                >
+                  {savingSource === tool
+                    ? 'Saving…'
+                    : health
+                      ? healthCopy(tool, health).label
+                      : 'Loading…'}
+                </p>
+              </div>
+              <button
+                id={`${id}-${tool}`}
+                type="button"
+                role="switch"
+                className="source-switch"
+                aria-label={`Monitor ${toolName(tool)}`}
+                aria-describedby={`${id}-${tool}-status`}
+                aria-checked={enabled}
+                disabled={!snapshot}
+                aria-disabled={savingSource !== null}
+                onClick={() => void toggleSource(tool, !enabled)}
+              >
+                <span aria-hidden="true" />
+              </button>
+            </div>
+          )
+        })}
+        {sourceError && (
+          <p className="settings-error" role="alert">
+            {sourceError}
+          </p>
         )}
       </section>
       {feedback}

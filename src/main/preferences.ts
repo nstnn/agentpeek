@@ -1,6 +1,8 @@
 import { mkdir, open, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
+  DEFAULT_SOURCES,
+  type SourcePreferences,
   isTheme,
   isZoomPercent,
   MAX_ZOOM,
@@ -8,6 +10,7 @@ import {
   type Theme,
   type ZoomAction
 } from '../shared/preferences'
+import type { AgentTool } from '../core/tools'
 
 /** App preferences are separate from session state and never contain tool data. */
 export async function openPreferences(
@@ -19,6 +22,7 @@ export async function openPreferences(
   const temporary = `${file}.tmp`
   let theme: Theme = 'system'
   let zoomPercent = 100
+  let sources: SourcePreferences = { ...DEFAULT_SOURCES }
   try {
     const handle = await open(file, 'r')
     try {
@@ -29,6 +33,11 @@ export async function openPreferences(
           if (preferences.version === 1) {
             if (isTheme(preferences.theme)) theme = preferences.theme
             if (isZoomPercent(preferences.zoomPercent)) zoomPercent = preferences.zoomPercent
+            if (typeof preferences.sources === 'object' && preferences.sources !== null) {
+              const saved = preferences.sources as Record<string, unknown>
+              for (const tool of ['codex', 'claude'] as const)
+                if (typeof saved[tool] === 'boolean') sources[tool] = saved[tool]
+            }
           }
         }
       }
@@ -41,13 +50,22 @@ export async function openPreferences(
   applyTheme(theme)
   applyZoom(zoomPercent)
   let pending = Promise.resolve()
-  function save(change: () => { theme: Theme; zoomPercent: number }): Promise<void> {
+  function save(
+    change: () => { theme: Theme; zoomPercent: number; sources: SourcePreferences }
+  ): Promise<void> {
     const saving = pending.then(async () => {
-      const previous = { theme, zoomPercent }
+      const previous = { theme, zoomPercent, sources }
       const next = change()
-      if (next.theme === theme && next.zoomPercent === zoomPercent) return
+      if (
+        next.theme === theme &&
+        next.zoomPercent === zoomPercent &&
+        next.sources.codex === sources.codex &&
+        next.sources.claude === sources.claude
+      )
+        return
       theme = next.theme
       zoomPercent = next.zoomPercent
+      sources = next.sources
       if (theme !== previous.theme) applyTheme(theme)
       if (zoomPercent !== previous.zoomPercent) applyZoom(zoomPercent)
       try {
@@ -55,7 +73,10 @@ export async function openPreferences(
         await rm(temporary, { force: true })
         const handle = await open(temporary, 'wx', 0o600)
         try {
-          await handle.writeFile(`${JSON.stringify({ version: 1, theme, zoomPercent })}\n`, 'utf8')
+          await handle.writeFile(
+            `${JSON.stringify({ version: 1, theme, zoomPercent, sources })}\n`,
+            'utf8'
+          )
           await handle.sync()
         } finally {
           await handle.close()
@@ -64,6 +85,7 @@ export async function openPreferences(
       } catch {
         theme = previous.theme
         zoomPercent = previous.zoomPercent
+        sources = previous.sources
         if (next.theme !== theme) applyTheme(theme)
         if (next.zoomPercent !== zoomPercent) applyZoom(zoomPercent)
         await rm(temporary, { force: true }).catch(() => undefined)
@@ -79,7 +101,13 @@ export async function openPreferences(
       return theme
     },
     setTheme(this: void, next: Theme): Promise<void> {
-      return save(() => ({ theme: next, zoomPercent }))
+      return save(() => ({ theme: next, zoomPercent, sources }))
+    },
+    getSources(this: void): SourcePreferences {
+      return { ...sources }
+    },
+    setSourceEnabled(this: void, tool: AgentTool, enabled: boolean): Promise<void> {
+      return save(() => ({ theme, zoomPercent, sources: { ...sources, [tool]: enabled } }))
     },
     getZoom(this: void): number {
       return zoomPercent
@@ -87,6 +115,7 @@ export async function openPreferences(
     changeZoom(this: void, action: ZoomAction): Promise<void> {
       return save(() => ({
         theme,
+        sources,
         zoomPercent:
           action === 'reset'
             ? 100

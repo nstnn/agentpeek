@@ -14,6 +14,7 @@ import { AGENT_TOOLS, type AgentTool } from '../../core/tools'
 import type { ChangeListener, SessionWatcher } from './file-watcher'
 import type { RecentMessages, SessionSource } from './session-source'
 import type { StateStore } from './state-store'
+import { DEFAULT_SOURCES, type SourcePreferences } from '../../shared/preferences'
 
 // The sessions service (TASK-010). It runs while the window is open and ties together:
 // - both sources, which read the tools' files and report facts;
@@ -46,15 +47,18 @@ export interface SessionsServiceOptions {
   onSnapshot: (snapshot: SessionsSnapshot) => void
   /** True when the sources read synthetic data (`AGENTPEEK_HOME`). */
   fixture: boolean
+  enabledSources?: SourcePreferences
   /** The clock, in epoch milliseconds. */
   now?: () => number
 }
 
 export interface SessionsService {
-  /** Reads both tools, then starts the watcher and the timer. Call it once; after `stop` it does nothing. */
+  /** Enables/disables this app's monitoring only; disabled sources perform no new reads. */
+  setSourceEnabled(this: void, tool: AgentTool, enabled: boolean): Promise<void>
+  /** Reads enabled tools, then starts the watcher and the timer. Call it once; after `stop` it does nothing. */
   start(): Promise<void>
   /**
-   * Reads both tools again: catalogs, registry, and the Codex rollout sweep. The main process calls
+   * Reads enabled tools again: catalogs, registry, and the Codex rollout sweep. The main process calls
    * it on window focus, on wake, and for View > Reload Sessions.
    */
   reconcile(): Promise<void>
@@ -81,6 +85,8 @@ export interface SessionsService {
 
 /** What the service knows about one tool. */
 interface ToolState {
+  enabled: boolean
+  epoch: number
   source: SessionSource
   /** The facts from the last read that finished. */
   facts: readonly SessionFacts[]
@@ -95,7 +101,13 @@ export function createSessionsService(options: SessionsServiceOptions): Sessions
   for (const tool of AGENT_TOOLS) {
     const source = options.sources.find((candidate) => candidate.tool === tool)
     if (source === undefined) throw new Error(`No source for ${tool}.`)
-    tools.set(tool, { source, facts: [], read: false })
+    tools.set(tool, {
+      source,
+      facts: [],
+      read: false,
+      enabled: (options.enabledSources ?? DEFAULT_SOURCES)[tool],
+      epoch: 0
+    })
   }
   // AgentPeek had read neither tool before this launch: the "First launch" strip. When the saved
   // state could not be loaded, no baseline is known on any launch; the "Local state unavailable"
@@ -130,13 +142,15 @@ export function createSessionsService(options: SessionsServiceOptions): Sessions
     // A stop that came while this read waited (for the folder watches, say) cancels it.
     if (stopped !== null) return
     const state = toolState(tool)
+    if (!state.enabled) return
+    const epoch = state.epoch
     let facts: SessionFacts[] | null = null
     try {
       facts = await read(state.source)
     } catch {
       // A source reports what went wrong in its health. Anything else keeps the last facts.
     }
-    if (stopped !== null) return
+    if (stopped !== null || !state.enabled || epoch !== state.epoch) return
     if (facts !== null) state.facts = facts
     if (isReconcile) state.read = true
     noteFirstRead(tool, state.source.health())
@@ -167,6 +181,8 @@ export function createSessionsService(options: SessionsServiceOptions): Sessions
   }
 
   function healthOf(state: ToolState): ToolHealth {
+    if (!state.enabled) return { state: 'off' }
+    if (!state.read) return { state: 'checking' }
     const health = state.source.health()
     // A read that failed without the source saying why: never leave the tool at "Checking…".
     return state.read && health.state === 'checking'
@@ -181,6 +197,7 @@ export function createSessionsService(options: SessionsServiceOptions): Sessions
     for (const [tool, state] of tools) {
       const toolHealth = healthOf(state)
       health[tool] = toolHealth
+      if (!state.enabled) continue
       // Until a tool has been read once, every reply it finished counts as read.
       const baselineAt = store.baseline(tool) ?? at
       for (const facts of state.facts) {
@@ -247,8 +264,12 @@ export function createSessionsService(options: SessionsServiceOptions): Sessions
 
   async function reconcileAll(): Promise<void> {
     // The folder watches start before the reads, so no change in between is missed.
-    await watcher.watchFolders()
+    await watcher.watchFolders(enabledTools())
     await Promise.all(AGENT_TOOLS.map((tool) => update(tool, (source) => source.catalog(), true)))
+  }
+
+  function enabledTools(): AgentTool[] {
+    return AGENT_TOOLS.filter((tool) => toolState(tool).enabled)
   }
 
   /** Saves a session's new local state. False when the store refuses its ID or cursor. */
@@ -266,11 +287,28 @@ export function createSessionsService(options: SessionsServiceOptions): Sessions
 
   /** The listed session with this key, from the snapshot the user sees. */
   function listedSession(key: SessionKey): Session | undefined {
-    if (stopped !== null) return undefined
+    if (stopped !== null || !toolState(key.tool).enabled) return undefined
     return listed.get(sessionKeyToString(key))
   }
 
   return {
+    async setSourceEnabled(tool, enabled) {
+      if (stopped !== null) return
+      const state = toolState(tool)
+      if (state.enabled === enabled) return
+      state.enabled = enabled
+      state.epoch++
+      state.facts = []
+      state.read = false
+      watcher.watchFiles(tool, [])
+      // Publish the choice immediately, before any discovery can finish.
+      if (publishPause !== null) clearTimeout(publishPause)
+      publishPause = null
+      publish()
+      if (!started) return
+      await watcher.watchFolders(enabledTools())
+      if (enabled) await update(tool, (source) => source.catalog(), true)
+    },
     async start() {
       // Once stopped, the service never starts again: the window is closing.
       if (started || stopped !== null) return
@@ -289,8 +327,12 @@ export function createSessionsService(options: SessionsServiceOptions): Sessions
 
     async recentMessages(key, limit) {
       const state = tools.get(key.tool)
-      if (state === undefined || stopped !== null) return { kind: 'not-found' }
-      return state.source.recentMessages(key, limit)
+      if (state === undefined || stopped !== null || !state.enabled) return { kind: 'not-found' }
+      const epoch = state.epoch
+      const result = await state.source.recentMessages(key, limit)
+      return stopped !== null || !state.enabled || state.epoch !== epoch
+        ? { kind: 'not-found' }
+        : result
     },
 
     setPinned(key, pinned) {

@@ -15,6 +15,43 @@ afterEach(async () => {
 })
 
 describe('appearance preferences', () => {
+  it('defaults sources on, saves each independently alongside appearance and restores on reopen', async () => {
+    const folder = await fixture()
+    const preferences = await openPreferences(folder, vi.fn())
+    expect(preferences.getSources()).toEqual({ codex: true, claude: true })
+    await Promise.all([
+      preferences.setSourceEnabled('codex', false),
+      preferences.setTheme('dark'),
+      preferences.setSourceEnabled('claude', false),
+      preferences.changeZoom('in')
+    ])
+    const reopened = await openPreferences(folder, vi.fn())
+    expect(reopened.getSources()).toEqual({ codex: false, claude: false })
+    expect(await reopened.getTheme()).toBe('dark')
+    expect(reopened.getZoom()).toBe(110)
+    await mkdir(join(folder, 'preferences.json.tmp'))
+    await expect(preferences.setSourceEnabled('codex', true)).rejects.toThrow()
+    expect(preferences.getSources()).toEqual({ codex: false, claude: false })
+    await rm(join(folder, 'preferences.json.tmp'), { recursive: true })
+    await preferences.setSourceEnabled('codex', true)
+    expect((await openPreferences(folder, vi.fn())).getSources()).toEqual({
+      codex: true,
+      claude: false
+    })
+  })
+  it('loads valid source flags independently and leaves invalid preferences untouched', async () => {
+    const folder = await fixture()
+    const file = join(folder, 'preferences.json')
+    const contents = JSON.stringify({
+      version: 1,
+      theme: 'dark',
+      sources: { codex: false, claude: 'off' }
+    })
+    await writeFile(file, contents)
+    const preferences = await openPreferences(folder, vi.fn())
+    expect(preferences.getSources()).toEqual({ codex: false, claude: true })
+    expect(await readFile(file, 'utf8')).toBe(contents)
+  })
   it('loads older theme-only preferences and keeps theme and zoom through interleaved saves', async () => {
     const folder = await fixture()
     const file = join(folder, 'preferences.json')
@@ -34,7 +71,8 @@ describe('appearance preferences', () => {
     expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({
       version: 1,
       theme: 'light',
-      zoomPercent: 130
+      zoomPercent: 130,
+      sources: { codex: true, claude: true }
     })
     const reopened = await openPreferences(folder, vi.fn(), vi.fn())
     expect(reopened.getZoom()).toBe(130)
@@ -93,7 +131,8 @@ describe('appearance preferences', () => {
       expect(JSON.parse(await readFile(join(folder, 'preferences.json'), 'utf8'))).toEqual({
         version: 1,
         theme,
-        zoomPercent: 100
+        zoomPercent: 100,
+        sources: { codex: true, claude: true }
       })
     }
     expect(await readFile(state, 'utf8')).toBe('synthetic session state')

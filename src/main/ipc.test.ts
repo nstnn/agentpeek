@@ -9,6 +9,7 @@ const key = testSession().key
 const requests: [string, unknown[]][] = [
   [IPC.getTheme, []],
   [IPC.setTheme, ['dark']],
+  [IPC.setSourceEnabled, ['codex', false]],
   [IPC.getSnapshot, []],
   [IPC.getMessages, [key, 20]],
   [IPC.setPinned, [key, true]],
@@ -50,6 +51,7 @@ function setup() {
   const preferences = {
     getTheme: vi.fn().mockResolvedValue('system'),
     setTheme: vi.fn().mockResolvedValue(undefined),
+    setSourceEnabled: vi.fn().mockResolvedValue(undefined),
     flush: vi.fn().mockResolvedValue(undefined)
   }
   const dispose = registerSessionIpc({
@@ -57,7 +59,8 @@ function setup() {
     contents: contents as unknown as WebContents,
     pageUrl: frame.url,
     controller,
-    preferences
+    preferences,
+    setSourceEnabled: service.setSourceEnabled
   })
   async function invoke(channel: string, args: unknown[], sender = event) {
     const handler = handlers.get(channel)
@@ -77,7 +80,9 @@ function setup() {
       options.popup,
       options.updateMenu,
       preferences.getTheme,
-      preferences.setTheme
+      preferences.setTheme,
+      preferences.setSourceEnabled,
+      service.setSourceEnabled
     ])
       expect(fn).not.toHaveBeenCalled()
   }
@@ -97,6 +102,26 @@ function setup() {
 }
 
 describe('IPC trust boundary', () => {
+  it.each([['other', false], ['codex', 'false'], ['claude', null], ['codex'], [null, true]])(
+    'rejects malformed source changes: %j',
+    async (...args) => {
+      const s = setup()
+      await expect(s.invoke(IPC.setSourceEnabled, args)).rejects.toThrow(
+        'Invalid AgentPeek request'
+      )
+      s.expectNoEffects()
+    }
+  )
+  it('persists a source choice before applying it and leaves monitoring unchanged after a failed save', async () => {
+    const s = setup()
+    s.preferences.setSourceEnabled.mockRejectedValueOnce(new Error('synthetic private error'))
+    await expect(s.invoke(IPC.setSourceEnabled, ['codex', false])).rejects.toThrow(
+      'AgentPeek could not complete the request.'
+    )
+    expect(s.service.setSourceEnabled).not.toHaveBeenCalled()
+    await s.invoke(IPC.setSourceEnabled, ['codex', false])
+    expect(s.service.setSourceEnabled).toHaveBeenCalledWith('codex', false)
+  })
   it.each([null, true, {}, [], 'Dark', 'auto', '../preferences.json', 1])(
     'rejects invalid theme values without effects: %j',
     async (theme) => {

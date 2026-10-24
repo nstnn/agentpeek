@@ -32,6 +32,7 @@ export function testService(sessions: Session[] = [testSession()]) {
     takenAt: 1
   })
   return {
+    setSourceEnabled: vi.fn<SessionsService['setSourceEnabled']>().mockResolvedValue(undefined),
     start: vi.fn<SessionsService['start']>().mockResolvedValue(undefined),
     reconcile: vi.fn<SessionsService['reconcile']>().mockResolvedValue(undefined),
     snapshot: vi.fn(() => snapshot),

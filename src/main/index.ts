@@ -131,6 +131,7 @@ if (!app.requestSingleInstanceLock()) {
       if (quitting) return
       opening = openSessionsService({
         ...paths,
+        enabledSources: preferences.getSources(),
         onSnapshot: () => {
           controller?.publish()
           if (controller) send(IPC.snapshot, controller.snapshot())
@@ -167,7 +168,8 @@ if (!app.requestSingleInstanceLock()) {
         contents: mainWindow.webContents,
         pageUrl: rendererPageUrl(),
         controller,
-        preferences
+        preferences,
+        setSourceEnabled: service.setSourceEnabled
       })
       mainWindow.on('focus', () => lifecycle?.focus())
       mainWindow.on('resize', updateMenu)

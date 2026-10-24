@@ -2,6 +2,7 @@ import { watch } from 'node:fs'
 import { lstat, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AgentTool } from '../../core/tools'
+import { AGENT_TOOLS } from '../../core/tools'
 import type { AccessGate } from './access'
 import { isMissing } from './source-support'
 
@@ -47,7 +48,7 @@ export interface SessionWatcher {
    * again at the next call: the service calls this at launch and at each reconcile, before reading.
    * Files whose watch failed are tried again too.
    */
-  watchFolders(): Promise<void>
+  watchFolders(enabledTools?: readonly AgentTool[]): Promise<void>
   /**
    * Sets the files of one tool that get their own watch: starts the new ones once they pass their
    * checks, and stops the ones no longer named. Each new watch reports its file once, so a write
@@ -119,10 +120,11 @@ export function createFileWatcher(options: FileWatcherOptions): SessionWatcher {
   // Reports run one after another, so they never compare against each other's signatures.
   let reporting: Promise<void> = Promise.resolve()
   let closed = false
+  let enabled = new Set<AgentTool>(AGENT_TOOLS)
 
   /** Notes an event on a file. The first event starts the delay; later ones join it. */
   function hint(tool: AgentTool, path: string): void {
-    if (closed) return
+    if (closed || !enabled.has(tool)) return
     pending.set(path, tool)
     timer ??= setTimeout(() => {
       timer = null
@@ -135,11 +137,14 @@ export function createFileWatcher(options: FileWatcherOptions): SessionWatcher {
     const batch = pending
     pending = new Map()
     const found = await Promise.all(
-      [...batch].map(async ([path, tool]) => ({ path, tool, signature: await readSignature(path) }))
+      [...batch]
+        .filter(([, tool]) => enabled.has(tool))
+        .map(async ([path, tool]) => ({ path, tool, signature: await readSignature(path) }))
     )
     if (closed) return
     const changed = new Map<AgentTool, string[]>()
     for (const { path, tool, signature } of found) {
+      if (!enabled.has(tool)) continue
       const present = signature !== null && signature !== MISSING
       // The file is there again, so the next `watchFiles` tries its watch again. A file whose watch
       // keeps failing is tried only when an event shows it, so this never loops.
@@ -159,10 +164,11 @@ export function createFileWatcher(options: FileWatcherOptions): SessionWatcher {
 
   /** Starts a folder's watch if it is not running, once a check shows that the path is a folder. */
   async function startFolder(folder: FolderWatch): Promise<void> {
-    if (folderWatches.has(folder)) return
+    if (!enabled.has(folder.tool) || folderWatches.has(folder)) return
     const folderThere = await isFolder(folder.folder)
     // Checked again: another call may have started it during the check.
-    if (folderThere && !closed && !folderWatches.has(folder)) watchFolder(folder)
+    if (folderThere && !closed && enabled.has(folder.tool) && !folderWatches.has(folder))
+      watchFolder(folder)
   }
 
   function watchFolder(folder: FolderWatch): void {
@@ -236,7 +242,8 @@ export function createFileWatcher(options: FileWatcherOptions): SessionWatcher {
       startingFiles.delete(path)
     }
     // The watcher closed, or the source stopped naming the file, while it was checked.
-    if (closed || wantedFiles.get(path) !== tool || fileWatches.has(path)) return
+    if (closed || !enabled.has(tool) || wantedFiles.get(path) !== tool || fileWatches.has(path))
+      return
     if (allowed && watchFile(tool, path)) hint(tool, path)
     else failedFiles.set(path, tool)
   }
@@ -262,15 +269,33 @@ export function createFileWatcher(options: FileWatcherOptions): SessionWatcher {
   }
 
   return {
-    async watchFolders() {
+    async watchFolders(enabledTools = AGENT_TOOLS) {
       if (closed) return
+      enabled = new Set(enabledTools)
+      for (const [folder, handle] of folderWatches) {
+        if (enabled.has(folder.tool)) continue
+        handle.close()
+        folderWatches.delete(folder)
+      }
+      for (const tool of AGENT_TOOLS) {
+        if (enabled.has(tool)) continue
+        this.watchFiles(tool, [])
+        for (const [path, pendingTool] of pending) {
+          if (pendingTool === tool) {
+            pending.delete(path)
+            signatures.delete(path)
+          }
+        }
+      }
       failedFiles.clear()
       await Promise.all(options.folders.map(startFolder))
     },
 
     watchFiles(tool, paths) {
       if (closed) return
-      const wanted = new Set(paths.filter((path) => acceptsFile(tool, path)))
+      const wanted = new Set(
+        enabled.has(tool) ? paths.filter((path) => acceptsFile(tool, path)) : []
+      )
       for (const [path, wantedTool] of wantedFiles) {
         if (wantedTool === tool && !wanted.has(path)) wantedFiles.delete(path)
       }

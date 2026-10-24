@@ -239,7 +239,9 @@ afterEach(async () => {
   vi.useRealTimers()
 })
 
-function create(options: { fixture?: boolean } = {}): SessionsService {
+function create(
+  options: { fixture?: boolean; enabledSources?: { codex: boolean; claude: boolean } } = {}
+): SessionsService {
   service = createSessionsService({
     sources: [codex.source, claude.source],
     store,
@@ -249,12 +251,15 @@ function create(options: { fixture?: boolean } = {}): SessionsService {
     },
     onSnapshot: (snapshot) => snapshots.push(snapshot),
     fixture: options.fixture ?? false,
+    enabledSources: options.enabledSources,
     now: () => Date.now()
   })
   return service
 }
 
-async function started(options: { fixture?: boolean } = {}): Promise<SessionsService> {
+async function started(
+  options: { fixture?: boolean; enabledSources?: { codex: boolean; claude: boolean } } = {}
+): Promise<SessionsService> {
   const running = create(options)
   await running.start()
   return running
@@ -914,5 +919,75 @@ describe('stop', () => {
     expect(running.stop()).toBe(first)
     await first
     expect(store.flush).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('source monitoring switches', () => {
+  it('skips saved-off sources at startup and every later refresh', async () => {
+    const running = await started({ enabledSources: { codex: false, claude: true } })
+    await settle()
+    expect(running.snapshot().health.codex).toEqual({ state: 'off' })
+    expect(codex.catalog).not.toHaveBeenCalled()
+    theWatcher().emit('codex', [rollout(1)])
+    await running.reconcile()
+    await settle(LIVENESS_INTERVAL_MS)
+    expect(codex.catalog).not.toHaveBeenCalled()
+    expect(codex.refresh).not.toHaveBeenCalled()
+    await expect(running.recentMessages({ tool: 'codex', id: id(1) }, 20)).resolves.toEqual({
+      kind: 'not-found'
+    })
+    expect(codex.recentMessages).not.toHaveBeenCalled()
+    expect(claude.catalog).toHaveBeenCalled()
+  })
+  it('removes sessions and counts while off, then restores pins and read markers after rediscovery', async () => {
+    codex.facts = [codexFacts(1, { lastReply: reply('reply-one', NOW) })]
+    const running = await started()
+    await settle()
+    const key = codex.facts[0]!.key
+    expect(running.setPinned(key, true)).toBe(true)
+    expect(running.markRead(key)).toBe(true)
+    await running.setSourceEnabled('codex', false)
+    expect(running.snapshot().sessions).toEqual([])
+    expect(running.snapshot().needsAttention).toBe(0)
+    expect(theWatcher().files.codex).toEqual([])
+    expect(running.setPinned(key, false)).toBe(false)
+    await running.setSourceEnabled('codex', true)
+    await settle()
+    expect(running.snapshot().sessions[0]).toMatchObject({
+      key,
+      pinned: true,
+      attention: { newReply: false }
+    })
+    expect(codex.catalog).toHaveBeenCalledTimes(2)
+  })
+  it('discards late catalog and message results after switching off and on', async () => {
+    codex.facts = [codexFacts(1)]
+    const running = await started()
+    await settle()
+    let finishCatalog!: (facts: SessionFacts[]) => void
+    let finishMessages!: (result: RecentMessages) => void
+    codex.catalog.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishCatalog = resolve
+        })
+    )
+    codex.recentMessages.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishMessages = resolve
+        })
+    )
+    const messages = running.recentMessages(codex.facts[0]!.key, 20)
+    const refresh = running.reconcile()
+    await Promise.resolve()
+    await running.setSourceEnabled('codex', false)
+    await running.setSourceEnabled('codex', true)
+    finishCatalog([codexFacts(2)])
+    finishMessages({ kind: 'messages', messages: [], hasOlder: false })
+    await refresh
+    await settle()
+    expect(running.snapshot().sessions.map((s) => s.key.id)).toEqual([id(1)])
+    await expect(messages).resolves.toEqual({ kind: 'not-found' })
   })
 })

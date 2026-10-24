@@ -4,6 +4,26 @@ import { fakeApi, NOW, session, snapshot } from '../test-support'
 import { buildView } from '../../core/views'
 
 describe('renderer subscription lifetime', () => {
+  it('clears a disabled-source list cursor while preserving its reading pane and other source rows', async () => {
+    const a = session('a')
+    const b = session('b', { key: { tool: 'claude', id: 'b' } })
+    const fake = fakeApi(snapshot([a, b]))
+    const store = createSessionsStore(fake.api)
+    const off = store.subscribe(vi.fn())
+    await Promise.resolve()
+    store.select(a, displayedGroups(store.getSnapshot()))
+    fake.push(
+      snapshot([b], {
+        health: { codex: { state: 'off' }, claude: { state: 'connected', lastReadAt: NOW } }
+      })
+    )
+    expect(store.getSnapshot().listSelection).toBeNull()
+    expect(store.getSnapshot().selection?.session.key).toEqual(a.key)
+    expect(
+      displayedGroups(store.getSnapshot()).flatMap((group) => group.sessions.map((s) => s.key))
+    ).toEqual([b.key])
+    off()
+  })
   it('ignores a stale initial request after a pushed snapshot', async () => {
     const fake = fakeApi()
     let resolve!: (s: ReturnType<typeof snapshot>) => void

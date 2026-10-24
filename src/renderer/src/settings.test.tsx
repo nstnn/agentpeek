@@ -1,25 +1,9 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { App } from './App'
 import { createSessionsStore } from './sessions-store'
 import { fakeApi, NOW, session, snapshot } from '../test-support'
-
-// jsdom cannot supply native modal focus/inertness; those need the built app.
-Object.defineProperties(HTMLDialogElement.prototype, {
-  showModal: {
-    configurable: true,
-    value: function (this: HTMLDialogElement) {
-      this.setAttribute('open', '')
-    }
-  },
-  close: {
-    configurable: true,
-    value: function (this: HTMLDialogElement) {
-      this.removeAttribute('open')
-    }
-  }
-})
 
 function mount() {
   const a = session('a')
@@ -87,6 +71,66 @@ describe('Settings', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Close Settings' }))
     await waitFor(() => expect(f.api.markRead).toHaveBeenCalledWith(f.b.key, 'behind-settings'))
     expect(f.store.getSnapshot().selection?.session.key).toEqual(f.a.key)
+  })
+  it('keeps switches in Settings, shows an off-source placeholder and restores reading after enabling', async () => {
+    const f = mount()
+    await userEvent.click(await screen.findByRole('option', { name: /Synthetic a/ }))
+    await screen.findByText('No recent messages.')
+    expect(screen.queryByRole('switch')).toBeNull()
+    f.api.setSourceEnabled.mockImplementation((tool, enabled) => {
+      expect(tool).toBe('codex')
+      f.push(
+        snapshot(enabled ? [f.a, f.b] : [], {
+          health: {
+            codex: enabled ? { state: 'connected', lastReadAt: NOW } : { state: 'off' },
+            claude: { state: 'not-installed' }
+          }
+        })
+      )
+      return Promise.resolve()
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    const toggle = screen.getByRole('switch', { name: 'Monitor Codex' })
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+    f.api.setSourceEnabled.mockRejectedValueOnce(new Error('Synthetic failure'))
+    await userEvent.click(toggle)
+    await screen.findByText(/Couldn't update Codex monitoring/)
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+    await userEvent.click(toggle)
+    await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('false'))
+    await userEvent.click(screen.getByRole('button', { name: 'Close Settings' }))
+    expect(screen.getByRole('heading', { name: 'Codex monitoring is off' })).toBeTruthy()
+    expect(screen.queryByText('No recent messages.')).toBeNull()
+    expect(screen.queryByRole('option', { name: /Synthetic a/ })).toBeNull()
+    expect(f.store.getSnapshot().listSelection).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Codex source: Connected' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await userEvent.click(screen.getByRole('switch', { name: 'Monitor Codex' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Close Settings' }))
+    await screen.findByText('No recent messages.')
+    expect(f.store.getSnapshot().selection?.session.key).toEqual(f.a.key)
+  })
+  it('keeps a missing tool enabled and exposes Settings when all monitoring is off', async () => {
+    const f = mount()
+    await userEvent.click(await screen.findByRole('option', { name: /Synthetic a/ }))
+    act(() =>
+      f.push(snapshot([], { health: { codex: { state: 'off' }, claude: { state: 'off' } } }))
+    )
+    const list = within(screen.getByRole('main', { name: 'Sessions' }))
+    expect(list.getByRole('heading', { name: 'Monitoring is off' })).toBeTruthy()
+    await userEvent.click(list.getByRole('button', { name: 'Open Settings' }))
+    expect(screen.getByRole('switch', { name: 'Monitor Codex' }).getAttribute('aria-checked')).toBe(
+      'false'
+    )
+    act(() =>
+      f.push(
+        snapshot([], { health: { codex: { state: 'off' }, claude: { state: 'not-installed' } } })
+      )
+    )
+    expect(
+      screen.getByRole('switch', { name: 'Monitor Claude Code' }).getAttribute('aria-checked')
+    ).toBe('true')
+    expect(screen.getByText('Not installed')).toBeTruthy()
   })
   it('restores the selection on save failure and can load settings again after a failed read', async () => {
     const f = mount()

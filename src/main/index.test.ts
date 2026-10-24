@@ -38,6 +38,8 @@ function setup() {
   const preferences = {
     getTheme: vi.fn<Preferences['getTheme']>().mockResolvedValue('system'),
     setTheme: vi.fn<Preferences['setTheme']>().mockResolvedValue(undefined),
+    getSources: vi.fn<Preferences['getSources']>().mockReturnValue({ codex: true, claude: true }),
+    setSourceEnabled: vi.fn<Preferences['setSourceEnabled']>().mockResolvedValue(undefined),
     getZoom: vi.fn<Preferences['getZoom']>().mockReturnValue(100),
     changeZoom: vi.fn<Preferences['changeZoom']>().mockResolvedValue(undefined),
     flush: vi.fn<Preferences['flush']>().mockResolvedValue(undefined)
@@ -172,7 +174,7 @@ describe('main process lifecycle', () => {
       stateFolder: '/synthetic/state',
       fixture: true
     })
-    expect(s.ipcMain.handle).toHaveBeenCalledTimes(13)
+    expect(s.ipcMain.handle).toHaveBeenCalledTimes(14)
     vi.useFakeTimers()
     s.window.emit('focus')
     s.window.emit('focus')
@@ -207,7 +209,7 @@ describe('main process lifecycle', () => {
     expect(s.app.quit).not.toHaveBeenCalled()
     expect(s.service.stop).toHaveBeenCalledOnce()
     expect(s.powerMonitor.listenerCount('resume')).toBe(0)
-    expect(s.ipcMain.removeHandler).toHaveBeenCalledTimes(13)
+    expect(s.ipcMain.removeHandler).toHaveBeenCalledTimes(14)
     expect(vi.getTimerCount()).toBe(0)
     finish()
     await vi.advanceTimersByTimeAsync(0)

@@ -116,7 +116,7 @@ describe('sessions interface', () => {
       ).toBeTruthy()
     }
   )
-  it('shows the launch read, both checking sources, then the live groups and count-once badge', async () => {
+  it('shows the launch read, then connected sources, live groups and the count-once badge', async () => {
     const waiting = session('waiting', {
       key: { tool: 'claude', id: 'waiting' },
       activity: { state: 'waiting', waitingFor: 'permission prompt' },
@@ -124,7 +124,7 @@ describe('sessions interface', () => {
     })
     const fake = mount(snapshot([session('running'), waiting]))
     expect(screen.getByText('Reading sessions…')).toBeTruthy()
-    expect(screen.getAllByText('Checking…')).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: /source: Connected/ })).toBeNull()
     await screen.findByRole('option', { name: /Synthetic waiting/ })
     expect(screen.getAllByRole('group').map((g) => g.getAttribute('aria-labelledby'))).toEqual([
       'group-waiting',
