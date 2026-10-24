@@ -4,6 +4,10 @@ AgentPeek is a macOS app that shows what your local AI coding agents are doing. 
 
 AgentPeek is built with Electron, TypeScript, and React.
 
+The first launch maximizes the window within the display's work area. On normal close or quit,
+AgentPeek remembers the window's size, position, maximized state and macOS Full Screen choice
+for the next launch. If a display is disconnected, the restored window fits an available display.
+
 **Status: Phase 1 implemented; final acceptance pending.** The app has live session lists,
 Active/Pinned/All Sessions views, tool filters, source health, safe message detail, pin/read
 actions, two session panes, keyboard navigation and a local macOS package. Automated tests and approved synthetic
