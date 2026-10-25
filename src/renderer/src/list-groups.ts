@@ -12,8 +12,15 @@ export interface ListGroup {
 }
 
 export function projectId(session: Session): string {
-  const path = session.summary.workspacePath
-  return `project:${path ? path.replace(/\/+$/, '') || '/' : ''}`
+  const recordedPath = session.summary.workspacePath
+  const path = recordedPath ? recordedPath.replace(/\/+$/, '') || '/' : ''
+  // Codex gives projectless desktop chats a working directory too. Recognize only
+  // its dated macOS chat-directory convention, not arbitrary dated projects or
+  // subfolders inside a chat. Keep the recorded path intact for session details.
+  const projectless =
+    session.key.tool === 'codex' &&
+    /^\/Users\/[^/]+\/Documents\/Codex\/\d{4}-\d{2}-\d{2}\/[^/]+$/.test(path)
+  return `project:${projectless ? '' : path}`
 }
 
 export function listGroup(id: string, sessions: Session[] = []): ListGroup {
