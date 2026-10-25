@@ -29,6 +29,60 @@ const clickHeader = async (name: string) => {
 }
 
 describe('project grouping', () => {
+  it('combines dated Codex chat folders with missing paths without changing session metadata', () => {
+    const a = projectSession('a', '/Users/synthetic/Documents/Codex/2026-10-24/chat-a')
+    const b = projectSession('b', '/Users/synthetic/Documents/Codex/2026-10-25/chat-b///', {
+      pinned: true
+    })
+    const none = projectSession('none', null)
+    const groups = buildListGroups([a, b, none], 'all', 'all', 'project')
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toMatchObject({ id: 'project:', label: 'No folder', projectPath: null })
+    expect(groups[0]?.sessions).toEqual([b, a, none])
+    expect(a.summary.workspacePath).toBe('/Users/synthetic/Documents/Codex/2026-10-24/chat-a')
+    expect(buildListGroups([a, b], 'pinned', 'codex', 'project')[0]?.sessions).toEqual([b])
+    expect(buildListGroups([a, b], 'all', 'claude', 'project')).toEqual([])
+    expect(buildListGroups([a, b], 'all', 'all', 'status')[0]?.id).toBe('all')
+  })
+
+  it('keeps real projects, chat subfolders and Claude paths separate', () => {
+    const paths = [
+      '/work/2026-10-24/chat-a',
+      '/Users/synthetic/Documents/Codex/project',
+      '/Users/synthetic/Documents/Codex/2026-10-24',
+      '/Users/synthetic/Documents/Codex/2026-10-24/chat-a/src',
+      '/Users/synthetic/Documents/Codex/not-a-date/chat-a',
+      '/Users/synthetic/Documents/Other/2026-10-24/chat-a',
+      '/'
+    ]
+    const sessions = paths.map((path, i) => projectSession(`real-${i}`, path))
+    const claude = projectSession('claude', '/Users/synthetic/Documents/Codex/2026-10-24/chat-a', {
+      key: { tool: 'claude', id: 'claude' }
+    })
+    const groups = buildListGroups([...sessions, claude], 'all', 'all', 'project')
+    expect(groups).toHaveLength(paths.length + 1)
+    expect(groups.every((group) => group.projectPath !== null)).toBe(true)
+    expect(groups.flatMap((group) => group.sessions)).toHaveLength(paths.length + 1)
+  })
+
+  it('opens projectless chats under one heading and retains their recorded path in detail', async () => {
+    const path = '/Users/synthetic/Documents/Codex/2026-10-24/chat-a'
+    mount([
+      projectSession('chat-a', path),
+      projectSession('chat-b', '/Users/synthetic/Documents/Codex/2026-10-25/chat-b'),
+      projectSession('none', null),
+      projectSession('real', '/work/real')
+    ])
+    await screen.findByRole('tree')
+    expect(within(header('No folder')).getAllByRole('treeitem')).toHaveLength(3)
+    expect(header('real')).toBeTruthy()
+    await userEvent.click(row('chat-a'))
+    expect(document.querySelector('.detail-meta')?.getAttribute('title')).toBe(path)
+    await clickHeader('No folder')
+    expect(screen.queryByRole('treeitem', { name: /^Synthetic chat-/ })).toBeNull()
+    expect(document.querySelector('.detail-meta')?.getAttribute('title')).toBe(path)
+  })
+
   it('groups both tools by full path, preserves membership/pins, and orders projects consistently', () => {
     const a = projectSession('a', '/work/demo')
     const b = projectSession('b', '/work/demo/', { key: { tool: 'claude', id: 'b' }, pinned: true })
