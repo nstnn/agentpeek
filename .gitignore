@@ -1,6 +1,7 @@
 # Local planning notes and documentation (kept out of the repository)
 plan/
 docs/
+.archify/
 
 # Dependencies and build output
 node_modules/
