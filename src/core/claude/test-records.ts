@@ -71,7 +71,12 @@ export function metaUserLine(text: string, at: number, flags: Record<string, boo
 }
 
 /** A tool's result, which travels back to the model as a user record. */
-export function toolResultLine(at: number, isError = false): string {
+export function toolResultLine(
+  at: number,
+  isError = false,
+  options: { id?: string; content?: string; interrupted?: boolean } = {}
+): string {
+  const content = options.content ?? (isError ? 'User rejected tool use' : 'Synthetic tool output.')
   return JSON.stringify({
     ...envelope(syntheticId(1), syntheticId(0x902), at),
     type: 'user',
@@ -81,13 +86,15 @@ export function toolResultLine(at: number, isError = false): string {
       content: [
         {
           type: 'tool_result',
-          tool_use_id: 'toolu_synthetic',
-          content: isError ? 'User rejected tool use' : 'Synthetic tool output.',
+          tool_use_id: options.id ?? 'toolu_synthetic',
+          content,
           is_error: isError
         }
       ]
     },
-    toolUseResult: isError ? 'User rejected tool use' : { stdout: 'Synthetic tool output.' },
+    toolUseResult: isError
+      ? content
+      : { stdout: content, interrupted: options.interrupted === true },
     sourceToolAssistantUUID: syntheticId(0x903)
   })
 }
@@ -105,7 +112,7 @@ export function interruptLine(marker: string, at: number): string {
 export type AssistantPart =
   | { type: 'text'; text: string }
   | { type: 'thinking'; thinking: string }
-  | { type: 'tool_use'; name: string }
+  | { type: 'tool_use'; name: string; id?: string; input?: unknown }
 
 /**
  * One assistant record. Claude Code writes each part of a message as its own record, and every
@@ -123,7 +130,12 @@ export function assistantLine(
       case 'thinking':
         return { type: 'thinking', thinking: part.thinking, signature: 'synthetic' }
       case 'tool_use':
-        return { type: 'tool_use', id: 'toolu_synthetic', name: part.name, input: {} }
+        return {
+          type: 'tool_use',
+          id: part.id ?? 'toolu_synthetic',
+          name: part.name,
+          input: part.input ?? {}
+        }
     }
   })
   return JSON.stringify({

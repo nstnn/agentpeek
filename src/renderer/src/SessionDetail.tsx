@@ -425,6 +425,7 @@ export function SessionDetail({
                 <Message
                   message={message}
                   tool={tool}
+                  activity={session.activity.state}
                   onLink={onLink}
                   promptContext={
                     tool === 'codex'
@@ -497,15 +498,19 @@ function DetailTitle({ title }: { title: string }): JSX.Element {
 function Message({
   message,
   tool,
+  activity,
   onLink,
   promptContext
 }: {
   message: SessionMessage
   tool: Session['key']['tool']
+  activity: Session['activity']['state']
   onLink: (url: string) => void
   promptContext?: PromptSkillContext
 }): JSX.Element {
-  if (message.kind === 'tool-calls') return <ToolCalls message={message} />
+  if (message.kind === 'tool-calls') {
+    return <ToolCalls message={message} tool={tool} activity={activity} />
+  }
   return (
     <article className={`message ${message.kind}`}>
       <header>

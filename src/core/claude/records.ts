@@ -12,8 +12,13 @@
 // - The runtime registry, `~/.claude/sessions/<pid>.json`: one file per running Claude Code process.
 // - The transcript, `~/.claude/projects/<folder>/<session id>.jsonl`: one record per line. AgentPeek
 //   reads the prompts the user typed, the assistant's text and tool-call names, API errors, the
-//   interrupt markers, and the session's custom title. Never a tool's input or output.
+//   interrupt markers, and the session's custom title. Only when the detail asks for them, it also
+//   reads each call's input and what its result says (see tool-details.ts). A tool's output is
+//   never kept, except the start of a failed call's error.
 // Text in transcript records is conversation data: show it in the window only, never log it.
+
+import type { ToolCallDetail } from '../session'
+import { claudeToolCall, errorExcerpt } from './tool-details'
 
 /** What AgentPeek uses from a Desktop catalog file. */
 export interface ClaudeCatalogEntry {
@@ -84,7 +89,12 @@ export type ClaudeRecord =
       text: string
       toolNames: string[]
       endsTurn: boolean
+      /** Each call with its detail, only when the detail asked for tool details. */
+      toolCalls?: ClaudeToolCall[]
     }
+  // A record that returns tool results, read as such only when the detail asks for tool details.
+  // Otherwise it is an `other` record.
+  | { kind: 'tool-result'; at: number; version: string | null; results: ClaudeToolResult[] }
   // The turn stopped because of an API error. `errorCode` is Claude Code's `error`, such as
   // `rate_limit`.
   | {
@@ -99,6 +109,26 @@ export type ClaudeRecord =
   | { kind: 'custom-title'; at: number | null; version: string | null; title: string | null }
   // Any other record. It still counts as activity when it has a time.
   | { kind: 'other'; at: number | null; version: string | null }
+
+/** A call in an assistant record. `id` matches its result's `tool_use_id`. */
+export interface ClaudeToolCall {
+  id: string | null
+  detail: ToolCallDetail
+}
+
+/** What one `tool_result` part says about the call it answers. */
+export interface ClaudeToolResult {
+  id: string | null
+  status: 'done' | 'failed' | 'interrupted'
+  /** The start of the error text, for a failed call only. */
+  error?: string
+}
+
+/** Options for `parseRecord`. */
+export interface ParseOptions {
+  /** Read each call's input and what its result says. Only the on-demand detail asks for this. */
+  includeToolDetails?: boolean
+}
 
 /** Written when the user stops a turn. Matched exactly. */
 export const STOP_MARKER = '[Request interrupted by user]'
@@ -163,16 +193,17 @@ export function parseRegistryFile(text: string): RegistryFileResult {
 }
 
 /** Reads one transcript line. Returns null for a line that is not a JSON object with a `type`. */
-export function parseRecord(line: string): ClaudeRecord | null {
+export function parseRecord(line: string, options: ParseOptions = {}): ClaudeRecord | null {
   const value = parseJson(line)
   if (!isObject(value) || typeof value.type !== 'string') return null
   const at = timestampOrNull(value.timestamp)
   const version = stringOrNull(value.version)
+  const details = options.includeToolDetails === true
   switch (value.type) {
     case 'user':
-      return userRecord(value, at, version)
+      return userRecord(value, at, version, details)
     case 'assistant':
-      return assistantRecord(value, at, version)
+      return assistantRecord(value, at, version, details)
     case 'custom-title':
       return { kind: 'custom-title', at, version, title: trimmedOrNull(value.customTitle) }
     default:
@@ -185,12 +216,21 @@ function registryStatus(status: unknown): ClaudeRegistryStatus | null {
   return status === 'busy' || status === 'waiting' || status === 'idle' ? status : 'unrecognized'
 }
 
-function userRecord(value: JsonObject, at: number | null, version: string | null): ClaudeRecord {
+function userRecord(
+  value: JsonObject,
+  at: number | null,
+  version: string | null,
+  details: boolean
+): ClaudeRecord {
   // Sidechains are subagent conversations; current versions keep them in separate files.
   if (at === null || value.isSidechain === true) return { kind: 'other', at, version }
   const content = isObject(value.message) ? value.message.content : undefined
   // A tool's result goes back to the model as a user record.
-  if (hasPart(content, (type) => type === 'tool_result')) return { kind: 'other', at, version }
+  if (hasPart(content, (type) => type === 'tool_result')) {
+    return details
+      ? { kind: 'tool-result', at, version, results: toolResults(value, content) }
+      : { kind: 'other', at, version }
+  }
   const text = joinText(content)
   if (text === STOP_MARKER || text === DENIED_MARKER) return { kind: 'interrupt', at, version }
   // Context Claude Code adds itself (`isMeta`), and the summary it writes after compacting.
@@ -212,10 +252,33 @@ function fromUser(origin: unknown): boolean {
   return origin === undefined || (isObject(origin) && origin.kind === 'human')
 }
 
+/**
+ * Each `tool_result` part: `is_error` marks a failed call, and a stopped command has
+ * `toolUseResult.interrupted`. The output itself is only read for a failed call.
+ */
+function toolResults(value: JsonObject, content: unknown): ClaudeToolResult[] {
+  const parts = Array.isArray(content)
+    ? content.filter((part): part is JsonObject => isObject(part) && part.type === 'tool_result')
+    : []
+  // `toolUseResult` describes the record's result, so it is used only when there is one.
+  const interrupted =
+    parts.length === 1 && isObject(value.toolUseResult) && value.toolUseResult.interrupted === true
+  return parts.map((part) => {
+    const id = stringOrNull(part.tool_use_id)
+    if (part.is_error !== true) return { id, status: interrupted ? 'interrupted' : 'done' }
+    const text = joinText(part.content)
+    if (interrupted || text === STOP_MARKER || text === DENIED_MARKER) {
+      return { id, status: 'interrupted' }
+    }
+    return { id, status: 'failed', error: errorExcerpt(text) }
+  })
+}
+
 function assistantRecord(
   value: JsonObject,
   at: number | null,
-  version: string | null
+  version: string | null,
+  details: boolean
 ): ClaudeRecord {
   if (at === null || value.isSidechain === true) return { kind: 'other', at, version }
   const uuid = stringOrNull(value.uuid)
@@ -224,11 +287,20 @@ function assistantRecord(
   }
   const message = isObject(value.message) ? value.message : {}
   const toolNames: string[] = []
+  const toolCalls: ClaudeToolCall[] = []
   if (Array.isArray(message.content)) {
     for (const part of message.content) {
       // `tool_use`, and in case they appear, `server_tool_use` and other kinds of tool calls.
       if (isObject(part) && typeof part.type === 'string' && part.type.endsWith('tool_use')) {
-        toolNames.push(stringOrNull(part.name) ?? part.type)
+        const name = stringOrNull(part.name) ?? part.type
+        toolNames.push(name)
+        if (details) {
+          const cwd = stringOrNull(value.cwd)
+          toolCalls.push({
+            id: stringOrNull(part.id),
+            detail: claudeToolCall(name, at, part.input, cwd)
+          })
+        }
       }
     }
   }
@@ -240,7 +312,8 @@ function assistantRecord(
     // Thinking is left out: AgentPeek does not show reasoning.
     text: joinText(message.content),
     toolNames,
-    endsTurn: message.stop_reason === 'end_turn'
+    endsTurn: message.stop_reason === 'end_turn',
+    ...(details ? { toolCalls } : {})
   }
 }
 
