@@ -18,6 +18,7 @@ import {
   index,
   prompt,
   assistant,
+  claudeToolDetailCalls,
   registry
 } from './records.mjs'
 
@@ -131,7 +132,8 @@ async function createCodex(home, now) {
 async function createClaude(home, now) {
   for (const [i, name] of ['busy', 'stopped', 'apiError', 'dead'].entries()) {
     const at = now - 60000 - i * 1000
-    await writeLines(transcriptPath(home, IDS[name]), [prompt(IDS[name], at)], at)
+    const calls = name === 'busy' ? claudeToolDetailCalls(IDS[name], at + 1) : []
+    await writeLines(transcriptPath(home, IDS[name]), [prompt(IDS[name], at), ...calls], at)
     await writeLines(registryPath(home, name), [registry(name, 'busy', at)], at)
     await catalog(home, IDS[name], `Fixture Claude ${name}`, at)
   }

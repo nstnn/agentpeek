@@ -32,7 +32,7 @@ import {
   toolResultLine,
   VERSION
 } from '../../core/claude/test-records'
-import type { SessionFacts } from '../../core/session'
+import type { SessionFacts, ToolCallDetail } from '../../core/session'
 import { type AccessGate, createAccessGate } from './access'
 import { claudePaths } from './claude-files'
 import type { ProcessProbe } from './claude-process'
@@ -145,6 +145,11 @@ function finishedSession(replyUuid: string, start = T0): string[] {
   ]
 }
 
+/** A call whose recorded input is an empty object, as in the synthetic records. */
+function emptyCall(name: string, at: number, result: Partial<ToolCallDetail>): ToolCallDetail {
+  return { name, at, input: '', inputLength: 0, nestedNames: null, summary: null, ...result }
+}
+
 function ids(facts: readonly SessionFacts[]): string[] {
   return facts.map((fact) => fact.key.id)
 }
@@ -233,10 +238,26 @@ describe('the observed format (fixture claude-2.1.295)', () => {
           at: second(2)
         },
         { kind: 'reply', text: 'Synthetic note: I will look at the folder.', at: second(4) },
-        { kind: 'tool-calls', count: 2, names: ['Bash', 'Read'], at: second(5) },
+        {
+          kind: 'tool-calls',
+          count: 2,
+          names: ['Bash', 'Read'],
+          at: second(5),
+          calls: [
+            emptyCall('Bash', second(5), { status: 'done' }),
+            emptyCall('Read', second(7), { status: 'done' })
+          ]
+        },
         { kind: 'reply', text: 'Synthetic answer: the folder holds two files.', at: second(9) },
         { kind: 'prompt', text: 'Synthetic prompt: fetch the synthetic page.', at: second(62) },
-        { kind: 'tool-calls', count: 1, names: ['WebFetch'], at: second(64) }
+        {
+          kind: 'tool-calls',
+          count: 1,
+          names: ['WebFetch'],
+          at: second(64),
+          // The session waits on a permission prompt for this call.
+          calls: [emptyCall('WebFetch', second(64), { status: 'pending' })]
+        }
       ]
     })
     expect(await source.recentMessages({ tool: 'claude', id: report }, 20)).toEqual({
@@ -246,7 +267,15 @@ describe('the observed format (fixture claude-2.1.295)', () => {
         { kind: 'prompt', text: 'Synthetic prompt: summarize the notes.', at: second(120) },
         { kind: 'reply', text: 'Synthetic summary.', at: second(125) },
         { kind: 'prompt', text: 'Synthetic prompt: write a long report.', at: second(180) },
-        { kind: 'tool-calls', count: 1, names: ['Write'], at: second(182) },
+        {
+          kind: 'tool-calls',
+          count: 1,
+          names: ['Write'],
+          at: second(182),
+          calls: [
+            emptyCall('Write', second(182), { status: 'failed', error: 'User rejected tool use' })
+          ]
+        },
         { kind: 'prompt', text: 'Synthetic prompt: try a shorter report.', at: second(240) },
         { kind: 'reply', text: 'Synthetic note about the finished task.', at: second(305) },
         { kind: 'prompt', text: 'Synthetic prompt: one more question.', at: second(360) }
@@ -981,7 +1010,13 @@ describe('recentMessages', () => {
       kind: 'messages',
       hasOlder: true,
       messages: [
-        { kind: 'tool-calls', count: 1, names: ['Read'], at: T0 + 2 * SECOND },
+        {
+          kind: 'tool-calls',
+          count: 1,
+          names: ['Read'],
+          at: T0 + 2 * SECOND,
+          calls: [emptyCall('Read', T0 + 2 * SECOND, { status: 'done' })]
+        },
         { kind: 'reply', text: 'Synthetic answer.', at: T0 + 4 * SECOND }
       ]
     })

@@ -67,6 +67,20 @@ it('bootstraps both observed formats, caps each tool, baselines old replies and 
   expect(
     long.messages.some((m) => m.kind === 'tool-calls' && m.names.includes('synthetic_tool'))
   ).toBe(true)
+  const busy = await service.recentMessages(key('busy'), 20)
+  const calls = busy.messages.find((m) => m.kind === 'tool-calls')?.calls ?? []
+  expect(calls.map((call) => call.status)).toEqual([
+    'done',
+    'done',
+    'done',
+    'failed',
+    'done',
+    'done',
+    'pending'
+  ])
+  expect(calls.map((call) => call.name)).toContain('web_search')
+  expect(calls[1].inputFormat).toBe('diff')
+  expect(calls[5].inputLength).toBeGreaterThan(calls[5].input.length)
   const hostile = await service.recentMessages(key('hostile'), 20)
   expect(hostile.messages.some((m) => m.kind === 'reply' && m.text === HOSTILE)).toBe(true)
 })

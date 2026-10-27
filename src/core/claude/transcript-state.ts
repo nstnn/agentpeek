@@ -68,6 +68,7 @@ export function foldClaudeRecords(
         customTitle = record.title
         break
       case 'interrupt':
+      case 'tool-result':
       case 'other':
         // A stop or a denied permission ends the turn with no reply and no error (TASK-003).
         break
@@ -89,6 +90,7 @@ export function marksTurn(record: ClaudeRecord): boolean {
     case 'assistant':
       return record.endsTurn
     case 'custom-title':
+    case 'tool-result':
     case 'other':
       return false
   }

@@ -9,6 +9,7 @@ import {
   type ClaudeCatalogEntry,
   type ClaudeRecord,
   type ClaudeRegistryEntry,
+  type ParseOptions,
   parseCatalogFile,
   parseRecord,
   parseRegistryFile,
@@ -523,7 +524,7 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
         maxLines: ALL_LINES,
         maxBytes: MESSAGES_TAIL_BYTES
       })
-      const messages = claudeMessages(parseRecords(tail.lines))
+      const messages = claudeMessages(parseRecords(tail.lines, { includeToolDetails: true }))
       const count = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 0
       return {
         kind: 'messages',
@@ -550,10 +551,10 @@ function newTranscript(path: string): TrackedTranscript {
   return { path, modifiedAt: 0, cursor: null, state: EMPTY_CLAUDE_TRANSCRIPT_STATE, status: 'read' }
 }
 
-function parseRecords(lines: readonly string[]): ClaudeRecord[] {
+function parseRecords(lines: readonly string[], options: ParseOptions = {}): ClaudeRecord[] {
   const records: ClaudeRecord[] = []
   for (const line of lines) {
-    const record = parseRecord(line)
+    const record = parseRecord(line, options)
     if (record !== null) records.push(record)
   }
   return records
