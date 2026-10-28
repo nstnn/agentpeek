@@ -554,8 +554,9 @@ function MessageText({
         scroller.scrollTop +=
           element.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 8
       }
-      // Chromium may continue the earlier PageDown animation after an immediate jump.
-      // Re-align after it settles, but cancel as soon as the user starts another action.
+      // Chromium may continue the earlier PageDown animation after an immediate jump, and
+      // even after a re-align. Re-align each time it settles until the start stays put,
+      // but cancel as soon as the user starts another action.
       let timer: number | undefined
       const inputs = ['wheel', 'keydown', 'pointerdown', 'touchstart'] as const
       const cancel = () => {
@@ -567,8 +568,9 @@ function MessageText({
       const schedule = () => {
         window.clearTimeout(timer)
         timer = window.setTimeout(() => {
-          cancel()
           align()
+          // A further scroll reschedules; a quiet interval ends the alignment.
+          timer = window.setTimeout(cancel, 100)
         }, 100)
       }
       cancelAlignment.current = cancel
