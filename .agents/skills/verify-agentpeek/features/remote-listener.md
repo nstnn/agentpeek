@@ -1,6 +1,6 @@
 # Remote View listener
 
-When Remote View is on in AgentPeek's saved settings, AgentPeek listens on `127.0.0.1` at the saved port, which the owner's `tailscale serve` publishes inside their tailnet. It answers only requests that carry the saved Tailscale login and Mac address the way Serve sends them, serves the viewer page and one status stream of redacted status, and ends that stream when AgentPeek quits. It is off by default: a fresh profile opens no socket. The stream shows only the exact folders saved as shared, and a source turned off in Settings leaves it at once. There is no window control for Remote View itself yet; Settings > Remote View comes with TASK-016.
+When Remote View is on in AgentPeek's saved settings, AgentPeek listens on `127.0.0.1` at the saved port, which the owner's `tailscale serve` publishes inside their tailnet. It answers only requests that carry the saved Tailscale login and Mac address the way Serve sends them, serves the viewer page and one status stream of redacted status, and ends that stream when AgentPeek quits. It is off by default: a fresh profile opens no socket. The stream shows only the exact folders saved as shared, and a source turned off in Settings leaves it at once. Settings > Remote View turns it on and off and edits the same settings; see [Remote View settings](./remote-settings.md).
 
 ## Sub-features
 
@@ -16,7 +16,7 @@ When Remote View is on in AgentPeek's saved settings, AgentPeek listens on `127.
 
 ## How to get to it (user POV)
 
-- Today only through AgentPeek's saved state: `remote-view.json` in its state folder with `enabled: true`, a login, a Mac address, a port and the shared folders. AgentPeek reads it at launch.
+- Settings > Remote View (see [Remote View settings](./remote-settings.md)), or, for these recipes, AgentPeek's saved state: `remote-view.json` in its state folder with `enabled: true`, a login, a Mac address, a port and the shared folders. AgentPeek reads it at launch.
 - A source is turned off in the window: Settings > Sources > Monitor Codex. A viewer reaches it through the owner's `tailscale serve`; in verification, `curl` sends the headers Serve would add.
 
 ## Driving it with agentpeek.mjs

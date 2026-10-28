@@ -23,7 +23,8 @@ import { loadViewerFiles } from './viewer-files'
 
 // Remote View lifecycle (TASK-014): loads the saved settings, runs at most one listener, and turns
 // it on, off and over to new connection settings. It is part of the open app, never a background
-// process: AgentPeek's quit closes it with the sessions service. Settings UI is TASK-016.
+// process: AgentPeek's quit closes it with the sessions service. The Settings dialog reaches it
+// through the typed IPC in `src/main/ipc.ts` (TASK-016).
 //
 // Sharing policy (TASK-015): the saved folders and title option are the only policy. The listener
 // reads it, and the generation, when it projects each status, so nothing projected under an older
@@ -178,19 +179,28 @@ export function createRemoteView(options: RemoteViewOptions) {
     return { ok: false, error }
   }
 
+  /** Reads the settings and, if Remote View was on at quit, turns it on again. */
+  async function open(): Promise<void> {
+    const load = await loadRemoteSettings(options.folder)
+    loading = false
+    if (closing || !load.ok) return
+    settings = load.settings
+    applySharing()
+    if (!settings.enabled || !isConfigured(settings)) return
+    const op = ++epoch
+    const error = await listen(op)
+    if (error === null) resumed = true
+    else if (error !== 'cancelled') failStart(error)
+  }
+
   return {
-    /** Reads the settings and, if Remote View was on at quit, turns it on again. */
-    async open(): Promise<void> {
-      const load = await loadRemoteSettings(options.folder)
-      loading = false
-      if (closing || !load.ok) return
-      settings = load.settings
-      applySharing()
-      if (!settings.enabled || !isConfigured(settings)) return
-      const op = ++epoch
-      const error = await listen(op)
-      if (error === null) resumed = true
-      else if (error !== 'cancelled') failStart(error)
+    open,
+
+    /** Try Again after a load failure: reads the file again, as at launch. Otherwise does nothing. */
+    async retryLoad(): Promise<void> {
+      if (closing || loading || settings) return
+      loading = true
+      await open()
     },
 
     /** Saves "on" first, then listens. */
@@ -255,6 +265,8 @@ export function createRemoteView(options: RemoteViewOptions) {
         next.ownerLogin !== previous.ownerLogin ||
         next.hostName !== previous.hostName ||
         next.port !== previous.port
+      // A start error was about the old values; the status must not repeat it with the new ones.
+      if (changed) startError = null
       if (!listener || !changed) return { ok: true }
       resumed = false
       await stopListener('access-changed')

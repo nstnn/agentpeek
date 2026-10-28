@@ -1,6 +1,6 @@
 # Settings and appearance
 
-Settings is fixed at the bottom of the expanded sidebar or icon rail and opens an in-window modal. Appearance offers System (default), Light and Dark, applies immediately and saves automatically across launches. Sources offers independent monitoring switches and each tool's actual health; see [Source monitoring](./source-monitoring.md). Close or Escape returns to the retained reading workspace; conversations covered by Settings do not acknowledge replies.
+Settings is fixed at the bottom of the expanded sidebar or icon rail and opens an in-window modal. Appearance offers System (default), Light and Dark, applies immediately and saves automatically across launches. Sources offers independent monitoring switches and each tool's actual health; see [Source monitoring](./source-monitoring.md). Remote View follows Sources; see [Remote View settings](./remote-settings.md). Close or Escape returns to the retained reading workspace; conversations covered by Settings do not acknowledge replies.
 
 ## Sub-features
 

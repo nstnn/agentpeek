@@ -11,6 +11,7 @@ import type { AgentPeekApi, AppSnapshot } from '../../shared/api'
 import { THEMES, type Theme } from '../../shared/preferences'
 import { AGENT_TOOLS, type AgentTool } from '../../core/tools'
 import { healthCopy, toolName } from './session-display'
+import { RemoteViewSettings } from './RemoteViewSettings'
 
 const LABELS = { system: 'System', light: 'Light', dark: 'Dark' }
 
@@ -246,6 +247,7 @@ export function SettingsDialog({
           </p>
         )}
       </section>
+      <RemoteViewSettings api={api} snapshot={snapshot} />
       {feedback}
     </dialog>
   )

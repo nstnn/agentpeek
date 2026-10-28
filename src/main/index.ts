@@ -202,7 +202,9 @@ if (!app.requestSingleInstanceLock()) {
         pageUrl: rendererPageUrl(),
         controller,
         preferences,
-        setSourceEnabled: service.setSourceEnabled
+        setSourceEnabled: service.setSourceEnabled,
+        remote,
+        copyText: (text) => systemActions.copyText(text)
       })
       mainWindow.on('focus', () => lifecycle?.focus())
       mainWindow.on('resize', updateMenu)
