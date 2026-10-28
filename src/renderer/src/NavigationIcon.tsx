@@ -4,7 +4,7 @@ import type { JSX } from 'react'
 export function NavigationIcon({
   kind
 }: {
-  kind: 'views' | 'sessions' | 'active' | 'all'
+  kind: 'views' | 'sessions' | 'active' | 'inbox' | 'all'
 }): JSX.Element {
   return (
     <svg
@@ -22,9 +22,11 @@ export function NavigationIcon({
         </>
       ) : kind === 'active' ? (
         <>
-          <path d="M10 2.5 18 17H2Z" />
-          <path d="M10 7v5m0 1.5v1" />
+          <circle cx="10" cy="10" r="7.5" />
+          <path d="m8 6.5 5 3.5-5 3.5Z" />
         </>
+      ) : kind === 'inbox' ? (
+        <path d="m2.5 11 3-7h9l3 7v5h-15Zm0 0h5l1.5 2h2l1.5-2h5" />
       ) : (
         <>
           <path d="M7 5h10M7 10h10M7 15h10" />

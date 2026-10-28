@@ -9,10 +9,16 @@ AgentPeek remembers the window's size, position, maximized state and macOS Full 
 for the next launch. If a display is disconnected, the restored window fits an available display.
 
 **Status: Phase 1 implemented; final acceptance pending.** The app has live session lists,
-Active/Pinned/All Sessions views, tool filters, source health, safe message detail, pin/read
+Active/Inbox/Pinned/All Sessions views, tool filters, source health, safe message detail, pin/read
 actions, two session panes, keyboard navigation and a local macOS package. Automated tests and approved synthetic
 built-app checks cover the implemented paths. VoiceOver speech, physical sleep/wake, external
 app/browser actions and a complete real-session comparison still need acceptance evidence.
+
+**Active** contains only running sessions. Finished unread replies and errors move to **Inbox**;
+waiting sessions and unknown states remain available in **All Sessions**. Reading a result clears its
+Inbox count; its selected row stays while being read. Finished rows leave Active immediately,
+while their open detail stays available. Restarting a session moves it back to Active.
+View shortcuts follow sidebar order: ⌘1 Active, ⌘2 Inbox, ⌘3 Pinned, ⌘4 All Sessions.
 
 Sessions are grouped by **Project** by default. Click a project heading to collapse or expand it;
 its count, attention and running summaries stay visible while collapsed. **Group by → Status**
@@ -58,7 +64,7 @@ Navigation slides over 220 ms with a gentle deceleration; Reduce Motion makes it
 Connected tools appear as a dot and name directly above Settings; the rail uses their initials.
 Click a connected source to open Settings, where all tools and their current status are shown.
 With no connected source, the expanded sidebar shows No sources connected. The rail keeps
-Active attention counts and view selection. Choosing a view opens
+Active running counts, Inbox counts and view selection. Choosing a view opens
 its filtered list while retaining the sessions being read.
 
 The layout uses the remaining width after navigation: with the default 190-pixel sidebar,

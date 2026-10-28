@@ -72,6 +72,7 @@ describe('sessions interface', () => {
       const idle = session('other', { activity: { state: 'idle' } })
       const error = { ...idle, attention: { waiting: false, error: true, newReply: false } }
       const fake = mount(snapshot([a, mode === 'remove' ? error : idle]))
+      act(() => fake.command('view:all'))
       const row = await screen.findByRole('option', { name: /Synthetic anchor/ })
       const list = screen.getByRole('listbox')
       const head = list.firstElementChild as HTMLElement
@@ -108,10 +109,7 @@ describe('sessions interface', () => {
       expect(row.getAttribute('aria-selected')).toBe('true')
       expect(
         screen.getByRole('button', {
-          name:
-            mode === 'insert'
-              ? 'Active, 1 session needs attention'
-              : 'Active, 0 sessions need attention'
+          name: mode === 'insert' ? 'Inbox 1' : 'Inbox 0'
         })
       ).toBeTruthy()
     }
@@ -125,12 +123,12 @@ describe('sessions interface', () => {
     const fake = mount(snapshot([session('running'), waiting]))
     expect(screen.getByText('Reading sessions…')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /source: Connected/ })).toBeNull()
-    await screen.findByRole('option', { name: /Synthetic waiting/ })
+    await screen.findByRole('option', { name: /Synthetic running/ })
     expect(screen.getAllByRole('group').map((g) => g.getAttribute('aria-labelledby'))).toEqual([
-      'group-waiting',
       'group-running'
     ])
-    expect(screen.getByRole('button', { name: 'Active, 1 session needs attention' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Active 1' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Inbox 1' })).toBeTruthy()
     expect(screen.getByRole('listbox').getAttribute('aria-activedescendant')).toBeNull()
     expect(fake.api.markRead).not.toHaveBeenCalled()
     expect(screen.getByText(/Fixture data/).textContent).toContain('/synthetic/home')
@@ -158,10 +156,11 @@ describe('sessions interface', () => {
     expect(fake.api.setSelection).toHaveBeenLastCalledWith(null, { secondPaneOpen: false })
   })
 
-  it('keeps a selected row, focus, scroll and group when it becomes idle or disappears', async () => {
+  it('keeps a selected All Sessions row, focus, scroll and group when it becomes idle or disappears', async () => {
     const a = session('a')
     const b = session('b')
     const fake = mount(snapshot([a, b]))
+    act(() => fake.command('view:all'))
     const row = await screen.findByRole('option', { name: /Synthetic a/ })
     await userEvent.click(row)
     const list = screen.getByRole('listbox')
@@ -192,8 +191,8 @@ describe('sessions interface', () => {
       { tool: 'codex', id: 'b' },
       { secondPaneOpen: false }
     )
-    screen.getByRole('button', { name: 'Active, 0 sessions need attention' }).focus()
-    await userEvent.keyboard('{ArrowDown}')
+    screen.getByRole('button', { name: 'Active 2' }).focus()
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}')
     expect(screen.getByRole('heading', { name: 'Pinned', level: 1 })).toBeTruthy()
     expect(document.activeElement?.textContent).toContain('Pinned')
     screen.getByRole('radio', { name: 'All 0' }).focus()

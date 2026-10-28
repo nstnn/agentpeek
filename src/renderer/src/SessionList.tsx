@@ -154,7 +154,7 @@ export function SessionList({
     <div
       className="list-scroll"
       role={projectMode ? 'tree' : 'listbox'}
-      aria-label={`${state.view === 'all' ? 'All' : state.view === 'pinned' ? 'Pinned' : 'Active'} sessions`}
+      aria-label={`${state.view === 'all' ? 'All' : state.view === 'pinned' ? 'Pinned' : state.view === 'inbox' ? 'Inbox' : 'Active'} sessions`}
       tabIndex={0}
       ref={list}
       hidden={hidden}

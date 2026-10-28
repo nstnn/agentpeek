@@ -233,7 +233,8 @@ describe('two detail slots', () => {
       displayedGroups(state)
         .flatMap((g) => g.sessions)
         .filter((s) => s.key.id === 'a')
-    ).toHaveLength(1)
+    ).toHaveLength(0)
+    expect(state.listSelection).toBeNull()
     expect(buildView(state.snapshot!.sessions, state.view, state.filter).toolCounts).toEqual({
       all: 2,
       codex: 1,

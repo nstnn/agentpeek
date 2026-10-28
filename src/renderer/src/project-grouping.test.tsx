@@ -136,9 +136,7 @@ describe('project grouping', () => {
       attention: { waiting: true, error: false, newReply: false }
     }
     act(() => f.push(snapshot([a, waiting])))
-    expect(header('app').getAttribute('aria-label')).toContain(
-      '2 sessions · 1 need attention · 1 running'
-    )
+    expect(header('app').getAttribute('aria-label')).toContain('1 session · 1 running')
     expect(screen.getByRole('tree').getAttribute('aria-activedescendant')).toBe(header('app').id)
     await userEvent.click(screen.getByRole('radio', { name: 'Codex 1' }))
     expect(header('app').getAttribute('aria-expanded')).toBe('false')
@@ -198,6 +196,7 @@ describe('project grouping', () => {
     const a = projectSession('a', '/work/app')
     const b = projectSession('b', '/work/app')
     const f = mount([a, b])
+    act(() => f.store.setView('all'))
     await screen.findByRole('tree')
     await userEvent.click(row('b'))
     const selectedPane = f.store.getSnapshot().selection
