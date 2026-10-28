@@ -165,6 +165,12 @@ It uses temporary fixture/profile folders,
 removes them after the run, and retains evidence in ignored `test-results/e2e/`. It does not
 replace manual system, accessibility, packaged-build or consented real-data acceptance.
 
+To keep using the Mac during a run, set `AGENTPEEK_E2E_BACKGROUND=1`, for example
+`AGENTPEEK_E2E_BACKGROUND=1 npm run e2e`. The test window is then invisible, ignores the
+mouse except during a spec's own drag, never takes focus and has no Dock icon. The test
+bootstrap reports the window as focused instead. Because focus is emulated, a normal run is
+still needed for acceptance evidence.
+
 ## Project layout
 
 AgentPeek follows Electron's process model. Only the main process touches files and the system; the window shows what the main process sends it.

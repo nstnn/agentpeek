@@ -323,6 +323,22 @@ describe('session detail', () => {
         vi.advanceTimersByTime(150)
       })
       expect(region.scrollTop).toBe(392)
+      // The animation can resume after the first re-align; align again once it settles.
+      region.scrollTop = 1500
+      fireEvent.scroll(region)
+      act(() => {
+        vi.advanceTimersByTime(150)
+      })
+      expect(region.scrollTop).toBe(392)
+      act(() => {
+        vi.advanceTimersByTime(300)
+      })
+      region.scrollTop = 1600
+      fireEvent.scroll(region)
+      act(() => {
+        vi.advanceTimersByTime(150)
+      })
+      expect(region.scrollTop).toBe(1600)
       fireEvent.click(toggle)
       region.scrollTop = 900
       fireEvent.scroll(region)

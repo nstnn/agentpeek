@@ -7,6 +7,7 @@ import { _electron, expect, test } from '@playwright/test'
 import { createFixture, removeFixture } from '../scripts/fixture/home.mjs'
 import { simulate } from '../scripts/fixture/simulate.mjs'
 import { profileProcesses, stopProfile } from './cleanup.mjs'
+import { seedDefaultWindow } from './window-state.mjs'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 
@@ -15,6 +16,7 @@ const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 test('built app: fixture bootstrap, safe detail, split navigation/read isolation, persisted pin and cleanup', async ({}, info) => {
   await access(join(ROOT, 'out/main/index.js'))
   const fixture = await createFixture()
+  await seedDefaultWindow(fixture.userData)
   const evidence = { launches: [], actions: [], requests: [], cleanup: null }
   let application
   let page
@@ -22,7 +24,8 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     await page.screenshot({ path: info.outputPath(`${name}.png`) })
     await writeFile(info.outputPath(`${name}.aria.txt`), await page.locator('body').ariaSnapshot())
   }
-  const dragSession = async (source, target, name, cancel = false) => {
+  // Reading is gated on native window focus, which other apps can take during a run.
+  const focusWindow = async () => {
     await application.evaluate(({ app, BrowserWindow }) => {
       app.focus({ steal: true })
       BrowserWindow.getAllWindows()[0].focus()
@@ -32,6 +35,10 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
         application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFocused())
       )
       .toBe(true)
+  }
+  const dragSession = async (source, target, name, cancel = false) => {
+    await focusWindow()
+    await application.evaluate(() => globalThis.agentpeekPointerInput?.(true))
     const cdp = await page.context().newCDPSession(page)
     await source.scrollIntoViewIfNeeded()
     const box = await source.boundingBox()
@@ -88,6 +95,7 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
         clickCount: 1
       })
       await cdp.detach()
+      await application.evaluate(() => globalThis.agentpeekPointerInput?.(false))
     }
   }
   const audit = async () => {
@@ -134,15 +142,7 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     expect(paths).toEqual({ userData: fixture.userData, windows: 1, sandbox: true })
     expect(await page.evaluate(() => typeof globalThis.window.require)).toBe('undefined')
     evidence.launches.push({ pid: application.process().pid, ...paths })
-    await application.evaluate(({ app, BrowserWindow }) => {
-      app.focus({ steal: true })
-      BrowserWindow.getAllWindows()[0].focus()
-    })
-    await expect
-      .poll(() =>
-        application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFocused())
-      )
-      .toBe(true)
+    await focusWindow()
     await expect(page.locator('.app-shell')).toHaveAttribute('data-window-focused', 'true')
   }
   const close = async () => {
@@ -335,15 +335,7 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     await main.getByRole('region').click()
     await page.getByRole('option', { name: /^Fixture Codex long/ }).click()
     await expect(main.getByRole('heading', { level: 2 })).toContainText('Fixture Codex long')
-    await application.evaluate(({ app, BrowserWindow }) => {
-      app.focus({ steal: true })
-      BrowserWindow.getAllWindows()[0].focus()
-    })
-    await expect
-      .poll(() =>
-        application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFocused())
-      )
-      .toBe(true)
+    await focusWindow()
     const replyState = () =>
       page.evaluate(async () => {
         const { sessions } = await globalThis.window.agentpeek.getSnapshot()
@@ -364,6 +356,7 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     await expect(second.getByRole('heading', { level: 2 })).toHaveText('Fixture Codex complete')
     expect(await replyState()).toEqual(unreadReply)
     await save('split-c-b')
+    await focusWindow()
     await second.getByRole('region', { name: 'Right pane recent messages' }).click()
     await expect(second).toHaveAttribute('data-active', 'true')
     await expect.poll(replyState).toEqual({ ...unreadReply, newReply: false })
@@ -423,6 +416,8 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
       Menu.getApplicationMenu().getMenuItemById('session-open-secondary').click()
     )
     await close()
+    // The first launch quit at the compact size; reopen at the default size.
+    await seedDefaultWindow(fixture.userData)
 
     await launch()
     await expect(page.locator('[data-pane=second]')).toHaveCount(0)
