@@ -19,6 +19,7 @@
 
 import type { ToolCallDetail } from '../session'
 import { claudeToolCall, errorExcerpt } from './tool-details'
+import { claudeSkillText } from './skills'
 
 /** What AgentPeek uses from a Desktop catalog file. */
 export interface ClaudeCatalogEntry {
@@ -79,6 +80,8 @@ export type RegistryFileResult =
 export type ClaudeRecord =
   // A prompt the user typed, or a slash command they ran. It starts a turn.
   | { kind: 'prompt'; at: number; version: string | null; text: string }
+  // Injected skill text, read only on the on-demand detail path; never activity facts.
+  | { kind: 'skill'; at: number; version: string | null; path: string; text: string }
   // An assistant record: its text (empty when it has none) and the names of the tools it calls.
   // `endsTurn` is true for the turn's final reply (`stop_reason: end_turn`).
   | {
@@ -128,6 +131,7 @@ export interface ClaudeToolResult {
 export interface ParseOptions {
   /** Read each call's input and what its result says. Only the on-demand detail asks for this. */
   includeToolDetails?: boolean
+  includeSkills?: boolean
 }
 
 /** Written when the user stops a turn. Matched exactly. */
@@ -201,7 +205,7 @@ export function parseRecord(line: string, options: ParseOptions = {}): ClaudeRec
   const details = options.includeToolDetails === true
   switch (value.type) {
     case 'user':
-      return userRecord(value, at, version, details)
+      return userRecord(value, at, version, details, options.includeSkills === true)
     case 'assistant':
       return assistantRecord(value, at, version, details)
     case 'custom-title':
@@ -220,7 +224,8 @@ function userRecord(
   value: JsonObject,
   at: number | null,
   version: string | null,
-  details: boolean
+  details: boolean,
+  skills: boolean
 ): ClaudeRecord {
   // Sidechains are subagent conversations; current versions keep them in separate files.
   if (at === null || value.isSidechain === true) return { kind: 'other', at, version }
@@ -233,6 +238,16 @@ function userRecord(
   }
   const text = joinText(content)
   if (text === STOP_MARKER || text === DENIED_MARKER) return { kind: 'interrupt', at, version }
+  if (
+    skills &&
+    value.isMeta === true &&
+    value.isCompactSummary !== true &&
+    value.isVisibleInTranscriptOnly !== true &&
+    fromUser(value.origin)
+  ) {
+    const skill = claudeSkillText(text)
+    if (skill) return { kind: 'skill', at, version, ...skill }
+  }
   // Context Claude Code adds itself (`isMeta`), and the summary it writes after compacting.
   if (value.isMeta === true || value.isCompactSummary === true)
     return { kind: 'other', at, version }

@@ -9,7 +9,7 @@ Wide selection shows the session header and recent exchange. Both panes are repl
 - `detail-compact-split`: replacement browse/return, compact keyboard pane selector, hidden-pane deferral and focus/scroll preservation through resize.
 - `detail-messages`: immediate header, last 20 messages, Latest exchange, times and tool summaries.
 - `detail-tool-calls`: collapsed Codex group/call disclosures, recorded input/time, literal nested names with execution uncertainty, missing/empty/truncated input, capped groups and live-state retention. Claude calls lead with a summary line, show tool name and status (Failed, Interrupted, Running/Waiting, No result), a failed call's short error, Edit diffs and Open Claude truncation notices.
-- `detail-skill-content`: explicit Codex skill references become read-only expandable cards; follow skill-content.md for source labels, retry and isolation.
+- `detail-skill-content`: explicit Codex references and recognized Claude slash skills become read-only expandable cards; follow skill-content.md for source labels, retry and isolation.
 - `detail-loading`: loading, partial, empty, failed and Try Again states.
 - `detail-markdown`: GFM, literal HTML, image alt text and safe web-link dispatch.
 - `detail-title`: single-pane two-line initial title with the full accessible heading and width-aware Show Full Title / Show Less Title.

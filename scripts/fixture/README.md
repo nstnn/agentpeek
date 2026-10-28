@@ -41,6 +41,7 @@ the expected UI result between steps. Fresh fixtures avoid stale state between s
 | `skill-references`               | Codex retry: append explicit skill cards for recorded, current, missing, long, empty and blocked content. Use the helper's copied home so paths stay isolated. |
 | `skill-local-updated`            | Replace the generated current local skill; Reload Skill shows the updated version.                                                                             |
 | `skill-missing-restored`         | Create the generated missing skill; Try Again recovers its current local content.                                                                              |
+| `claude-skill`                   | Claude busy: append a slash skill invocation, synthetic recorded skill copy and reply. The card uses transcript content only.                                  |
 | `claude-waiting`                 | Claude busy: Running → Waiting for you (permission).                                                                                                           |
 | `claude-denied`                  | Claude busy: denied tool result + interrupt, then Idle, no reply/error.                                                                                        |
 | `claude-stopped`                 | Claude stopped: interrupt, then Idle, no reply/error.                                                                                                          |

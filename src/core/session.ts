@@ -1,4 +1,5 @@
 import type { AgentTool } from './tools'
+import type { SkillMention } from './skills'
 
 // The session domain model. Every type here is plain, serializable data (no classes), so the same
 // values can cross the IPC bridge later. Every time is in epoch milliseconds.
@@ -180,7 +181,7 @@ export interface ToolCallDetail {
  * window only, and never logged, stored, or sent anywhere.
  */
 export type SessionMessage =
-  | { kind: 'prompt'; text: string; at: number }
+  | { kind: 'prompt'; text: string; at: number; skill?: SkillMention }
   | { kind: 'reply'; text: string; at: number }
   // Calls hold bounded details on the detail path. Never output, except a failed call's error.
   | { kind: 'tool-calls'; count: number; names: string[]; at: number; calls?: ToolCallDetail[] }

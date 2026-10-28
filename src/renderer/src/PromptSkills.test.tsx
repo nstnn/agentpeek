@@ -20,6 +20,33 @@ function setup(visible = true) {
 }
 
 describe('prompt skill cards', () => {
+  it('uses a source-authorized Claude reference, preserves arguments and reuses the disclosure', async () => {
+    const f = setup()
+    f.context.sessionKey = { tool: 'claude', id: 'synthetic' }
+    const claudeText = '/pr\nShow the synthetic result.'
+    f.api.getSkill.mockResolvedValue({
+      kind: 'skill',
+      source: 'conversation',
+      text: '# Claude synthetic skill',
+      description: null,
+      truncated: false
+    })
+    const view = render(<PromptSkills text={claudeText} context={f.context} onLink={f.onLink} />)
+    expect(view.container.querySelector('.skill-card')).toBeNull()
+    view.rerender(
+      <PromptSkills
+        text={claudeText}
+        context={{ ...f.context, mention: { name: 'pr', path, start: 0, end: 3 } }}
+        onLink={f.onLink}
+      />
+    )
+    expect(view.container.textContent).toContain('Show the synthetic result.')
+    expect(f.api.getSkill).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByText('pr'))
+    expect(await screen.findByRole('heading', { name: 'Claude synthetic skill' })).toBeTruthy()
+    expect(f.api.getSkill).toHaveBeenCalledWith(f.context.sessionKey, { at: 1, name: 'pr', path })
+    expect(screen.getByText('From this conversation')).toBeTruthy()
+  })
   it('does not turn a clipped code sample or partially visible link into a request', () => {
     const f = setup()
     const code = '`' + text + '`'
