@@ -150,9 +150,11 @@ synthetic fixture overrides, just like development runs.
 
 | Command                     | What it does                                                                                        |
 | --------------------------- | --------------------------------------------------------------------------------------------------- |
-| `npm run typecheck`         | Type-checks the main process and the renderer separately.                                           |
+| `npm run typecheck`         | Type-checks the main process, the renderer and the Remote View page separately.                     |
 | `npm run lint`              | Runs ESLint, then checks formatting with Prettier.                                                  |
 | `npm test`                  | Runs the unit tests with vitest.                                                                    |
+| `npm run test:remote-web`   | Runs only the Remote View page's tests, including its import-boundary check.                        |
+| `npm run build:remote-web`  | Builds only the Remote View page into `out/remote-web/` (`npm run build` includes it).              |
 | `npm run fixture -- create` | Creates an isolated synthetic home for regression checks.                                           |
 | `npm run e2e`               | Opens the built app twice for the Playwright fixture smoke; build first and obtain launch approval. |
 | `npm run format`            | Rewrites files in the Prettier style.                                                               |
@@ -183,8 +185,9 @@ AgentPeek follows Electron's process model. Only the main process touches files 
 | `src/renderer`      | The React interface, in a sandboxed window                                                                    | React, but not Node.js or Electron |
 | `src/core`          | Pure logic shared by the other parts                                                                          | Nothing from Node.js or Electron   |
 | `src/shared`        | Types used on both sides of the bridge                                                                        | Nothing from Node.js or Electron   |
+| `remote/web`        | The Remote View page (in progress, not served yet), a separate Vite build for a browser on another device     | React and `src/core` only          |
 
-ESLint enforces the import rules. Tests sit next to the code they test, as `*.test.ts` or `*.test.tsx`. Renderer component tests use Testing Library in jsdom; source and main-process tests use Node.js.
+ESLint enforces the import rules. Tests sit next to the code they test, as `*.test.ts` or `*.test.tsx`. Renderer and Remote View page component tests use Testing Library in jsdom; source and main-process tests use Node.js.
 
 ## Contributing
 
