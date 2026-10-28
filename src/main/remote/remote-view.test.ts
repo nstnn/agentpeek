@@ -3,9 +3,10 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { StatusFrame } from '../../core/remote/protocol'
+import { REMOTE_LIMITS, type RemoteFrame, type StatusFrame } from '../../core/remote/protocol'
+import type { Session } from '../../core/session'
 import type { RemoteListener, RemoteListenerStart } from './listener'
-import { createSnapshot } from '../../core/snapshot'
+import { createSnapshot, type SessionsSnapshot } from '../../core/snapshot'
 import { testSession } from '../test-support'
 import { accepts, freePort, HOST, OWNER, OWNER_HEADERS, send, subscribe } from './http-test-support'
 import { createRemoteView, type RemoteView } from './remote-view'
@@ -24,21 +25,27 @@ const snapshot = createSnapshot({
 
 const folders: string[] = []
 const views: RemoteView[] = []
-async function setup(saved?: object) {
+async function setup(saved?: object, current: () => SessionsSnapshot = () => snapshot) {
   const folder = await mkdtemp(join(tmpdir(), 'agentpeek-remote-view-'))
   folders.push(folder)
   const port = await freePort()
   if (saved) {
     await writeFile(
       join(folder, REMOTE_SETTINGS_FILE),
-      JSON.stringify({ version: 1, ownerLogin: OWNER, hostName: HOST, port, ...saved })
+      JSON.stringify({
+        version: 1,
+        ownerLogin: OWNER,
+        hostName: HOST,
+        port,
+        sharedWorkspaces: [SHARED],
+        ...saved
+      })
     )
   }
   const view = createRemoteView({
     folder,
     viewerFolder: join(folder, 'no-viewer-build'),
-    snapshot: () => snapshot,
-    sharing: () => ({ sharedWorkspaces: [SHARED], shareTitles: false })
+    snapshot: current
   })
   views.push(view)
   await view.open()
@@ -63,7 +70,14 @@ describe('Remote View off', () => {
     const { folder, view } = await setup()
     expect(view.status()).toEqual({
       state: 'off',
-      settings: { enabled: false, ownerLogin: '', hostName: '', port: 47613 },
+      settings: {
+        enabled: false,
+        ownerLogin: '',
+        hostName: '',
+        port: 47613,
+        sharedWorkspaces: [],
+        shareTitles: false
+      },
       startError: null
     })
     expect(await view.enable()).toEqual({ ok: false, error: 'not-configured' })
@@ -229,6 +243,7 @@ describe('Remote View quit', () => {
         port: 47613,
         streamCount: () => 0,
         publish: vi.fn(),
+        resync: vi.fn(),
         close: closeLate
       }
       finish!({ ok: true, listener: late })
@@ -240,5 +255,187 @@ describe('Remote View quit', () => {
       vi.doUnmock('./listener')
       vi.resetModules()
     }
+  })
+})
+
+// TASK-015: the saved folders and title option are the only policy, applied at every send.
+const OTHER = '/Users/synthetic/projects/other-demo'
+const TITLE = 'SENTINEL-TITLE synthetic plan'
+const row = (id: string, workspacePath: string | null, change: Partial<Session> = {}) =>
+  testSession({
+    key: { tool: 'codex', id: `SENTINEL-RAW-${id}` },
+    summary: { title: `${TITLE} ${id}`, workspacePath, lastActivityAt: 10, toolVersion: null },
+    ...change
+  })
+const listing = (sessions: Session[], takenAt = 2, codex: 'connected' | 'off' = 'connected') =>
+  createSnapshot({
+    sessions,
+    health: {
+      codex: codex === 'off' ? { state: 'off' } : { state: 'connected', lastReadAt: takenAt },
+      claude: { state: 'not-installed' }
+    },
+    localState: { kind: 'available' },
+    firstLaunch: false,
+    fixture: true,
+    takenAt
+  })
+const statusFrames = (frames: RemoteFrame[]) =>
+  frames.filter((frame): frame is StatusFrame => frame.type === 'status')
+const labels = (frame: StatusFrame | undefined) => frame!.status.projects.map((p) => p.label)
+const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
+
+describe('Remote View sharing policy', () => {
+  it('shares nothing until a folder is added, then only that exact listed folder', async () => {
+    const listed = listing([
+      row('exact', SHARED),
+      row('child', `${SHARED}/packages/web`),
+      row('worktree', `${SHARED}-worktree`),
+      row('no-folder', null),
+      row('new', OTHER)
+    ])
+    const { folder, port, view } = await setup(
+      { enabled: true, sharedWorkspaces: [] },
+      () => listed
+    )
+    const viewer = subscribe(port)
+    await expect.poll(() => viewer.frames.length).toBe(1)
+    expect(statusFrames(viewer.frames)[0]!.status.projects).toEqual([])
+    expect(viewer.raw.join('')).not.toContain('SENTINEL')
+
+    for (const workspace of [
+      '/Users/synthetic/projects/never-listed',
+      `${SHARED}/`,
+      `${SHARED}/packages`,
+      'shared-demo',
+      42
+    ]) {
+      expect(await view.shareWorkspace(workspace)).toEqual({
+        ok: false,
+        error: 'unknown-workspace'
+      })
+    }
+    expect(await view.shareWorkspace(SHARED)).toEqual({ ok: true })
+    await expect.poll(() => viewer.frames.length).toBe(2)
+    const [before, after] = statusFrames(viewer.frames)
+    expect(after!.generation).toBeGreaterThan(before!.generation)
+    expect(after!.status.projects).toHaveLength(1)
+    expect(after!.status.projects[0]!.sessions).toHaveLength(1)
+    expect(after!.status.projects[0]!.sessions[0]!.title).toBe('Session 1')
+    const text = viewer.raw.join('')
+    for (const hidden of ['SENTINEL', '/Users/', OTHER]) expect(text).not.toContain(hidden)
+    expect(await savedFile(folder)).toMatchObject({
+      sharedWorkspaces: [SHARED],
+      shareTitles: false
+    })
+  })
+
+  it('adds a folder or turns titles on only once it is saved', async () => {
+    const listed = listing([row('exact', SHARED)])
+    const { folder, port, view } = await setup(
+      { enabled: true, sharedWorkspaces: [] },
+      () => listed
+    )
+    const viewer = subscribe(port)
+    await expect.poll(() => viewer.frames.length).toBe(1)
+    await chmod(folder, 0o500)
+    expect(await view.shareWorkspace(SHARED)).toEqual({ ok: false, error: 'save-failed' })
+    expect(await view.setShareTitles(true)).toEqual({ ok: false, error: 'save-failed' })
+    await wait(REMOTE_LIMITS.minStatusIntervalMs + 100)
+    expect(viewer.frames).toHaveLength(1)
+    expect(view.status()).toMatchObject({ settings: { sharedWorkspaces: [], shareTitles: false } })
+    // A later save never writes a change that failed.
+    await chmod(folder, 0o700)
+    expect(await view.saveConnection(connection(port))).toEqual({ ok: true })
+    expect(await savedFile(folder)).toMatchObject({ sharedWorkspaces: [], shareTitles: false })
+  })
+
+  it('removes a folder at once, dropping a pending send, and keeps it removed when saving fails', async () => {
+    let latest = listing([row('exact', SHARED), row('other', OTHER)], 2)
+    const { folder, port, view } = await setup(
+      { enabled: true, sharedWorkspaces: [SHARED, OTHER] },
+      () => latest
+    )
+    const viewer = subscribe(port)
+    await expect.poll(() => viewer.frames.length).toBe(1)
+    expect(labels(statusFrames(viewer.frames)[0])).toEqual(['other-demo', 'shared-demo'])
+    // New activity in the folder waits for the coalescing interval when the folder is removed.
+    latest = listing(
+      [row('exact', SHARED, { activity: { state: 'running' } }), row('other', OTHER)],
+      3
+    )
+    view.publish(latest)
+    await chmod(folder, 0o500)
+    expect(await view.unshareWorkspace(SHARED)).toEqual({ ok: false, error: 'save-failed' })
+    await expect.poll(() => viewer.frames.length).toBe(2)
+    const [first, replaced] = statusFrames(viewer.frames)
+    expect(replaced!.sentAt - first!.sentAt).toBeLessThan(REMOTE_LIMITS.minStatusIntervalMs)
+    expect(replaced!.generation).toBeGreaterThan(first!.generation)
+    expect(labels(replaced)).toEqual(['other-demo'])
+    await wait(REMOTE_LIMITS.minStatusIntervalMs + 100)
+    expect(viewer.frames).toHaveLength(2)
+    expect(view.status()).toMatchObject({ settings: { sharedWorkspaces: [OTHER] } })
+    expect(await savedFile(folder)).toMatchObject({ sharedWorkspaces: [SHARED, OTHER] })
+    expect(await view.unshareWorkspace(SHARED)).toEqual({ ok: true })
+  })
+
+  it('shares titles only once saved and hides them again at once', async () => {
+    const listed = listing([row('exact', SHARED)])
+    const { folder, port, view } = await setup({ enabled: true }, () => listed)
+    const viewer = subscribe(port)
+    await expect.poll(() => viewer.frames.length).toBe(1)
+    const title = (frame: StatusFrame | undefined) => frame!.status.projects[0]!.sessions[0]!.title
+    expect(await view.setShareTitles('yes')).toEqual({
+      ok: false,
+      error: 'invalid',
+      invalid: ['shareTitles']
+    })
+    expect(await view.setShareTitles(true)).toEqual({ ok: true })
+    expect(await savedFile(folder)).toMatchObject({ shareTitles: true })
+    await expect.poll(() => viewer.frames.length).toBe(2)
+    expect(title(statusFrames(viewer.frames)[1])).toBe(`${TITLE} exact`)
+    // Turned off inside the coalescing interval of the last status: replaced at once.
+    const hiding = view.setShareTitles(false)
+    await expect.poll(() => viewer.frames.length).toBe(3)
+    expect(await hiding).toEqual({ ok: true })
+    const [, shown, hidden] = statusFrames(viewer.frames)
+    expect(hidden!.sentAt - shown!.sentAt).toBeLessThan(REMOTE_LIMITS.minStatusIntervalMs)
+    expect(title(hidden)).toBe('Session 1')
+    expect(hidden!.generation).toBeGreaterThan(shown!.generation)
+  })
+
+  it('clears a source turned off at once, ahead of coalescing', async () => {
+    let latest = listing([row('exact', SHARED)], 2)
+    const { port, view } = await setup({ enabled: true }, () => latest)
+    const viewer = subscribe(port)
+    await expect.poll(() => viewer.frames.length).toBe(1)
+    // Even a snapshot that still lists the source's sessions shares none of them.
+    latest = listing([row('exact', SHARED)], 3, 'off')
+    view.publish(latest)
+    await expect.poll(() => viewer.frames.length).toBe(2)
+    const [first, cleared] = statusFrames(viewer.frames)
+    expect(cleared!.sentAt - first!.sentAt).toBeLessThan(REMOTE_LIMITS.minStatusIntervalMs)
+    expect(cleared!.generation).toBeGreaterThan(first!.generation)
+    expect(cleared!.status.projects).toEqual([{ label: 'shared-demo', sessions: [] }])
+    expect(cleared!.status.sources.codex).toEqual({ state: 'off' })
+  })
+
+  it('keeps every concurrent change and never exceeds 50 folders', async () => {
+    const many = Array.from({ length: 51 }, (_, n) => `/Users/synthetic/projects/p${n}`)
+    const listed = listing(many.map((workspace, n) => row(String(n), workspace)))
+    const { folder, view } = await setup({ enabled: false, sharedWorkspaces: [] }, () => listed)
+    const results = await Promise.all([
+      ...many.map((workspace) => view.shareWorkspace(workspace)),
+      view.setShareTitles(true)
+    ])
+    expect(results.filter((result) => result.ok)).toHaveLength(51)
+    expect(results.filter((result) => !result.ok)).toEqual([
+      { ok: false, error: 'too-many-workspaces' }
+    ])
+    const saved = await savedFile(folder)
+    expect(saved.sharedWorkspaces).toEqual(many.slice(0, 50))
+    expect(saved.shareTitles).toBe(true)
+    expect(view.status()).toMatchObject({ settings: { sharedWorkspaces: many.slice(0, 50) } })
+    await Promise.all([view.unshareWorkspace(many[0]), view.unshareWorkspace(many[1])])
+    expect((await savedFile(folder)).sharedWorkspaces).toEqual(many.slice(2, 50))
   })
 })

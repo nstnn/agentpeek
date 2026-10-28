@@ -1,12 +1,15 @@
 import { randomBytes } from 'node:crypto'
-import type { SessionsSnapshot } from '../../core/snapshot'
 import {
+  isListedWorkspace,
+  isShareableWorkspace,
+  MAX_SHARED_WORKSPACES,
+  narrowsSharing,
   NOTHING_SHARED,
-  startRemoteListener,
-  type RemoteListener,
-  type RemoteSharing,
-  type RemoteStartError
-} from './listener'
+  sourceTurnedOff,
+  type RemoteSharing
+} from '../../core/remote/share-policy'
+import type { SessionsSnapshot } from '../../core/snapshot'
+import { startRemoteListener, type RemoteListener, type RemoteStartError } from './listener'
 import {
   checkConnection,
   isConfigured,
@@ -21,6 +24,12 @@ import { loadViewerFiles } from './viewer-files'
 // Remote View lifecycle (TASK-014): loads the saved settings, runs at most one listener, and turns
 // it on, off and over to new connection settings. It is part of the open app, never a background
 // process: AgentPeek's quit closes it with the sessions service. Settings UI is TASK-016.
+//
+// Sharing policy (TASK-015): the saved folders and title option are the only policy. The listener
+// reads it, and the generation, when it projects each status, so nothing projected under an older
+// policy is ever sent. Narrowing (a folder removed, titles off, a source turned off) applies before
+// anything is awaited: the generation grows, pending sends are dropped and every stream gets a
+// replacement status at once. Widening is saved first, like turning on.
 
 export type RemoteViewError =
   /** Settings are still loading or could not be read; Remote View stays off. */
@@ -31,11 +40,15 @@ export type RemoteViewError =
   | RemoteStartError
   /** A later turn on, off, settings change or quit replaced this one. */
   | 'cancelled'
+  /** The folder is not the exact folder of a session AgentPeek lists. */
+  | 'unknown-workspace'
+  /** Already sharing `MAX_SHARED_WORKSPACES` folders. */
+  | 'too-many-workspaces'
 
 export type RemoteViewResult =
   | { ok: true }
   | { ok: false; error: RemoteViewError }
-  | { ok: false; error: 'invalid'; invalid: ConnectionField[] }
+  | { ok: false; error: 'invalid'; invalid: (ConnectionField | 'shareTitles')[] }
 
 export type RemoteViewStatus =
   | { state: 'loading' }
@@ -49,18 +62,21 @@ export interface RemoteViewOptions {
   /** The viewer build output, `out/remote-web`. */
   viewerFolder: string
   snapshot: () => SessionsSnapshot
-  /** What is shared. TASK-015 replaces the default, which shares no project. */
-  sharing?: () => RemoteSharing
   now?: () => number
 }
 
 export type RemoteView = ReturnType<typeof createRemoteView>
 
+type SettingsUpdate = (current: RemoteSettings) => RemoteSettings
+
 export function createRemoteView(options: RemoteViewOptions) {
-  const sharing = options.sharing ?? (() => NOTHING_SHARED)
   let loading = true
   /** Null while loading and after a load failure. */
   let settings: RemoteSettings | null = null
+  /** The policy the listener applies; a new frozen object on every change. */
+  let sharing: RemoteSharing = NOTHING_SHARED
+  /** The last snapshot handed over, to notice a source that was turned off. */
+  let published = options.snapshot()
   let listener: RemoteListener | null = null
   let resumed = false
   let startError: RemoteStartError | null = null
@@ -71,16 +87,47 @@ export function createRemoteView(options: RemoteViewOptions) {
   let starts: Promise<unknown> = Promise.resolve()
   let saving: Promise<unknown> = Promise.resolve()
 
-  /** Saves in call order; resolves false on failure. */
-  function persist(next: RemoteSettings): Promise<boolean> {
+  /**
+   * Saves in call order; resolves false on failure. Each save writes `update` of the settings in
+   * memory when it runs, so it never undoes a change saved or narrowed meanwhile, and a change that
+   * failed to save is never written by a later one.
+   */
+  function persist(update: SettingsUpdate = (current) => current): Promise<boolean> {
     const saved = saving
-      .then(() => saveRemoteSettings(options.folder, next))
+      .then(() => saveRemoteSettings(options.folder, update(settings!)))
       .then(
         () => true,
         () => false
       )
     saving = saved
     return saved
+  }
+
+  /**
+   * Makes the saved sharing fields the policy. A new generation means no stream keeps a status
+   * made under the old one: each gets a replacement now, ahead of coalescing.
+   */
+  function applySharing(): void {
+    const { sharedWorkspaces, shareTitles } = settings!
+    sharing = Object.freeze({ sharedWorkspaces: Object.freeze([...sharedWorkspaces]), shareTitles })
+    generation += 1
+    listener?.resync()
+  }
+
+  /**
+   * Narrowing applies before the save and stays for this run if the save fails; widening applies
+   * only once saved. `update` runs on the settings of the moment, so concurrent changes add up.
+   */
+  async function changeSharing(update: SettingsUpdate): Promise<RemoteViewResult> {
+    if (narrowsSharing(settings!, update(settings!))) {
+      settings = update(settings!)
+      applySharing()
+      return (await persist()) ? { ok: true } : { ok: false, error: 'save-failed' }
+    }
+    if (!(await persist(update))) return { ok: false, error: 'save-failed' }
+    settings = update(settings!)
+    applySharing()
+    return { ok: true }
   }
 
   /**
@@ -107,7 +154,7 @@ export function createRemoteView(options: RemoteViewOptions) {
         secret: randomBytes(MIN_SESSION_ID_SECRET_BYTES),
         viewer,
         snapshot: options.snapshot,
-        sharing,
+        sharing: () => sharing,
         generation: () => generation,
         now: options.now
       })
@@ -127,7 +174,7 @@ export function createRemoteView(options: RemoteViewOptions) {
   function failStart(error: RemoteStartError): RemoteViewResult {
     startError = error
     settings = { ...settings!, enabled: false }
-    void persist(settings)
+    void persist()
     return { ok: false, error }
   }
 
@@ -138,6 +185,7 @@ export function createRemoteView(options: RemoteViewOptions) {
       loading = false
       if (closing || !load.ok) return
       settings = load.settings
+      applySharing()
       if (!settings.enabled || !isConfigured(settings)) return
       const op = ++epoch
       const error = await listen(op)
@@ -153,11 +201,10 @@ export function createRemoteView(options: RemoteViewOptions) {
       if (listener) return { ok: true }
       const op = ++epoch
       startError = null
-      const next = { ...settings, enabled: true }
-      const saved = await persist(next)
+      const saved = await persist((current) => ({ ...current, enabled: true }))
       if (op !== epoch) return { ok: false, error: 'cancelled' }
       if (!saved) return { ok: false, error: 'save-failed' }
-      settings = next
+      settings = { ...settings, enabled: true }
       resumed = false
       const error = await listen(op)
       if (error === null) return { ok: true }
@@ -179,7 +226,7 @@ export function createRemoteView(options: RemoteViewOptions) {
         return { ok: true }
       }
       settings = { ...settings, enabled: false }
-      const saved = await persist(settings)
+      const saved = await persist()
       await stopping
       return saved ? { ok: true } : { ok: false, error: 'save-failed' }
     },
@@ -199,10 +246,10 @@ export function createRemoteView(options: RemoteViewOptions) {
       if (!check.ok) return { ok: false, error: 'invalid', invalid: check.invalid }
       const op = ++epoch
       const previous = settings
-      const next = { ...previous, ...check.connection }
-      const saved = await persist(next)
+      const saved = await persist((current) => ({ ...current, ...check.connection }))
       if (op !== epoch) return { ok: false, error: 'cancelled' }
       if (!saved) return { ok: false, error: 'save-failed' }
+      const next = { ...settings, ...check.connection }
       settings = next
       const changed =
         next.ownerLogin !== previous.ownerLogin ||
@@ -216,8 +263,64 @@ export function createRemoteView(options: RemoteViewOptions) {
       return error === 'cancelled' ? { ok: false, error } : failStart(error)
     },
 
+    /**
+     * Shares one more exact folder. Only the folder of a session AgentPeek lists can be added, so
+     * the policy never holds a path that came from anywhere else.
+     */
+    async shareWorkspace(workspace: unknown): Promise<RemoteViewResult> {
+      if (closing) return { ok: false, error: 'cancelled' }
+      if (!settings) return { ok: false, error: 'not-loaded' }
+      if (!isShareableWorkspace(workspace) || !isListedWorkspace(options.snapshot(), workspace)) {
+        return { ok: false, error: 'unknown-workspace' }
+      }
+      const full = (shared: readonly string[]) =>
+        !shared.includes(workspace) && shared.length >= MAX_SHARED_WORKSPACES
+      if (settings.sharedWorkspaces.includes(workspace)) return { ok: true }
+      if (full(settings.sharedWorkspaces)) return { ok: false, error: 'too-many-workspaces' }
+      // Checked again on the settings of the moment: other additions may have filled the list.
+      let refused = false
+      const result = await changeSharing((current) => {
+        refused = full(current.sharedWorkspaces)
+        return refused || current.sharedWorkspaces.includes(workspace)
+          ? current
+          : { ...current, sharedWorkspaces: [...current.sharedWorkspaces, workspace] }
+      })
+      return result.ok && refused ? { ok: false, error: 'too-many-workspaces' } : result
+    },
+
+    /**
+     * Stops sharing a folder: its rows leave every stream before the change is saved. A folder
+     * that is not shared is already in the requested state.
+     */
+    async unshareWorkspace(workspace: unknown): Promise<RemoteViewResult> {
+      if (closing) return { ok: false, error: 'cancelled' }
+      if (!settings) return { ok: false, error: 'not-loaded' }
+      if (typeof workspace !== 'string') return { ok: false, error: 'unknown-workspace' }
+      if (!settings.sharedWorkspaces.includes(workspace)) return { ok: true }
+      return changeSharing((current) => ({
+        ...current,
+        sharedWorkspaces: current.sharedWorkspaces.filter((shared) => shared !== workspace)
+      }))
+    },
+
+    /** Turning titles off replaces them with aliases on every stream before it is saved. */
+    async setShareTitles(shareTitles: unknown): Promise<RemoteViewResult> {
+      if (closing) return { ok: false, error: 'cancelled' }
+      if (!settings) return { ok: false, error: 'not-loaded' }
+      if (typeof shareTitles !== 'boolean') {
+        return { ok: false, error: 'invalid', invalid: ['shareTitles'] }
+      }
+      if (settings.shareTitles === shareTitles) return { ok: true }
+      return changeSharing((current) => ({ ...current, shareTitles }))
+    },
+
+    /** Hands a new snapshot to the listener. A source turned off is narrowing, like a folder. */
     publish(snapshot: SessionsSnapshot): void {
+      const turnedOff = sourceTurnedOff(published, snapshot)
+      published = snapshot
+      if (turnedOff) generation += 1
       listener?.publish(snapshot)
+      if (turnedOff) listener?.resync()
     },
 
     status(): RemoteViewStatus {

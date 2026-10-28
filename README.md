@@ -181,7 +181,7 @@ AgentPeek follows Electron's process model. Only the main process touches files 
 | ------------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | `src/main/*.ts`     | Electron main process: app lifecycle, window, menus                                                             | Electron, Node.js                  |
 | `src/main/sessions` | Reading and watching the tools' files, the sessions service, and saving AgentPeek's own state (plain Node.js)   | Node.js, but not Electron          |
-| `src/main/remote`   | Remote View: the opt-in loopback listener, its settings and lifecycle, and the development preview              | Node.js, but not Electron          |
+| `src/main/remote`   | Remote View: the opt-in loopback listener, its settings, sharing policy and lifecycle, the dev preview          | Node.js, but not Electron          |
 | `src/preload`       | The bridge that exposes `window.agentpeek`                                                                      | Electron's `contextBridge`         |
 | `src/renderer`      | The React interface, in a sandboxed window                                                                      | React, but not Node.js or Electron |
 | `src/core`          | Pure logic shared by the other parts                                                                            | Nothing from Node.js or Electron   |

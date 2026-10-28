@@ -13,6 +13,7 @@ import {
   type RemoteErrorCode,
   type RemoteFrame
 } from '../../core/remote/protocol'
+import type { RemoteSharing } from '../../core/remote/share-policy'
 import { projectRemoteStatus, type RemoteStatus } from '../../core/remote/status-projection'
 import type { SessionsSnapshot } from '../../core/snapshot'
 import { createSessionIdMinter } from './session-ids'
@@ -23,7 +24,8 @@ import type { ViewerFiles } from './viewer-files'
 // (`checkRemoteRequest`) before any work; the page and assets come from the viewer build, and the
 // one status stream carries the TASK-009 projection of the existing snapshots. It reads snapshots
 // and nothing else: it never calls the session controller, marks anything read or pins anything.
-// Rate and buffer limits are TASK-022's; sharing policy and its generation bumps are TASK-015's.
+// The sharing policy and its generation are read again for every status it sends (TASK-015), so a
+// status projected under an older policy never leaves. Rate and buffer limits are TASK-022's.
 
 const LOOPBACK = '127.0.0.1'
 
@@ -32,14 +34,6 @@ export const REMOTE_MAX_CONNECTIONS = 16
 
 /** How long quit waits for `end` frames to flush before it drops the remaining sockets. */
 export const REMOTE_CLOSE_GRACE_MS = 200
-
-/** What the owner shares. TASK-015 persists it; a change must come with a generation bump. */
-export interface RemoteSharing {
-  sharedWorkspaces: readonly string[]
-  shareTitles: boolean
-}
-
-export const NOTHING_SHARED: RemoteSharing = { sharedWorkspaces: [], shareTitles: false }
 
 export type RemoteStartError = 'port-in-use' | 'start-failed'
 
@@ -51,6 +45,7 @@ export interface RemoteListenerOptions {
   viewer: ViewerFiles
   /** The latest published snapshot, for a stream that opens between snapshots. */
   snapshot: () => SessionsSnapshot
+  /** The current policy; a change is a new object and comes with a new generation. */
   sharing: () => RemoteSharing
   /** The sharing-policy generation; it only grows. */
   generation: () => number
@@ -62,6 +57,11 @@ export interface RemoteListener {
   streamCount(): number
   /** Hands over a new snapshot; each stream gets it within its coalescing interval. */
   publish(snapshot: SessionsSnapshot): void
+  /**
+   * After a policy change: drops every pending send and gives each stream the status under the
+   * current policy now, ahead of coalescing.
+   */
+  resync(): void
   /** Ends every stream with `reason`, drops pending sends and closes the socket. Idempotent. */
   close(reason: EndReason): Promise<void>
 }
@@ -129,6 +129,7 @@ interface Stream {
 
 interface Current {
   snapshot: SessionsSnapshot
+  sharing: RemoteSharing
   generation: number
   /** The generation and the status without `observedAt`: what a viewer can tell apart. */
   visible: string
@@ -154,19 +155,26 @@ export async function startRemoteListener(
   /** The projection of the latest snapshot under the current policy, made once per change. */
   function status(): Current {
     const generation = options.generation()
-    if (current?.snapshot === latest && current.generation === generation) return current
-    const projected = projectRemoteStatus(latest, { ...options.sharing(), mintId })
+    const sharing = options.sharing()
+    if (
+      current?.snapshot === latest &&
+      current.sharing === sharing &&
+      current.generation === generation
+    ) {
+      return current
+    }
+    const projected = projectRemoteStatus(latest, { ...sharing, mintId })
     // Every desktop snapshot has a new time, also one made for activity in a folder that is not
     // shared. A status that differs only in that time is the same status: it keeps its ID and its
     // `observedAt` (the last visible change) and is not sent again, so unshared activity stays
     // invisible.
     const visible = `${generation}\n${JSON.stringify({ ...projected, observedAt: 0 })}`
     if (current?.visible === visible) {
-      current = { ...current, snapshot: latest }
+      current = { ...current, snapshot: latest, sharing }
       return current
     }
     const snapshotId = createHash('sha256').update(visible).digest('base64url').slice(0, 22)
-    current = { snapshot: latest, generation, visible, snapshotId, status: projected }
+    current = { snapshot: latest, sharing, generation, visible, snapshotId, status: projected }
     return current
   }
 
@@ -331,6 +339,10 @@ export async function startRemoteListener(
       if (closing) return
       latest = snapshot
       for (const stream of streams) schedule(stream)
+    },
+    resync() {
+      if (closing) return
+      for (const stream of streams) sendStatus(stream)
     },
     close(reason) {
       closing ??= new Promise<void>((resolve) => {

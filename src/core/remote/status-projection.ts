@@ -2,6 +2,7 @@ import type { ToolHealth } from '../health'
 import type { SessionKey, Session, UnknownReason } from '../session'
 import type { SessionsSnapshot } from '../snapshot'
 import { AGENT_TOOLS, type AgentTool } from '../tools'
+import { normalizeWorkspace, type RemoteSharing } from './share-policy'
 
 // The Remote View status projection (TASK-009): turns a desktop snapshot into the minimal view a
 // browser may receive. Every field is copied from an explicit allowlist, never by spreading a
@@ -96,11 +97,7 @@ export interface RemoteStatus {
  */
 export type SessionIdMinter = (key: SessionKey) => string
 
-export interface RemoteStatusPolicy {
-  /** The exact workspace folders the owner shares. Children and worktrees are not included. */
-  sharedWorkspaces: readonly string[]
-  /** The "Share session titles" option. Off by default. */
-  shareTitles: boolean
+export interface RemoteStatusPolicy extends RemoteSharing {
   mintId: SessionIdMinter
 }
 
@@ -119,6 +116,8 @@ export function projectRemoteStatus(
   const candidates: { label: string; session: RemoteSession }[] = []
   let omittedSessions = 0
   for (const session of snapshot.sessions) {
+    // A source the owner turned off shares nothing, even from a snapshot that still lists it.
+    if (snapshot.health[session.key.tool].state === 'off') continue
     const workspace = normalizeWorkspace(session.summary.workspacePath)
     if (workspace === null || !labels.has(workspace)) continue
     const label = keptLabels.get(workspace)
@@ -236,13 +235,6 @@ function projectLabels(sharedWorkspaces: readonly string[]): Map<string, string>
     labels.set(workspace, label)
   }
   return labels
-}
-
-/** Exact-match form of a workspace path: trailing slashes removed, nothing else changed. */
-function normalizeWorkspace(path: string | null): string | null {
-  if (path === null) return null
-  const trimmed = path.replace(/\/+$/, '')
-  return trimmed.length > 0 && trimmed.startsWith('/') ? trimmed : null
 }
 
 function folderName(workspace: string): string {
