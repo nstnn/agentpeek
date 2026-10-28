@@ -21,11 +21,6 @@ import type { SessionsService } from './sessions/service'
 import { systemActions } from './system-actions'
 import { createMainWindow, rendererPageUrl } from './window'
 import { openPreferences, type Preferences } from './preferences'
-import {
-  shouldStartPreview,
-  startPreviewServer,
-  type PreviewServer
-} from './remote/preview/preview-server'
 import type { ZoomAction } from '../shared/preferences'
 
 app.enableSandbox()
@@ -41,7 +36,6 @@ let removeIpc: (() => void) | null = null
 let quitting = false
 let quitReady = false
 let preferences: Preferences | null = null
-let preview: Promise<PreviewServer | null> | null = null
 
 function send(channel: string, value: unknown): void {
   const contents = mainWindow?.webContents
@@ -105,8 +99,7 @@ if (!app.requestSingleInstanceLock()) {
       try {
         await Promise.allSettled([
           lifecycle ? lifecycle.stop() : opening?.then((service) => service.stop()),
-          preferences?.flush(),
-          preview?.then((server) => server?.close())
+          preferences?.flush()
         ])
       } finally {
         quitReady = true
@@ -139,8 +132,7 @@ if (!app.requestSingleInstanceLock()) {
       opening = openSessionsService({
         ...paths,
         enabledSources: preferences.getSources(),
-        onSnapshot: (snapshot) => {
-          void preview?.then((server) => server?.publish(snapshot))
+        onSnapshot: () => {
           controller?.publish()
           if (controller) send(IPC.snapshot, controller.snapshot())
         },
@@ -155,19 +147,6 @@ if (!app.requestSingleInstanceLock()) {
       const service = await opening
       if (quitting) return
       lifecycle = createServiceLifecycle(service)
-      if (shouldStartPreview(process.env, paths)) {
-        preview = startPreviewServer({ snapshot: () => service.snapshot() }).then(
-          (server) => {
-            // The development terminal only; the URL carries no session data.
-            process.stdout.write(`AgentPeek localhost preview: ${server.url}/\n`)
-            return server
-          },
-          () => {
-            process.stdout.write('AgentPeek localhost preview could not start.\n')
-            return null
-          }
-        )
-      }
       mainWindow = createMainWindow(preferences.getZoom())
       controller = createSessionController({
         service,
