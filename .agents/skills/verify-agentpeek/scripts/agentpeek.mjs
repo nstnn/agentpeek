@@ -26,8 +26,9 @@ const RENDERER_URL = pathToFileURL(path.join(ROOT, 'out', 'renderer', 'index.htm
 
 const USAGE = `Usage: node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs <command> [options]
 
-  launch [--label <name>] [--fixture <dir>] [--no-build]
+  launch [--label <name>] [--fixture <dir>] [--state <dir>] [--no-build]
                               Build, start an isolated instance, wait until it is usable.
+                              --state copies synthetic app state (e.g. remote-view.json) first.
   doctor [--run <id>]         Read-only health check of a run's instance. Exit 1 on any FAIL.
   eval <js> [--run <id>]      Evaluate an expression in the window's page; print the JSON value.
   main-eval <js> [--run <id>] Evaluate in the main process; \`require\`, \`electron\`, \`app\`,
@@ -95,6 +96,12 @@ async function launch() {
     if (!fs.statSync(fixture).isDirectory()) fail(`--fixture ${fixture} is not a folder.`)
     // A copy, so a simulator can append to it without touching the original.
     fs.cpSync(fixture, homeDir, { recursive: true, preserveTimestamps: true })
+  }
+  if (flags.state) {
+    const state = path.resolve(String(flags.state))
+    if (!fs.statSync(state).isDirectory()) fail(`--state ${state} is not a folder.`)
+    // Synthetic app state the instance reads at startup, copied into its own profile.
+    fs.cpSync(state, userDataDir, { recursive: true })
   }
 
   const env = { ...process.env }

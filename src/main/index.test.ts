@@ -84,9 +84,18 @@ function setup() {
     ...(await importOriginal<object>()),
     startPreviewServer: startPreview
   }))
+  const remoteView = {
+    open: vi.fn().mockResolvedValue(undefined),
+    publish: vi.fn(),
+    close: vi.fn().mockResolvedValue(undefined)
+  }
+  const createRemoteView = vi.fn(() => remoteView)
+  vi.doMock('./remote/remote-view', () => ({ createRemoteView }))
   return {
     previewServer,
     startPreview,
+    remoteView,
+    createRemoteView,
     app,
     powerMonitor,
     service,
@@ -290,6 +299,35 @@ describe('main process lifecycle', () => {
     s.app.emit('before-quit', { preventDefault: vi.fn() })
     await vi.waitFor(() => expect(s.app.quit).toHaveBeenCalledOnce())
     expect(s.previewServer.close).toHaveBeenCalledOnce()
+  })
+  it('opens Remote View from the state folder, feeds it snapshots and closes it on quit', async () => {
+    const s = setup()
+    await import('./index')
+    await vi.waitFor(() => expect(s.service.start).toHaveBeenCalledOnce())
+    expect(s.createRemoteView).toHaveBeenCalledOnce()
+    const [options] = s.createRemoteView.mock.lastCall as unknown as [
+      { folder: string; viewerFolder: string; snapshot: () => unknown }
+    ]
+    expect(options.folder).toBe('/synthetic/state')
+    expect(options.viewerFolder).toMatch(/remote-web$/)
+    expect(options.snapshot()).toBe(s.service.snapshot())
+    expect(s.remoteView.open).toHaveBeenCalledOnce()
+    const { onSnapshot } = s.open.mock.calls[0]?.[0] as { onSnapshot: (value: unknown) => void }
+    const next = s.service.snapshot()
+    onSnapshot(next)
+    expect(s.remoteView.publish).toHaveBeenCalledWith(next)
+    let finish!: () => void
+    s.remoteView.close.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finish = resolve
+      })
+    )
+    s.app.emit('before-quit', { preventDefault: vi.fn() })
+    await vi.waitFor(() => expect(s.remoteView.close).toHaveBeenCalledOnce())
+    await Promise.resolve()
+    expect(s.app.quit).not.toHaveBeenCalled()
+    finish()
+    await vi.waitFor(() => expect(s.app.quit).toHaveBeenCalledOnce())
   })
   it('quits safely after startup failure without printing the source error', async () => {
     const s = setup()

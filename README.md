@@ -177,15 +177,16 @@ still needed for acceptance evidence.
 
 AgentPeek follows Electron's process model. Only the main process touches files and the system; the window shows what the main process sends it.
 
-| Folder              | What runs there                                                                                               | It may import                      |
-| ------------------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| `src/main/*.ts`     | Electron main process: app lifecycle, window, menus                                                           | Electron, Node.js                  |
-| `src/main/sessions` | Reading and watching the tools' files, the sessions service, and saving AgentPeek's own state (plain Node.js) | Node.js, but not Electron          |
-| `src/preload`       | The bridge that exposes `window.agentpeek`                                                                    | Electron's `contextBridge`         |
-| `src/renderer`      | The React interface, in a sandboxed window                                                                    | React, but not Node.js or Electron |
-| `src/core`          | Pure logic shared by the other parts                                                                          | Nothing from Node.js or Electron   |
-| `src/shared`        | Types used on both sides of the bridge                                                                        | Nothing from Node.js or Electron   |
-| `remote/web`        | The Remote View page (in progress, not served yet), a separate Vite build for a browser on another device     | React and `src/core` only          |
+| Folder              | What runs there                                                                                                 | It may import                      |
+| ------------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `src/main/*.ts`     | Electron main process: app lifecycle, window, menus                                                             | Electron, Node.js                  |
+| `src/main/sessions` | Reading and watching the tools' files, the sessions service, and saving AgentPeek's own state (plain Node.js)   | Node.js, but not Electron          |
+| `src/main/remote`   | Remote View: the opt-in loopback listener, its settings and lifecycle, and the development preview              | Node.js, but not Electron          |
+| `src/preload`       | The bridge that exposes `window.agentpeek`                                                                      | Electron's `contextBridge`         |
+| `src/renderer`      | The React interface, in a sandboxed window                                                                      | React, but not Node.js or Electron |
+| `src/core`          | Pure logic shared by the other parts                                                                            | Nothing from Node.js or Electron   |
+| `src/shared`        | Types used on both sides of the bridge                                                                          | Nothing from Node.js or Electron   |
+| `remote/web`        | The Remote View page (in progress), a separate Vite build served by the listener to a browser on another device | React and `src/core` only          |
 
 ESLint enforces the import rules. Tests sit next to the code they test, as `*.test.ts` or `*.test.tsx`. Renderer and Remote View page component tests use Testing Library in jsdom; source and main-process tests use Node.js.
 

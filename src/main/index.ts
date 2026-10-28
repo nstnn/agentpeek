@@ -1,4 +1,5 @@
 import { homedir } from 'node:os'
+import { join } from 'node:path'
 import {
   app,
   ipcMain,
@@ -26,6 +27,7 @@ import {
   startPreviewServer,
   type PreviewServer
 } from './remote/preview/preview-server'
+import { createRemoteView, type RemoteView } from './remote/remote-view'
 import type { ZoomAction } from '../shared/preferences'
 
 app.enableSandbox()
@@ -42,6 +44,7 @@ let quitting = false
 let quitReady = false
 let preferences: Preferences | null = null
 let preview: Promise<PreviewServer | null> | null = null
+let remote: RemoteView | null = null
 
 function send(channel: string, value: unknown): void {
   const contents = mainWindow?.webContents
@@ -106,7 +109,8 @@ if (!app.requestSingleInstanceLock()) {
         await Promise.allSettled([
           lifecycle ? lifecycle.stop() : opening?.then((service) => service.stop()),
           preferences?.flush(),
-          preview?.then((server) => server?.close())
+          preview?.then((server) => server?.close()),
+          remote?.close()
         ])
       } finally {
         quitReady = true
@@ -141,6 +145,7 @@ if (!app.requestSingleInstanceLock()) {
         enabledSources: preferences.getSources(),
         onSnapshot: (snapshot) => {
           void preview?.then((server) => server?.publish(snapshot))
+          remote?.publish(snapshot)
           controller?.publish()
           if (controller) send(IPC.snapshot, controller.snapshot())
         },
@@ -155,6 +160,13 @@ if (!app.requestSingleInstanceLock()) {
       const service = await opening
       if (quitting) return
       lifecycle = createServiceLifecycle(service)
+      // Off by default: without saved "on" settings this opens no socket.
+      remote = createRemoteView({
+        folder: paths.stateFolder,
+        viewerFolder: join(__dirname, '../remote-web'),
+        snapshot: () => service.snapshot()
+      })
+      void remote.open().catch(() => undefined)
       if (shouldStartPreview(process.env, paths)) {
         preview = startPreviewServer({ snapshot: () => service.snapshot() }).then(
           (server) => {
