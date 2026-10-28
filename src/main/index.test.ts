@@ -74,19 +74,7 @@ function setup() {
     rendererPageUrl: () => frame.url
   }))
   vi.doMock('./system-actions', () => ({ systemActions: testSystem() }))
-  const previewServer = {
-    url: 'http://127.0.0.1:1',
-    publish: vi.fn(),
-    close: vi.fn().mockResolvedValue(undefined)
-  }
-  const startPreview = vi.fn().mockResolvedValue(previewServer)
-  vi.doMock('./remote/preview/preview-server', async (importOriginal) => ({
-    ...(await importOriginal<object>()),
-    startPreviewServer: startPreview
-  }))
   return {
-    previewServer,
-    startPreview,
     app,
     powerMonitor,
     service,
@@ -253,43 +241,6 @@ describe('main process lifecycle', () => {
     await import('./index')
     expect(s.app.quit).toHaveBeenCalledOnce()
     expect(s.open).not.toHaveBeenCalled()
-  })
-  it('starts no localhost preview without the switch, or with the switch on a real home', async () => {
-    const off = setup()
-    await import('./index')
-    await vi.waitFor(() => expect(off.service.start).toHaveBeenCalledOnce())
-    expect(off.startPreview).not.toHaveBeenCalled()
-
-    vi.resetModules()
-    vi.stubEnv('AGENTPEEK_HOME', undefined)
-    vi.stubEnv('AGENTPEEK_USER_DATA', undefined)
-    vi.stubEnv('AGENTPEEK_REMOTE_PREVIEW', '1')
-    const real = setup()
-    await import('./index')
-    await vi.waitFor(() => expect(real.service.start).toHaveBeenCalledOnce())
-    expect(real.open.mock.calls[0]?.[0]).toMatchObject({ fixture: false })
-    expect(real.startPreview).not.toHaveBeenCalled()
-  })
-  it('starts the preview on a fixture home with the switch, feeds it snapshots and closes it on quit', async () => {
-    vi.stubEnv('AGENTPEEK_REMOTE_PREVIEW', '1')
-    const s = setup()
-    const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
-    await import('./index')
-    await vi.waitFor(() => expect(s.service.start).toHaveBeenCalledOnce())
-    expect(s.startPreview).toHaveBeenCalledOnce()
-    const [options] = s.startPreview.mock.lastCall as [{ snapshot: () => unknown }]
-    expect(options.snapshot()).toBe(s.service.snapshot())
-    await vi.waitFor(() =>
-      expect(out).toHaveBeenCalledWith('AgentPeek localhost preview: http://127.0.0.1:1/\n')
-    )
-    out.mockRestore()
-    const { onSnapshot } = s.open.mock.calls[0]?.[0] as { onSnapshot: (value: unknown) => void }
-    const next = s.service.snapshot()
-    onSnapshot(next)
-    await vi.waitFor(() => expect(s.previewServer.publish).toHaveBeenCalledWith(next))
-    s.app.emit('before-quit', { preventDefault: vi.fn() })
-    await vi.waitFor(() => expect(s.app.quit).toHaveBeenCalledOnce())
-    expect(s.previewServer.close).toHaveBeenCalledOnce()
   })
   it('quits safely after startup failure without printing the source error', async () => {
     const s = setup()
