@@ -7,8 +7,8 @@ import type { Session } from '../../core/session'
 import { createSnapshot, type SessionsSnapshot } from '../../core/snapshot'
 import { testSession } from '../test-support'
 import { accepts, freePort, HOST, OWNER, OWNER_HEADERS, send, subscribe } from './http-test-support'
+import { NOTHING_SHARED, type RemoteSharing } from '../../core/remote/share-policy'
 import {
-  NOTHING_SHARED,
   startRemoteListener,
   VIEWER_CSP,
   type RemoteListener,
@@ -283,6 +283,43 @@ describe('remote listener status stream', () => {
     expect(second!.status.projects).toEqual(first!.status.projects)
     // A new generation is a new status, made from the latest snapshot.
     expect(second!.observedAt).toBe(2)
+  })
+
+  it('on a policy change, drops the pending send and sends the current policy at once', async () => {
+    let latest = snapshot(sessions(5), 1)
+    let sharing: RemoteSharing = { sharedWorkspaces: [SHARED], shareTitles: false }
+    let generation = 0
+    const listener = await start({
+      snapshot: () => latest,
+      sharing: () => sharing,
+      generation: () => generation
+    })
+    const viewer = subscribe(listener.port)
+    await expect.poll(() => viewer.frames.length).toBe(1)
+    latest = snapshot(sessions(50), 2)
+    listener.publish(latest)
+    sharing = NOTHING_SHARED
+    generation = 1
+    listener.resync()
+    await expect.poll(() => viewer.frames.length).toBe(2)
+    const [first, replaced] = statuses(viewer.frames)
+    expect(replaced!.sentAt - first!.sentAt).toBeLessThan(REMOTE_LIMITS.minStatusIntervalMs)
+    expect(replaced).toMatchObject({ generation: 1, observedAt: 2 })
+    expect(replaced!.status.projects).toEqual([])
+    await new Promise((done) => setTimeout(done, REMOTE_LIMITS.minStatusIntervalMs + 100))
+    expect(viewer.frames).toHaveLength(2)
+  })
+
+  it('projects again when the policy object changes, even at the same generation', async () => {
+    const latest = snapshot(sessions(5), 1)
+    let sharing: RemoteSharing = { sharedWorkspaces: [SHARED], shareTitles: false }
+    const listener = await start({ snapshot: () => latest, sharing: () => sharing })
+    const viewer = subscribe(listener.port)
+    await expect.poll(() => viewer.frames.length).toBe(1)
+    sharing = NOTHING_SHARED
+    listener.publish(latest)
+    await expect.poll(() => viewer.frames.length).toBe(2)
+    expect(statuses(viewer.frames)[1]!.status.projects).toEqual([])
   })
 
   it('sends a heartbeat every 15 s with the stream state and the Mac clock', async () => {

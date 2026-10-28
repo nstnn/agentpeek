@@ -1,14 +1,21 @@
 import { mkdir, open, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isTailnetHostName, REMOTE_DEFAULT_PORT } from '../../core/remote/protocol'
+import {
+  isShareableWorkspace,
+  MAX_SHARED_WORKSPACES,
+  type RemoteSharing
+} from '../../core/remote/share-policy'
 
-// Remote View settings (TASK-014): whether the listener runs, its port, and the login and Mac
-// address it admits. They live in their own file next to the preferences and hold no secret, no
-// session data and nothing from Tailscale. TASK-015 adds the shared projects and the title option.
+// Remote View settings (TASK-014, TASK-015): whether the listener runs, its port, the login and Mac
+// address it admits, and what it shares: exact workspace folders and the title option. They live
+// in their own file next to the preferences and hold no secret, no session data and nothing from
+// Tailscale.
 
 export const REMOTE_SETTINGS_FILE = 'remote-view.json'
 
-const MAX_FILE_BYTES = 4096
+/** Room for 50 folders of `PATH_MAX` bytes each, every byte escaped. */
+const MAX_FILE_BYTES = 128 * 1024
 const MIN_PORT = 1024
 const MAX_PORT = 65535
 /** The longest email address; Tailscale logins are emails or `name@github`-style names. */
@@ -23,16 +30,18 @@ export interface RemoteConnection {
   port: number
 }
 
-export interface RemoteSettings extends RemoteConnection {
+export interface RemoteSettings extends RemoteConnection, RemoteSharing {
   enabled: boolean
 }
 
-/** Fresh install: off, nothing configured. */
+/** Fresh install: off, nothing configured, nothing shared. */
 export const DEFAULT_REMOTE_SETTINGS: Readonly<RemoteSettings> = {
   enabled: false,
   ownerLogin: '',
   hostName: '',
-  port: REMOTE_DEFAULT_PORT
+  port: REMOTE_DEFAULT_PORT,
+  sharedWorkspaces: [],
+  shareTitles: false
 }
 
 export type ConnectionField = keyof RemoteConnection
@@ -116,7 +125,22 @@ export async function loadRemoteSettings(folder: string): Promise<RemoteSettings
     return { ok: false }
   }
   if (!isPort(port)) return { ok: false }
-  return { ok: true, settings: { enabled, ownerLogin, hostName, port } }
+  // A file saved before sharing existed shares nothing. A list must be exactly what is saved:
+  // distinct folders in exact-match form, within the limit.
+  const { sharedWorkspaces = [], shareTitles = false } = saved
+  if (
+    !Array.isArray(sharedWorkspaces) ||
+    sharedWorkspaces.length > MAX_SHARED_WORKSPACES ||
+    !sharedWorkspaces.every(isShareableWorkspace) ||
+    new Set(sharedWorkspaces).size !== sharedWorkspaces.length
+  ) {
+    return { ok: false }
+  }
+  if (typeof shareTitles !== 'boolean') return { ok: false }
+  return {
+    ok: true,
+    settings: { enabled, ownerLogin, hostName, port, sharedWorkspaces, shareTitles }
+  }
 }
 
 /** Writes the settings atomically, readable only by the user. Throws a fixed error on failure. */
@@ -128,11 +152,17 @@ export async function saveRemoteSettings(folder: string, settings: RemoteSetting
     await rm(temporary, { force: true })
     const handle = await open(temporary, 'wx', 0o600)
     try {
-      const { enabled, ownerLogin, hostName, port } = settings
-      await handle.writeFile(
-        `${JSON.stringify({ version: 1, enabled, ownerLogin, hostName, port })}\n`,
-        'utf8'
-      )
+      const { enabled, ownerLogin, hostName, port, sharedWorkspaces, shareTitles } = settings
+      const saved = {
+        version: 1,
+        enabled,
+        ownerLogin,
+        hostName,
+        port,
+        sharedWorkspaces,
+        shareTitles
+      }
+      await handle.writeFile(`${JSON.stringify(saved)}\n`, 'utf8')
       await handle.sync()
     } finally {
       await handle.close()

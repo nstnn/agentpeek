@@ -1,6 +1,6 @@
 # Remote View listener
 
-When Remote View is on in AgentPeek's saved settings, AgentPeek listens on `127.0.0.1` at the saved port, which the owner's `tailscale serve` publishes inside their tailnet. It answers only requests that carry the saved Tailscale login and Mac address the way Serve sends them, serves the viewer page and one status stream of redacted status, and ends that stream when AgentPeek quits. It is off by default: a fresh profile opens no socket. There is no window control for it yet; Settings > Remote View comes with TASK-016.
+When Remote View is on in AgentPeek's saved settings, AgentPeek listens on `127.0.0.1` at the saved port, which the owner's `tailscale serve` publishes inside their tailnet. It answers only requests that carry the saved Tailscale login and Mac address the way Serve sends them, serves the viewer page and one status stream of redacted status, and ends that stream when AgentPeek quits. It is off by default: a fresh profile opens no socket. The stream shows only the exact folders saved as shared, and a source turned off in Settings leaves it at once. There is no window control for Remote View itself yet; Settings > Remote View comes with TASK-016.
 
 ## Sub-features
 
@@ -9,11 +9,14 @@ When Remote View is on in AgentPeek's saved settings, AgentPeek listens on `127.
 - `remote-guards` gives a missing or other login, a foreign Host or Origin and any method other than GET a typed error with no session data; a refused `/` gets a fixed page.
 - `remote-page` serves the viewer page with its Content Security Policy, and its hashed assets, to the owner's requests.
 - `remote-stream` starts every stream with a complete redacted status (folder names, opaque IDs, "Session N" aliases, source health) and sends a heartbeat every 15 s.
+- `remote-share` shows only the exact saved folders: the fixture's shared folder with its sessions under aliases, and nothing when no folder is saved.
+- `remote-source-off` sends a replacement status with a higher `generation` and no rows of a source as soon as it is turned off in Settings.
 - `remote-quit` ends open streams with `end: shutdown` when AgentPeek quits, closes the port and exits cleanly.
 
 ## How to get to it (user POV)
 
-- Today only through AgentPeek's saved state: `remote-view.json` in its state folder with `enabled: true`, a login, a Mac address and a port. AgentPeek reads it at launch. A viewer reaches it through the owner's `tailscale serve`; in verification, `curl` sends the headers Serve would add.
+- Today only through AgentPeek's saved state: `remote-view.json` in its state folder with `enabled: true`, a login, a Mac address, a port and the shared folders. AgentPeek reads it at launch.
+- A source is turned off in the window: Settings > Sources > Monitor Codex. A viewer reaches it through the owner's `tailscale serve`; in verification, `curl` sends the headers Serve would add.
 
 ## Driving it with agentpeek.mjs
 
@@ -21,14 +24,15 @@ Preconditions:
 
 - The user approved launching AgentPeek for this task. All data is synthetic: a generated fixture home, the login `owner@example.com` and the address `synthetic-mac.example-tailnet.ts.net`.
 - A port `<port>` that is free now (for example from `node -e "const s=require('net').createServer().listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})"`).
-- A state folder `<state>` holding `remote-view.json` with `{"version":1,"enabled":true,"ownerLogin":"owner@example.com","hostName":"synthetic-mac.example-tailnet.ts.net","port":<port>}`.
+- A state folder `<state>` holding `remote-view.json` with `{"version":1,"enabled":true,"ownerLogin":"owner@example.com","hostName":"synthetic-mac.example-tailnet.ts.net","port":<port>,"sharedWorkspaces":["/Users/synthetic/projects/fixture-demo"],"shareTitles":false}`. The folder is the fixture's only workspace (`CWD` in `scripts/fixture/records.mjs`); it is not a folder on this Mac. For the no-folder check use a second state folder with `"sharedWorkspaces":[]`.
 - `npm run fixture -- create`, then `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs launch --label remote-listener --fixture <home> --state <state>` (the build includes the viewer), and `doctor` prints `doctor: OK`.
 - Below, `-H "$OWNER"` stands for `-H 'Host: synthetic-mac.example-tailnet.ts.net' -H 'Tailscale-User-Login: owner@example.com'`.
 
 - **Find the listener.** `lsof -nP -a -p <pid> -iTCP -sTCP:LISTEN` lists `127.0.0.1:<port>` beside the helper's two debug ports, and nothing on `*` or another address.
 - **Guards.** `curl -s -w ' %{http_code}' -H 'Host: synthetic-mac.example-tailnet.ts.net' http://127.0.0.1:<port>/v1/status` prints `{"v":1,"error":"not-allowed"} 403`; with a different `Tailscale-User-Login` also 403; with the owner login and `Host: 127.0.0.1:<port>` `bad-host 421`; with `-H "$OWNER" -H 'Origin: https://evil.example'` `bad-origin 403`; with `-H "$OWNER" -X POST` `method-not-allowed 405`. None of these bodies contains `event:` or a session field. `curl -s -H 'Host: synthetic-mac.example-tailnet.ts.net' http://127.0.0.1:<port>/` prints an HTML page with the sentence "Not allowed. This page only opens for the Tailscale login set in AgentPeek on the Mac." and no script.
 - **Page.** `curl -s -D - -H "$OWNER" http://127.0.0.1:<port>/` answers 200 with `Cache-Control: no-store`, a `Content-Security-Policy` header with `default-src 'none'`, `script-src 'self'` and `frame-ancestors 'none'`, and the viewer page. Each `/assets/…` path the page names answers 200 with `Cache-Control: public, max-age=31536000, immutable`.
-- **Stream.** `curl -sN --max-time 17 -H "$OWNER" http://127.0.0.1:<port>/v1/status` prints first one `event: status` frame whose JSON has `"v":1`, `snapshotId`, `generation`, `observedAt`, `sentAt` and `status` with `sources` (Codex and Claude Code `connected`) and `"projects":[]` (no project is shared until TASK-015), then an `event: heartbeat` frame about 15 s later with the same `snapshotId`. No `Fixture ` title, `/Users/` path, fixture root, login or address appears.
+- **Stream and sharing.** `curl -sN --max-time 17 -H "$OWNER" http://127.0.0.1:<port>/v1/status` prints first one `event: status` frame whose JSON has `"v":1`, `snapshotId`, `generation`, `observedAt`, `sentAt` and `status` with `sources` (Codex and Claude Code `connected`) and one project, `"label":"fixture-demo"`, whose sessions are titled `Session 1`, `Session 2`, … with 22-character IDs, then an `event: heartbeat` frame about 15 s later with the same `snapshotId`. No `Fixture ` title, `/Users/` path, fixture root, login or address appears. Launched with the `"sharedWorkspaces":[]` state instead, the first frame has `"projects":[]`.
+- **Source off.** With `curl -sN -H "$OWNER" …/v1/status > <evidence>/remote-source-off.txt` running, open Settings and use `click --role switch --name "Monitor Codex"`. Within a second the file gains a `status` frame with a `generation` higher than the first frame's, `sources.codex` `{"state":"off"}` and no session whose `tool` is `codex`; the Claude Code rows stay. Turn Monitor Codex on again before quitting, so the next run starts with both sources.
 - **Quit.** With a `curl -sN -H "$OWNER" …/v1/status` stream still open, choose AgentPeek > Quit AgentPeek (`focus`, then `menu-click "AgentPeek > Quit AgentPeek"`), then `wait-exit`: `cleanExit: true`. The curl output ends with `event: end` and `{"v":1,"type":"end","reason":"shutdown"}`, and the port then refuses connections.
 - **Off.** Launch a fresh run without `--state`. `lsof` lists only the helper's debug ports.
 

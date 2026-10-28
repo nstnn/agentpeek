@@ -308,6 +308,8 @@ describe('main process lifecycle', () => {
     const [options] = s.createRemoteView.mock.lastCall as unknown as [
       { folder: string; viewerFolder: string; snapshot: () => unknown }
     ]
+    // The snapshot is all it gets: never the controller, the service's actions or system actions.
+    expect(Object.keys(options).sort()).toEqual(['folder', 'snapshot', 'viewerFolder'])
     expect(options.folder).toBe('/synthetic/state')
     expect(options.viewerFolder).toMatch(/remote-web$/)
     expect(options.snapshot()).toBe(s.service.snapshot())

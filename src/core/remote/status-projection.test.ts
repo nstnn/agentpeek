@@ -169,6 +169,14 @@ describe('projectRemoteStatus scope', () => {
     ).toEqual([mintId(session('exact').key), mintId(session('slash').key)].sort())
   })
 
+  it('shares no row of a source that is off, even when the snapshot still lists it', () => {
+    const listed = snapshot([session('codex'), session('claude', { tool: 'claude' })])
+    const codexOff = { ...listed, health: { ...listed.health, codex: { state: 'off' as const } } }
+    const status = projectRemoteStatus(codexOff, policy())
+    expect(firstProject(status).sessions.map((row) => row.tool)).toEqual(['claude'])
+    expect(status.sources.codex).toEqual({ state: 'off' })
+  })
+
   it('shares nothing with an empty folder list, and lists shared folders without sessions', () => {
     const empty = projectRemoteStatus(snapshot([session('a')]), policy({ sharedWorkspaces: [] }))
     expect(empty.projects).toEqual([])
