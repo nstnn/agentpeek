@@ -29,15 +29,28 @@ const boundaries = [
     files: ['src/renderer/**'],
     allowNode: false,
     message: 'The renderer has no Node.js or Electron access. Use window.agentpeek instead.'
+  },
+  {
+    files: ['remote/web/src/**'],
+    allowNode: false,
+    // The page runs in a browser on another device: it shares only src/core with the desktop.
+    denyDesktop: true,
+    message: 'The Remote View page may import only its own files, src/core and React.'
   }
 ]
 
-function boundaryRule({ files, allowNode, message }) {
+function boundaryRule({ files, allowNode, denyDesktop = false, message }) {
   const paths = [{ name: 'electron', message }]
   const patterns = []
   if (!allowNode) {
     paths.push(...builtinModules.map((name) => ({ name, message })))
     patterns.push({ group: ['node:*'], message })
+  }
+  if (denyDesktop) {
+    patterns.push({
+      group: ['**/src/main/**', '**/src/preload/**', '**/src/renderer/**', '**/src/shared/**'],
+      message
+    })
   }
   return { files, rules: { 'no-restricted-imports': ['error', { paths, patterns }] } }
 }
@@ -59,7 +72,7 @@ export default defineConfig(
   },
 
   {
-    files: ['src/renderer/**/*.{ts,tsx}'],
+    files: ['src/renderer/**/*.{ts,tsx}', 'remote/web/src/**/*.{ts,tsx}'],
     extends: [reactHooks.configs.flat.recommended, reactRefresh.configs.vite()],
     rules: {
       // Message text must never be inserted as raw HTML.
