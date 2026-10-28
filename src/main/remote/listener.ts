@@ -16,6 +16,7 @@ import {
 import type { RemoteSharing } from '../../core/remote/share-policy'
 import { projectRemoteStatus, type RemoteStatus } from '../../core/remote/status-projection'
 import type { SessionsSnapshot } from '../../core/snapshot'
+import { createRateLimiter } from './rate-limit'
 import { createSessionIdMinter } from './session-ids'
 import type { ViewerFiles } from './viewer-files'
 
@@ -25,15 +26,29 @@ import type { ViewerFiles } from './viewer-files'
 // one status stream carries the TASK-009 projection of the existing snapshots. It reads snapshots
 // and nothing else: it never calls the session controller, marks anything read or pins anything.
 // The sharing policy and its generation are read again for every status it sends (TASK-015), so a
-// status projected under an older policy never leaves. Rate and buffer limits are TASK-022's.
+// status projected under an older policy never leaves. Resource limits (TASK-022) come before any
+// work for a request: a global rate limit, request size and time, the stream cap, and a byte budget
+// per stream.
 
 const LOOPBACK = '127.0.0.1'
 
 /** A bound well above five streams and a page load, so a stray loop cannot pile up sockets. */
 export const REMOTE_MAX_CONNECTIONS = 16
 
-/** How long quit waits for `end` frames to flush before it drops the remaining sockets. */
+/** How long quit, or a `slow-consumer` end, waits for frames to flush before dropping sockets. */
 export const REMOTE_CLOSE_GRACE_MS = 200
+
+/** Request line and headers, as Node's default; a larger request is `bad-request`. */
+export const REMOTE_MAX_HEADER_BYTES = 16 * 1024
+
+/**
+ * How long a client may take to send a whole request. Every route is a GET without a body, so this
+ * is the time to send the headers; Serve on the same Mac sends them at once.
+ */
+export const REMOTE_REQUEST_TIMEOUT_MS = 5_000
+
+/** How often Node looks for requests over that time. */
+const TIMEOUT_CHECK_INTERVAL_MS = 1_000
 
 export type RemoteStartError = 'port-in-use' | 'start-failed'
 
@@ -49,7 +64,10 @@ export interface RemoteListenerOptions {
   sharing: () => RemoteSharing
   /** The sharing-policy generation; it only grows. */
   generation: () => number
+  /** The Mac clock: frame times, status coalescing and the request rate limit. */
   now?: () => number
+  /** Tests shorten it; otherwise `REMOTE_REQUEST_TIMEOUT_MS`. */
+  requestTimeoutMs?: number
 }
 
 export interface RemoteListener {
@@ -90,6 +108,25 @@ export const VIEWER_CSP = [
 /** Everything else, error pages included: nothing may load or run. */
 const LOCKED_CSP = "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
+/**
+ * The reply to a request Node could not parse (oversize headers, malformed, too slow), written on
+ * the socket because such a request never reaches the handler. Node's error text is never sent.
+ */
+const BAD_REQUEST_REPLY = (() => {
+  const body = errorBody('bad-request')
+  return [
+    `HTTP/1.1 ${REMOTE_ERROR_STATUS['bad-request']} Bad Request`,
+    ...Object.entries(COMMON_HEADERS).map(([name, value]) => `${name}: ${value}`),
+    'Cache-Control: no-store',
+    `Content-Security-Policy: ${LOCKED_CSP}`,
+    'Content-Type: application/json',
+    `Content-Length: ${Buffer.byteLength(body)}`,
+    'Connection: close',
+    '',
+    body
+  ].join('\r\n')
+})()
+
 /** Fixed copy (TASK-002) for a refused request to `/`, which never reaches the viewer page. */
 const ERROR_PAGE_TEXT: Record<RemoteErrorCode, string> = {
   'not-allowed':
@@ -125,6 +162,8 @@ interface Stream {
   generation: number
   lastStatusAt: number
   timer: ReturnType<typeof setTimeout> | undefined
+  /** After a `slow-consumer` end: drops the socket if the frame cannot flush in time. */
+  drop: ReturnType<typeof setTimeout> | undefined
 }
 
 interface Current {
@@ -145,8 +184,19 @@ export async function startRemoteListener(
   options: RemoteListenerOptions
 ): Promise<RemoteListenerStart> {
   const now = options.now ?? Date.now
+  const requestTimeout = options.requestTimeoutMs ?? REMOTE_REQUEST_TIMEOUT_MS
   const mintId = createSessionIdMinter(options.secret)
+  // Check 1 of the protocol. Every client arrives from loopback through Serve, so it is global: a
+  // page load is four requests (five if the browser also asks for a favicon), and the burst covers
+  // four or five viewers loading at once.
+  const rate = createRateLimiter({
+    perSecond: REMOTE_LIMITS.requestsPerSecond,
+    burst: REMOTE_LIMITS.requestBurst,
+    now
+  })
   const streams = new Set<Stream>()
+  /** The latest response on each connection, so a parse error never writes into an open one. */
+  const responses = new WeakMap<object, ServerResponse>()
   let latest = options.snapshot()
   let current: Current | null = null
   let heartbeat: ReturnType<typeof setInterval> | undefined
@@ -183,8 +233,24 @@ export async function startRemoteListener(
     if (response.writableEnded || response.destroyed) return false
     const encoded = encodeFrame(frame)
     if (!encoded.ok) return false
+    // What the viewer has not taken yet, queued here and in the socket. A viewer that stops reading
+    // gets an `end` instead of more frames, so it cannot grow the Mac's memory.
+    const queued = response.writableLength + Buffer.byteLength(encoded.event)
+    if (queued > REMOTE_LIMITS.maxBufferedBytesPerStream) {
+      endSlowStream(stream)
+      return false
+    }
     response.write(encoded.event)
     return true
+  }
+
+  function endSlowStream(stream: Stream): void {
+    clearTimeout(stream.timer)
+    stream.timer = undefined
+    const ending = encodeFrame({ v: PROTOCOL_VERSION, type: 'end', reason: 'slow-consumer' })
+    stream.response.end(ending.ok ? ending.event : undefined)
+    // The frame waits behind everything the viewer has not read; the socket goes if it stays stuck.
+    stream.drop = setTimeout(() => stream.response.destroy(), REMOTE_CLOSE_GRACE_MS)
   }
 
   function sendStatus(stream: Stream): void {
@@ -275,12 +341,14 @@ export async function startRemoteListener(
       snapshotId: null,
       generation: 0,
       lastStatusAt: -Infinity,
-      timer: undefined
+      timer: undefined,
+      drop: undefined
     }
     streams.add(stream)
     response.on('error', () => undefined)
     response.on('close', () => {
       clearTimeout(stream.timer)
+      clearTimeout(stream.drop)
       streams.delete(stream)
       if (streams.size === 0) {
         clearInterval(heartbeat)
@@ -297,6 +365,8 @@ export async function startRemoteListener(
       request.socket.destroy()
       return
     }
+    responses.set(request.socket, response)
+    if (!rate.take()) return refuse(response, 'rate-limited', request.url === '/')
     const decision = checkRemoteRequest(
       { method: request.method, target: request.url, headers: request.headers },
       options.access
@@ -314,7 +384,32 @@ export async function startRemoteListener(
     serveFile(response, asset.body, asset.type, 'public, max-age=31536000, immutable')
   }
 
-  const server = createServer(handle)
+  const server = createServer(
+    {
+      maxHeaderSize: REMOTE_MAX_HEADER_BYTES,
+      headersTimeout: requestTimeout,
+      requestTimeout,
+      connectionsCheckingInterval: TIMEOUT_CHECK_INTERVAL_MS,
+      // A missing Host goes through the request checks (`bad-host`), not Node's untyped 400.
+      requireHostHeader: false
+    },
+    handle
+  )
+  // Without these Node answers an `Expect` header itself, before the checks: `100-continue` with an
+  // invitation to send a body they refuse, any other value with a bare 417. Every route goes
+  // through every check, and HTTP allows serving an unknown expectation instead of the 417.
+  server.on('checkContinue', handle)
+  server.on('checkExpectation', handle)
+  // A request Node could not parse never reaches `handle`. It gets the typed reply unless a response
+  // is still being written on that connection, and the connection closes either way.
+  server.on('clientError', (error: NodeJS.ErrnoException, socket) => {
+    const open = responses.get(socket)
+    if (error.code !== 'ECONNRESET' && socket.writable && (!open || open.writableFinished)) {
+      socket.end(BAD_REQUEST_REPLY, () => socket.destroy())
+    } else {
+      socket.destroy()
+    }
+  })
   server.maxConnections = REMOTE_MAX_CONNECTIONS
   const failure = await new Promise<RemoteStartError | null>((resolve) => {
     server.once('error', (error: NodeJS.ErrnoException) => {
@@ -352,6 +447,8 @@ export async function startRemoteListener(
         for (const stream of streams) {
           clearTimeout(stream.timer)
           stream.timer = undefined
+          // The force close below covers a slow stream's socket too.
+          clearTimeout(stream.drop)
           if (!stream.response.writableEnded) {
             stream.response.end(ending.ok ? ending.event : undefined)
           }

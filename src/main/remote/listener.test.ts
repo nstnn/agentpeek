@@ -134,7 +134,9 @@ describe('remote listener binding', () => {
 
 describe('remote listener request checks', () => {
   it('gives a missing or other login, a foreign Host or Origin, and other methods no data', async () => {
-    const listener = await start()
+    // 100 ms a request: the rate limit refills as fast as these requests spend it.
+    let clock = 0
+    const listener = await start({ now: () => (clock += 100) })
     const port = listener.port
     const refusals: [Record<string, string>, string, number, string?][] = [
       [{ Host: HOST }, 'not-allowed', 403],

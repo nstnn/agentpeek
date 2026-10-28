@@ -1,5 +1,5 @@
 import { createServer, request, type IncomingHttpHeaders, type IncomingMessage } from 'node:http'
-import type { AddressInfo } from 'node:net'
+import { connect, type AddressInfo } from 'node:net'
 import { decodeFrame, type RemoteFrame } from '../../core/remote/protocol'
 
 // Test helpers for the Remote View listener: requests with simulated Serve headers, synthetic only.
@@ -88,6 +88,26 @@ export function subscribe(port: number, headers: Record<string, string> = { ...O
     disconnect: () => response?.destroy()
   }
 }
+
+/**
+ * Writes raw bytes on a new connection and keeps it open, collecting everything until the Mac
+ * closes it. For requests a normal client would not send.
+ */
+export function exchange(port: number, text: string): Promise<{ reply: string; ms: number }> {
+  return new Promise((done) => {
+    const started = Date.now()
+    const socket = connect({ host: '127.0.0.1', port })
+    let reply = ''
+    socket.setEncoding('utf8')
+    socket.on('data', (chunk: string) => (reply += chunk))
+    socket.on('error', () => undefined)
+    socket.on('close', () => done({ reply, ms: Date.now() - started }))
+    if (text) socket.write(text)
+  })
+}
+
+/** Request head lines as raw HTTP/1.1. */
+export const rawHead = (lines: string[]) => [...lines, '', ''].join('\r\n')
 
 /** Whether something accepts connections on 127.0.0.1 at `port`. */
 export function accepts(port: number): Promise<boolean> {
