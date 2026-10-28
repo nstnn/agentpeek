@@ -64,6 +64,6 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Project grouping](./project-grouping.md) covers Project/Status selection, path identity, collapse, live summaries and tree navigation.
 - [Sessions list](./sessions-list.md) covers running-only Active, Inbox transitions/counts, filtering, groups, selection, keyboard/context entry points, tool health and list notices.
 - [Session detail](./session-detail.md) covers messages, safe Markdown, long text, actions, focused read-on-view, two-pane placement/activation/isolation, compact split browse/return and pane selection, and single-pane narrow push/Back.
-- [Skill content](./skill-content.md) covers explicit Codex skill cards, on-demand conversation/current-file content, provenance, retry, safe Markdown and narrow reading.
+- [Skill content](./skill-content.md) covers explicit Codex and Claude slash skill cards, on-demand conversation/current-file content, provenance, retry, safe Markdown and narrow reading.
 - [Fixture regression](./fixture-regression.md) covers the synthetic generator/simulator and built-app Playwright smoke, including combined two-pane selection, read isolation, compact navigation and reset on relaunch.
 - [Local macOS package](./local-package.md) covers the signed arm64 bundle, fuses, native About panel, Finder reopen, window sizes and shutdown.

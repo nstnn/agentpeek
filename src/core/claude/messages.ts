@@ -3,6 +3,7 @@ import { TOOL_GROUP_LIMIT } from '../codex/tool-details'
 import type { ClaudeRecord, ClaudeToolCall, ClaudeToolResult } from './records'
 import { shortToolName } from './tool-details'
 import { marksTurn } from './transcript-state'
+import { claudeCommand, claudePromptSkill } from './skills'
 
 /**
  * Turns records, oldest first, into the detail's messages: the user's prompts, the assistant's
@@ -18,7 +19,19 @@ export function claudeMessages(records: readonly ClaudeRecord[]): SessionMessage
   const lastTurnMark = records.findLastIndex(marksTurn)
   records.forEach((record, index) => {
     if (record.kind === 'prompt') {
-      messages.push({ kind: 'prompt', text: record.text, at: record.at })
+      const command = claudeCommand(record.text)
+      const skill = claudePromptSkill(records, index)
+      const text = command
+        ? `/${command.name}${command.args ? '\n' + command.args : ''}`
+        : record.text
+      messages.push({
+        kind: 'prompt',
+        text,
+        at: record.at,
+        ...(skill
+          ? { skill: { name: skill.name, path: skill.path, start: 0, end: skill.name.length + 1 } }
+          : {})
+      })
     } else if (record.kind === 'assistant') {
       if (record.text.trim() !== '') {
         messages.push({ kind: 'reply', text: record.text, at: record.at })

@@ -34,6 +34,7 @@ export const STEPS = Object.freeze([
   'missing-codex',
   'restore-codex',
   'skill-references',
+  'claude-skill',
   'skill-local-updated',
   'skill-missing-restored'
 ])
@@ -58,6 +59,27 @@ export async function simulate(home, step, at = Date.now()) {
   const codex = (name, lines) => append(codexPath(home, IDS[name]), lines)
   const transcript = (name, lines) => append(transcriptPath(home, IDS[name]), lines)
   switch (step) {
+    case 'claude-skill': {
+      const name = 'synthetic-skill'
+      const directory = join(home, '.claude', 'skills', name)
+      await transcript('busy', [
+        prompt(
+          IDS.busy,
+          at,
+          `<command-message>${name}</command-message>\n<command-name>/${name}</command-name>\n<command-args>Show the synthetic result before implementation.</command-args>`
+        ),
+        claude(IDS.busy, 'user', at + 1, {
+          isMeta: true,
+          message: {
+            role: 'user',
+            content: `Base directory for this skill: ${directory}\n\n# Synthetic Claude skill\n\nRecorded instructions for a synthetic preview.\n\n<script>globalThis.fixtureInjected=true</script>\n\n![Synthetic image](https://example.invalid/skill.png)`
+          }
+        }),
+        assistant(IDS.busy, at + 2)
+      ])
+      await status('busy', 'idle')
+      break
+    }
     case 'skill-references': {
       const skill = (name) => join(home, '.agents', 'skills', name, 'SKILL.md')
       const names = [

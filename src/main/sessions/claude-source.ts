@@ -23,6 +23,7 @@ import {
 } from '../../core/claude/transcript-state'
 import type { ToolHealth } from '../../core/health'
 import type { SessionFacts, SessionKey } from '../../core/session'
+import { readClaudeSkill } from './claude-skill-reader'
 import { type AccessGate, createAccessGate } from './access'
 import {
   checkFolder,
@@ -524,7 +525,9 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
         maxLines: ALL_LINES,
         maxBytes: MESSAGES_TAIL_BYTES
       })
-      const messages = claudeMessages(parseRecords(tail.lines, { includeToolDetails: true }))
+      const messages = claudeMessages(
+        parseRecords(tail.lines, { includeToolDetails: true, includeSkills: true })
+      )
       const count = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 0
       return {
         kind: 'messages',
@@ -541,6 +544,19 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
     catalog: () => serialized(reconcile),
     refresh: (changedPaths) => serialized(() => refresh(changedPaths)),
     recentMessages,
+    async getSkill(key, request) {
+      const entry = key.tool === 'claude' ? tracked.get(key.id) : undefined
+      if (!entry) return { kind: 'unavailable', reason: 'not-found' }
+      try {
+        const tail = await readLastLines(gate, entry.path, {
+          maxLines: ALL_LINES,
+          maxBytes: MESSAGES_TAIL_BYTES
+        })
+        return readClaudeSkill(tail.lines, request)
+      } catch {
+        return { kind: 'unavailable', reason: 'unreadable' }
+      }
+    },
     health: () => health,
     // Claude Code closes its files after each write, so folder watches see every change.
     watchedFiles: () => []

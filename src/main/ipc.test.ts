@@ -124,7 +124,7 @@ describe('IPC trust boundary', () => {
     const s = setup()
     const request = { at: 1, name: 'pr', path: '/synthetic/.agents/skills/pr/SKILL.md' }
     await expect(
-      s.invoke(IPC.getSkill, [{ tool: 'claude', id: 'synthetic' }, request])
+      s.invoke(IPC.getSkill, [{ tool: 'other', id: 'synthetic' }, request])
     ).rejects.toThrow('Invalid AgentPeek request')
     await expect(
       s.invoke(IPC.getSkill, [{ tool: 'codex', id: 'missing' }, request])
@@ -134,6 +134,17 @@ describe('IPC trust boundary', () => {
     await expect(s.invoke(IPC.getSkill, [key, request])).rejects.toThrow(
       'AgentPeek could not complete the request.'
     )
+  })
+  it('accepts a listed Claude session with the same validated skill request contract', async () => {
+    const s = setup()
+    const claudeKey = { tool: 'claude' as const, id: 'synthetic-claude' }
+    s.service.snapshot.mockReturnValue({
+      ...s.service.snapshot(),
+      sessions: [testSession({ key: claudeKey })]
+    })
+    const request = { at: 1, name: 'pr', path: '/synthetic/.claude/skills/pr/SKILL.md' }
+    await s.invoke(IPC.getSkill, [claudeKey, request])
+    expect(s.service.getSkill).toHaveBeenCalledWith(claudeKey, request)
   })
   it.each([['other', false], ['codex', 'false'], ['claude', null], ['codex'], [null, true]])(
     'rejects malformed source changes: %j',

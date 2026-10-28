@@ -23,6 +23,7 @@ import {
   CWD_FOLDER,
   interruptLine,
   MINUTE,
+  metaUserLine,
   promptLine,
   registryJson,
   type RegistryOptions,
@@ -163,6 +164,47 @@ const S2 = syntheticId(2)
 const S3 = syntheticId(3)
 const R1 = syntheticId(0x101)
 const R2 = syntheticId(0x102)
+
+describe('on-demand Claude skills', () => {
+  it('keeps skill bodies out of facts/messages and reauthorizes each transcript read', async () => {
+    const path = join(home, '.claude', 'skills', 'synthetic-skill', 'SKILL.md')
+    const command =
+      '<command-message>synthetic-skill</command-message>\n<command-name>/synthetic-skill</command-name>\n<command-args>Explain the synthetic change.</command-args>'
+    const transcript = await writeTranscript(S1, [
+      promptLine(command, T0),
+      metaUserLine(
+        `Base directory for this skill: ${dirname(path)}\n\n# Synthetic recorded instructions`,
+        T0 + 1,
+        { isMeta: true }
+      )
+    ])
+    await writeCatalog({ cliSessionId: S1 })
+    const source = createSource()
+    expect(JSON.stringify(await source.catalog())).not.toContain('recorded instructions')
+    const key = { tool: 'claude' as const, id: S1 }
+    const detail = await source.recentMessages(key, 20)
+    expect(detail).toMatchObject({
+      kind: 'messages',
+      messages: [{ skill: { name: 'synthetic-skill', path } }]
+    })
+    expect(JSON.stringify(detail)).not.toContain('recorded instructions')
+    const request = { at: T0, name: 'synthetic-skill', path }
+    expect(await source.getSkill!(key, request)).toMatchObject({
+      source: 'conversation',
+      text: '# Synthetic recorded instructions'
+    })
+    await writeFile(transcript, promptLine('Replacement synthetic prompt', T0))
+    expect(await source.getSkill!(key, request)).toEqual({
+      kind: 'unavailable',
+      reason: 'not-found'
+    })
+    expect(await source.getSkill!({ ...key, id: S2 }, request)).toEqual({
+      kind: 'unavailable',
+      reason: 'not-found'
+    })
+    expect(opened.every((file) => !file.endsWith('SKILL.md'))).toBe(true)
+  })
+})
 
 describe('the observed format (fixture claude-2.1.295)', () => {
   const desktop = '00000000-0000-4000-8000-0000000000c1'

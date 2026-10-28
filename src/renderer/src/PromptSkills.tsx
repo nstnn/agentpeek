@@ -9,6 +9,7 @@ export interface PromptSkillContext {
   at: number
   api: AgentPeekApi
   visible: boolean
+  mention?: SkillMention
 }
 
 export function PromptSkills({
@@ -23,8 +24,14 @@ export function PromptSkills({
   onLink: (url: string) => void
 }): JSX.Element {
   const mentions = useMemo(
-    () => skillMentions(text).filter((mention) => mention.end <= limit),
-    [text, limit]
+    () =>
+      (context.sessionKey.tool === 'codex'
+        ? skillMentions(text)
+        : context.mention
+          ? [context.mention]
+          : []
+      ).filter((mention) => mention.end <= limit),
+    [text, limit, context.sessionKey.tool, context.mention]
   )
   const parts: JSX.Element[] = []
   let offset = 0

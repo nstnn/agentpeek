@@ -427,11 +427,15 @@ export function SessionDetail({
                   tool={tool}
                   activity={session.activity.state}
                   onLink={onLink}
-                  promptContext={
-                    tool === 'codex'
-                      ? { sessionKey: session.key, at: message.at, api, visible }
-                      : undefined
-                  }
+                  promptContext={{
+                    sessionKey: session.key,
+                    at: message.at,
+                    api,
+                    visible,
+                    ...(message.kind === 'prompt' && message.skill
+                      ? { mention: message.skill }
+                      : {})
+                  }}
                 />
               </div>
             ))}
