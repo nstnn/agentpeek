@@ -41,7 +41,16 @@ export function createPreloadApi(transport: PreloadTransport): AgentPeekApi {
         : invoke(IPC.setSelection, key, presentation),
     setDetailOpen: (open) => invoke(IPC.setDetailOpen, open),
     showSessionMenu: (key) => invoke(IPC.showSessionMenu, key),
-    onCommand: (callback: (command: MenuCommand) => void) => subscribe(IPC.command, callback)
+    onCommand: (callback: (command: MenuCommand) => void) => subscribe(IPC.command, callback),
+    getRemoteStatus: () => invoke(IPC.getRemoteStatus),
+    retryRemoteLoad: () => invoke(IPC.retryRemoteLoad),
+    setRemoteEnabled: (enabled) => invoke(IPC.setRemoteEnabled, enabled),
+    saveRemoteConnection: ({ ownerLogin, hostName, port }) =>
+      invoke(IPC.saveRemoteConnection, { ownerLogin, hostName, port }),
+    setRemoteWorkspaceShared: (workspace, shared) =>
+      invoke(IPC.setRemoteWorkspaceShared, workspace, shared),
+    setRemoteShareTitles: (shareTitles) => invoke(IPC.setRemoteShareTitles, shareTitles),
+    copyRemoteText: (target) => invoke(IPC.copyRemoteText, target)
   }
   return Object.freeze(api)
 }

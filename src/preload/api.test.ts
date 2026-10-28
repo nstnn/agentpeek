@@ -31,7 +31,14 @@ describe('preload API', () => {
         'setSelection',
         'setDetailOpen',
         'showSessionMenu',
-        'onCommand'
+        'onCommand',
+        'getRemoteStatus',
+        'retryRemoteLoad',
+        'setRemoteEnabled',
+        'saveRemoteConnection',
+        'setRemoteWorkspaceShared',
+        'setRemoteShareTitles',
+        'copyRemoteText'
       ].sort()
     )
     expect(Object.isFrozen(api)).toBe(true)
@@ -56,6 +63,15 @@ describe('preload API', () => {
     await api.setSelection(key, { secondPaneOpen: true })
     await api.setDetailOpen(true)
     await api.showSessionMenu(key)
+    await api.getRemoteStatus()
+    await api.retryRemoteLoad()
+    await api.setRemoteEnabled(true)
+    const connection = { ownerLogin: 'owner@example.com', hostName: 'mac.tailnet.ts.net', port: 1 }
+    // Extra properties on a caller's object never cross the bridge.
+    await api.saveRemoteConnection({ ...connection, enabled: true } as typeof connection)
+    await api.setRemoteWorkspaceShared('/synthetic/demo', false)
+    await api.setRemoteShareTitles(true)
+    await api.copyRemoteText('serve-command')
     expect(transport.invoke.mock.calls).toEqual([
       [IPC.getSnapshot],
       [IPC.getTheme],
@@ -72,7 +88,14 @@ describe('preload API', () => {
       [IPC.setSelection, null],
       [IPC.setSelection, key, { secondPaneOpen: true }],
       [IPC.setDetailOpen, true],
-      [IPC.showSessionMenu, key]
+      [IPC.showSessionMenu, key],
+      [IPC.getRemoteStatus],
+      [IPC.retryRemoteLoad],
+      [IPC.setRemoteEnabled, true],
+      [IPC.saveRemoteConnection, connection],
+      [IPC.setRemoteWorkspaceShared, '/synthetic/demo', false],
+      [IPC.setRemoteShareTitles, true],
+      [IPC.copyRemoteText, 'serve-command']
     ])
   })
   it.each(['snapshot', 'command'] as const)(

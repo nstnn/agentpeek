@@ -3,6 +3,12 @@ import type { SessionsSnapshot } from '../core/snapshot'
 import type { AgentTool } from '../core/tools'
 import type { Theme } from './preferences'
 import type { SkillContent, SkillRequest } from '../core/skills'
+import type {
+  RemoteActionResult,
+  RemoteConnectionInput,
+  RemoteCopyTarget,
+  RemoteStatusView
+} from './remote-settings'
 
 export interface AppSnapshot extends SessionsSnapshot {
   /** The synthetic home, for the fixture banner; null in a normal run. */
@@ -43,4 +49,14 @@ export interface AgentPeekApi {
   setDetailOpen(open: boolean): Promise<void>
   showSessionMenu(key: SessionKey): Promise<void>
   onCommand(callback: (command: MenuCommand) => void): () => void
+  /** Remote View settings (TASK-016). None of these runs, reads or configures Tailscale. */
+  getRemoteStatus(): Promise<RemoteStatusView>
+  retryRemoteLoad(): Promise<void>
+  setRemoteEnabled(enabled: boolean): Promise<RemoteActionResult>
+  saveRemoteConnection(connection: RemoteConnectionInput): Promise<RemoteActionResult>
+  /** `workspace` must be the exact folder of a listed session; the main process checks it. */
+  setRemoteWorkspaceShared(workspace: string, shared: boolean): Promise<RemoteActionResult>
+  setRemoteShareTitles(shareTitles: boolean): Promise<RemoteActionResult>
+  /** Copies text built from the saved settings; false when that setting is not saved yet. */
+  copyRemoteText(target: RemoteCopyTarget): Promise<boolean>
 }

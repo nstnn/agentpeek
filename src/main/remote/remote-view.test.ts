@@ -93,6 +93,23 @@ describe('Remote View off', () => {
     expect(await view.saveConnection(connection(port))).toEqual({ ok: false, error: 'not-loaded' })
     expect(servers().length).toBe(before)
   })
+
+  it('reads the file again on Try Again, and resumes as at launch once it loads', async () => {
+    const { folder, port, view } = await setup({ enabled: true, port: 80 })
+    await view.retryLoad()
+    expect(view.status()).toEqual({ state: 'load-failed' })
+    const fixed = { version: 1, enabled: true, ...connection(port), sharedWorkspaces: [] }
+    await writeFile(join(folder, REMOTE_SETTINGS_FILE), JSON.stringify(fixed))
+    await view.retryLoad()
+    expect(view.status()).toMatchObject({ state: 'on', resumed: true })
+    // Loaded settings are never read again: the file is not the source of truth any more.
+    await writeFile(
+      join(folder, REMOTE_SETTINGS_FILE),
+      JSON.stringify({ ...fixed, enabled: false, port: port === 65535 ? 1024 : port + 1 })
+    )
+    await view.retryLoad()
+    expect(view.status()).toMatchObject({ state: 'on', settings: { port } })
+  })
 })
 
 describe('Remote View on', () => {
@@ -132,6 +149,11 @@ describe('Remote View on', () => {
       await view.saveConnection(connection(port))
       expect(await view.enable()).toEqual({ ok: false, error: 'port-in-use' })
       expect(view.status()).toMatchObject({ state: 'off', startError: 'port-in-use' })
+      // Saving the same values keeps the error; a new port clears it until the next start.
+      await view.saveConnection(connection(port))
+      expect(view.status()).toMatchObject({ startError: 'port-in-use' })
+      await view.saveConnection(connection(port === 65535 ? 1024 : port + 1))
+      expect(view.status()).toMatchObject({ state: 'off', startError: null })
       await view.close()
       expect(await savedFile(folder)).toMatchObject({ enabled: false })
     } finally {

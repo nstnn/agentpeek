@@ -72,7 +72,31 @@ export function fakeApi(initial = snapshot()) {
     reload: vi.fn(() => Promise.resolve()),
     setSelection: vi.fn<AgentPeekApi['setSelection']>(() => Promise.resolve()),
     setDetailOpen: vi.fn(() => Promise.resolve()),
-    showSessionMenu: vi.fn<AgentPeekApi['showSessionMenu']>(() => Promise.resolve())
+    showSessionMenu: vi.fn<AgentPeekApi['showSessionMenu']>(() => Promise.resolve()),
+    getRemoteStatus: vi.fn<AgentPeekApi['getRemoteStatus']>().mockResolvedValue({
+      state: 'off',
+      settings: {
+        enabled: false,
+        ownerLogin: '',
+        hostName: '',
+        port: 47613,
+        sharedWorkspaces: [],
+        shareTitles: false
+      },
+      startError: null
+    }),
+    retryRemoteLoad: vi.fn<AgentPeekApi['retryRemoteLoad']>().mockResolvedValue(undefined),
+    setRemoteEnabled: vi.fn<AgentPeekApi['setRemoteEnabled']>().mockResolvedValue({ ok: true }),
+    saveRemoteConnection: vi
+      .fn<AgentPeekApi['saveRemoteConnection']>()
+      .mockResolvedValue({ ok: true }),
+    setRemoteWorkspaceShared: vi
+      .fn<AgentPeekApi['setRemoteWorkspaceShared']>()
+      .mockResolvedValue({ ok: true }),
+    setRemoteShareTitles: vi
+      .fn<AgentPeekApi['setRemoteShareTitles']>()
+      .mockResolvedValue({ ok: true }),
+    copyRemoteText: vi.fn<AgentPeekApi['copyRemoteText']>().mockResolvedValue(true)
   } satisfies AgentPeekApi
   return {
     api,
