@@ -67,3 +67,4 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Skill content](./skill-content.md) covers explicit Codex skill cards, on-demand conversation/current-file content, provenance, retry, safe Markdown and narrow reading.
 - [Fixture regression](./fixture-regression.md) covers the synthetic generator/simulator and built-app Playwright smoke, including combined two-pane selection, read isolation, compact navigation and reset on relaunch.
 - [Local macOS package](./local-package.md) covers the signed arm64 bundle, fuses, native About panel, Finder reopen, window sizes and shutdown.
+- [Localhost preview](./localhost-preview.md) covers the development-only, fixture-only Remote View status page on 127.0.0.1: switch handling, redacted stream, Host/Origin/method guards and closing on quit.
