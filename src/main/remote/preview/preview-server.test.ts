@@ -145,7 +145,7 @@ describe('preview switch', () => {
 })
 
 describe('preview server', () => {
-  it('listens on 127.0.0.1 only and serves the stub page with the required headers', async () => {
+  it('listens on 127.0.0.1 only and serves the preview page with the required headers', async () => {
     const server = await start()
     expect(server.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
     const page = await send(server.url)
@@ -159,6 +159,8 @@ describe('preview server', () => {
     // The inline script runs only because its hash is listed.
     const script = /<script>([\s\S]*)<\/script>/.exec(page.body)![1]!
     expect(csp).toContain(`'sha256-${createHash('sha256').update(script).digest('base64')}'`)
+    // Stream data reaches the page only as text, never as markup.
+    expect(script).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(/)
     expect(Object.keys(page.headers).some((name) => name.startsWith('access-control-'))).toBe(false)
     expect(page.body).not.toContain(SENTINELS.title)
   })
