@@ -1,10 +1,10 @@
 # Navigation visibility
 
-An icon left of the Sessions heading collapses navigation to an icon rail independently of the session list. The Sessions title itself is not interactive. An icon beside Active/Pinned/All Sessions hides the list; a restore icon appears in the reading header while it is hidden. Controls use the existing headers, with accessible names/tooltips and no extra toolbar or text labels. Toggles preserve reading selections, scroll, disclosures and column preferences. Capacity follows the space left by navigation.
+An icon left of the Sessions heading collapses navigation to an icon rail independently of the session list. The Sessions title itself is not interactive. An icon beside Active/Inbox/Pinned/All Sessions hides the list; a restore icon appears in the reading header while it is hidden. Controls use the existing headers, with accessible names/tooltips and no extra toolbar or text labels. Toggles preserve reading selections, scroll, disclosures and column preferences. Capacity follows the space left by navigation.
 
 ## Sub-features
 
-- `navigation-views`: expanded Views and a 56-pixel icon rail, selected view, Active badge and source identity/status.
+- `navigation-views`: expanded Views and a 56-pixel icon rail, selected view, Active/Inbox count badges and source identity/status.
 - `navigation-sessions`: separate list hiding, persistent restore control and retained reading state.
 - `navigation-filter`: a rail view or native View command reveals the filtered list without replacing reading sessions.
 - `navigation-capacity`: remaining width determines one/two reading panes and adjacent/replacement navigation.
@@ -14,8 +14,8 @@ An icon left of the Sessions heading collapses navigation to an icon rail indepe
 ## How to get to it (user POV)
 
 - Click the icon left of Sessions to collapse navigation; click its rail icon to expand it, or press Shift-Command-B. Clicking the Sessions title does nothing.
-- Select a session, then click the icon beside Active/Pinned/All Sessions to hide the list. Click the restore icon in the reading header to show it again, or press Shift-Command-L. Accessible names remain Hide Sessions / Show Sessions.
-- In the rail, click Active, Pinned or All Sessions, or use View's existing commands.
+- Select a session, then click the icon beside Active/Inbox/Pinned/All Sessions to hide the list. Click the restore icon in the reading header to show it again, or press Shift-Command-L. Accessible names remain Hide Sessions / Show Sessions.
+- In the rail, click Active, Inbox, Pinned or All Sessions, or use View's existing commands.
 - Connected sources sit above Settings as names, or initials in the rail (C for Codex, A for Claude Code). Click one to open Settings and inspect every source.
 - Resize the window or expanded sidebar while reading one or two sessions.
 - Toggle again during a transition to reverse it. With macOS Reduce Motion enabled, navigation changes immediately.

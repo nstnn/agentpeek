@@ -62,7 +62,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Renderer lockdown](./renderer-lockdown.md) covers what the page can and cannot do: no Node.js, no navigation, no new windows, no remote loads, no permissions.
 - [Sessions connection](./sessions-connection.md) covers the live session total, fixture isolation, refresh, and clean service shutdown.
 - [Project grouping](./project-grouping.md) covers Project/Status selection, path identity, collapse, live summaries and tree navigation.
-- [Sessions list](./sessions-list.md) covers views, filtering, groups, selection, keyboard/context entry points, tool health and list notices.
+- [Sessions list](./sessions-list.md) covers running-only Active, Inbox transitions/counts, filtering, groups, selection, keyboard/context entry points, tool health and list notices.
 - [Session detail](./session-detail.md) covers messages, safe Markdown, long text, actions, focused read-on-view, two-pane placement/activation/isolation, compact split browse/return and pane selection, and single-pane narrow push/Back.
 - [Skill content](./skill-content.md) covers explicit Codex skill cards, on-demand conversation/current-file content, provenance, retry, safe Markdown and narrow reading.
 - [Fixture regression](./fixture-regression.md) covers the synthetic generator/simulator and built-app Playwright smoke, including combined two-pane selection, read isolation, compact navigation and reset on relaunch.

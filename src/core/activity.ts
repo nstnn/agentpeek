@@ -75,8 +75,8 @@ function unknown(reason: UnknownReason): SessionActivity {
 }
 
 /**
- * True when an Unknown state comes from a turn that looked open, so the session belongs in the
- * Active view's Unknown group. Unreadable and unsupported files do not.
+ * True when an Unknown state comes from a turn that looked open. Unreadable and unsupported
+ * files do not count as open-looking turns.
  */
 export function looksOpen(reason: UnknownReason): boolean {
   return reason === 'process-ended' || reason === 'app-not-running' || reason === 'quiet'

@@ -45,7 +45,7 @@ function input(sessions: Session[]): SnapshotInput {
 const WAITING: SessionActivity = { state: 'waiting', waitingFor: 'input needed' }
 
 describe('countGroups', () => {
-  it('counts each session in its first Active group, plus the Pinned and All views', () => {
+  it('counts each session in its current status group, plus the Pinned and All views', () => {
     const counts = countGroups([
       session('a', { activity: WAITING, attention: { waiting: true, error: true } }),
       session('b', { activity: { state: 'running' }, attention: { error: true } }),
@@ -56,10 +56,10 @@ describe('countGroups', () => {
       session('g')
     ])
     expect(counts).toEqual({
-      waiting: 1,
+      waiting: 0,
       errors: 1,
       'new-replies': 1,
-      running: 1,
+      running: 2,
       unknown: 1,
       pinned: 2,
       all: 7

@@ -162,15 +162,22 @@ export function createSessionsStore(api: AgentPeekApi) {
           received = true
           if (!active) return
           const selection = reconcileSelection(state.selection, state.snapshot, snapshot)
+          const cursor = reconcileSelection(state.listSelection, state.snapshot, snapshot)
+          const listed = cursor && snapshot.sessions.find((s) => sameKey(s.key, cursor.session.key))
+          // Reading panes survive transitions; list cursors must not keep finished rows in Active
+          // or reinsert a restarted session into Inbox.
+          const keepCursor =
+            state.view === 'active'
+              ? listed?.activity.state === 'running'
+              : !(state.view === 'inbox' && listed?.activity.state === 'running')
           emit({
             snapshot,
             failed: false,
             selection,
             listSelection:
-              state.listSelection &&
-              snapshot.health[state.listSelection.session.key.tool].state === 'off'
+              !keepCursor || (cursor && snapshot.health[cursor.session.key.tool].state === 'off')
                 ? null
-                : reconcileSelection(state.listSelection, state.snapshot, snapshot),
+                : cursor,
             secondarySelection: reconcileSelection(
               state.secondarySelection,
               state.snapshot,
@@ -527,6 +534,12 @@ export function displayedGroups(state: RendererState): ListGroup[] {
   const groups = currentGroups(state)
   const anchor = state.listSelection
   if (!anchor || state.snapshot?.health[anchor.session.key.tool].state === 'off') return groups
+  if (
+    state.view === 'active' &&
+    !groups.some((g) => g.sessions.some((s) => sameKey(s.key, anchor.session.key)))
+  )
+    return groups
+  if (state.view === 'inbox' && anchor.session.activity.state === 'running') return groups
   for (const group of groups)
     group.sessions = group.sessions.filter((s) => !sameKey(s.key, anchor.session.key))
   let group = groups.find((g) => g.id === anchor.group)

@@ -216,6 +216,7 @@ describe('roomy split session composition', () => {
       attention: { waiting: true, error: false, newReply: false }
     })
     const f = mount([session('a'), waiting])
+    act(() => f.store.setView('all'))
     await choose('b')
     await keepMain(f)
     const secondMessages = messages('Right')
@@ -276,9 +277,9 @@ describe('roomy split session composition', () => {
       })
     )
     act(() => f.push(snapshot([session('a')])))
-    expect(
-      screen.getByRole('option', { name: /Synthetic b/ }).getAttribute('aria-label')
-    ).not.toContain('Right pane')
+    expect(screen.queryByRole('option', { name: /Synthetic b/ })).toBeNull()
+    expect(f.store.getSnapshot().secondarySelection?.session.key.id).toBe('b')
+    expect(f.store.getSnapshot().listSelection).toBeNull()
   })
 })
 
@@ -356,7 +357,11 @@ describe('session placement interactions', () => {
     const f = mount()
     await choose('a')
     const drag = startDrag('b')
-    act(() => f.push(snapshot([session('a'), unread('b'), session('c')])))
+    act(() =>
+      f.push(
+        snapshot([session('a'), { ...unread('b'), activity: { state: 'idle' } }, session('c')])
+      )
+    )
     expect(drag.row.isConnected).toBe(false)
     expect(screen.getByRole('region', { name: 'Drop in Right Pane' })).toBeTruthy()
     fireEvent.dragEnd(drag.row)

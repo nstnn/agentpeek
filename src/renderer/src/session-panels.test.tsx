@@ -60,16 +60,34 @@ describe('empty states and health', () => {
 
   describe.each(['codex', 'claude'] as AgentTool[])('%s filter', (tool) => {
     const otherTool = tool === 'codex' ? 'claude' : 'codex'
-    it.each(['pinned', 'active', 'all'] as const)(
+    it.each(['pinned', 'active', 'inbox', 'all'] as const)(
       'clears only the tool filter from an empty %s view and restores keyboard focus',
       async (view) => {
         const fake = mount(
-          snapshot([session('hidden', { key: { tool: otherTool, id: 'hidden' }, pinned: true })])
+          snapshot([
+            session('hidden', {
+              key: { tool: otherTool, id: 'hidden' },
+              pinned: true,
+              ...(view === 'inbox'
+                ? {
+                    activity: { state: 'idle' },
+                    attention: { waiting: false, error: false, newReply: true }
+                  }
+                : {})
+            })
+          ])
         )
-        await screen.findByRole('option')
+        await screen.findByRole('heading', { name: 'Active', level: 1 })
         act(() => fake.command(`view:${view}`))
         await userEvent.click(screen.getByRole('radio', { name: `${toolName(tool)} 0` }))
-        const scope = view === 'pinned' ? 'pinned ' : view === 'active' ? 'active ' : ''
+        const scope =
+          view === 'pinned'
+            ? 'pinned '
+            : view === 'active'
+              ? 'running '
+              : view === 'inbox'
+                ? 'inbox '
+                : ''
         expect(
           screen.getByRole('heading', { name: `No ${scope}${toolName(tool)} sessions` })
         ).toBeTruthy()
@@ -80,7 +98,9 @@ describe('empty states and health', () => {
               ? 'Show All Pinned'
               : view === 'active'
                 ? 'Show All Active'
-                : 'Show All Sessions'
+                : view === 'inbox'
+                  ? 'Show All Inbox'
+                  : 'Show All Sessions'
         })
         action.focus()
         await userEvent.keyboard('{Enter}')
@@ -101,7 +121,7 @@ describe('empty states and health', () => {
           session('other', { key: { tool: otherTool, id: 'other' }, activity: { state: 'idle' } })
         ])
       )
-      await screen.findByRole('heading', { name: 'Nothing needs you right now' })
+      await screen.findByRole('heading', { name: 'No running sessions' })
       await userEvent.click(screen.getByRole('radio', { name: `${toolName(tool)} 0` }))
       act(() => fake.command('view:pinned'))
       expect(screen.getByRole('heading', { name: 'No pinned sessions' })).toBeTruthy()
@@ -151,27 +171,27 @@ describe('empty states and health', () => {
 
   it('keeps Active globally empty with idle sessions instead of promising hidden active rows', async () => {
     mount(snapshot([session('idle', { activity: { state: 'idle' } })]))
-    await screen.findByRole('heading', { name: 'Nothing needs you right now' })
+    await screen.findByRole('heading', { name: 'No running sessions' })
     await userEvent.click(screen.getByRole('radio', { name: 'Claude Code 0' }))
-    expect(screen.getByRole('heading', { name: 'Nothing needs you right now' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'No running sessions' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Show All Active' })).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Show All Sessions' }))
     expect(screen.getByRole('heading', { name: 'No Claude Code sessions' })).toBeTruthy()
   })
 
-  it('explains zero Active attention with seven running sessions and keeps totals unfiltered', async () => {
+  it('counts seven running sessions in Active and keeps totals unfiltered', async () => {
     mount(snapshot(Array.from({ length: 7 }, (_, i) => session(`running-${i}`))))
-    const active = await screen.findByRole('button', { name: 'Active, 0 sessions need attention' })
-    expect(active.getAttribute('title')).toContain("Running alone doesn't need attention")
+    const active = await screen.findByRole('button', { name: 'Active 7' })
+    expect(active.getAttribute('title')).toContain('7 running sessions')
     expect(active.getAttribute('title')).toContain('across both tools')
     expect(active.querySelector('.badge')).toBeNull()
     expect(screen.getAllByRole('option')).toHaveLength(7)
     await userEvent.click(screen.getByRole('radio', { name: 'Claude Code 0' }))
-    expect(screen.getByRole('button', { name: 'Active, 0 sessions need attention' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Active 7' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'All Sessions 7' })).toBeTruthy()
   })
 
-  it('counts each waiting/error/reply session once and names the Active badge meaning', async () => {
+  it('counts Inbox separately from running sessions, independent of tool filters', async () => {
     mount(
       snapshot([
         session('waiting', {
@@ -190,13 +210,15 @@ describe('empty states and health', () => {
         session('running')
       ])
     )
-    const active = await screen.findByRole('button', { name: 'Active, 3 sessions need attention' })
-    expect(within(active).getByText('3')).toBeTruthy()
-    expect(active.getAttribute('title')).toContain('Waiting, unread replies or errors')
-    expect(screen.getAllByRole('option')).toHaveLength(4)
+    await screen.findByRole('button', { name: 'Active 1' })
+    expect(screen.getAllByRole('option')).toHaveLength(1)
+    const inbox = screen.getByRole('button', { name: 'Inbox 3' })
+    expect(within(inbox).getByText('3')).toBeTruthy()
+    await userEvent.click(inbox)
+    expect(screen.getAllByRole('option')).toHaveLength(3)
     await userEvent.click(screen.getByRole('radio', { name: 'Claude Code 1' }))
     expect(screen.getAllByRole('option')).toHaveLength(1)
-    expect(screen.getByRole('button', { name: 'Active, 3 sessions need attention' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Active 1' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'All Sessions 4' })).toBeTruthy()
   })
 
