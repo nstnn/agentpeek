@@ -7,7 +7,7 @@ import { AGENT_TOOLS, type AgentTool } from '../tools'
 // browser may receive. Every field is copied from an explicit allowlist, never by spreading a
 // snapshot or session, so a field added to the desktop model stays on the Mac until it is added
 // here on purpose. Message text, error text, paths, raw session IDs, tool versions, read cursors,
-// pins and the fixture home never appear. TASK-003 wraps this view in the versioned envelope.
+// pins and the fixture home never appear. `protocol.ts` (TASK-003) wraps this view in the versioned envelope.
 
 /** Proposed budgets from the Remote View architecture; TASK-003 may tighten them. */
 export const REMOTE_STATUS_LIMITS = {
@@ -24,12 +24,30 @@ export const REMOTE_SESSION_FIELDS = [
   'title',
   'activity',
   'attention',
+  'attentionSince',
   'lastActivityAt'
 ] as const
 
+/**
+ * Why a session waits, as a fixed category mapped on the Mac (TASK-003), one per entry of the
+ * desktop's waiting labels. The tool's own `waitingFor` text never leaves the Mac; an unlisted or
+ * missing value is `other`.
+ */
+export type RemoteWaitingKind =
+  'permission' | 'question' | 'dialog' | 'sandbox' | 'worker' | 'goal' | 'other'
+
+const WAITING_KINDS: ReadonlyMap<string, RemoteWaitingKind> = new Map([
+  ['permission prompt', 'permission'],
+  ['input needed', 'question'],
+  ['dialog open', 'dialog'],
+  ['sandbox request', 'sandbox'],
+  ['worker request', 'worker'],
+  ['goal proposal', 'goal']
+])
+
 export type RemoteActivity =
   | { state: 'running' }
-  | { state: 'waiting' }
+  | { state: 'waiting'; kind: RemoteWaitingKind }
   | { state: 'idle' }
   | { state: 'unknown'; reason: UnknownReason }
 
@@ -41,6 +59,11 @@ export interface RemoteSession {
   title: string
   activity: RemoteActivity
   attention: { waiting: boolean; newReply: boolean; error: boolean }
+  /**
+   * When the reply or error that needs attention arrived, or null when no time is known: always
+   * for a session that only waits, because the readers do not record when waiting began yet.
+   */
+  attentionSince: number | null
   lastActivityAt: number
 }
 
@@ -141,15 +164,23 @@ function projectSession(session: Session, policy: RemoteStatusPolicy): RemoteSes
       newReply: session.attention.newReply,
       error: session.attention.error
     },
+    attentionSince: attentionSince(session),
     lastActivityAt: session.summary.lastActivityAt
   }
 }
 
-/** Drops `waitingFor`, which is tool text such as "permission prompt", and keeps the state. */
+function attentionSince(session: Session): number | null {
+  const { attention, lastReply } = session
+  if (!attention.newReply && !attention.error) return null
+  return lastReply?.completedAt ?? null
+}
+
+/** Replaces `waitingFor`, which is tool text such as "permission prompt", with a fixed kind. */
 function projectActivity(activity: Session['activity']): RemoteActivity {
   switch (activity.state) {
-    case 'running':
     case 'waiting':
+      return { state: 'waiting', kind: WAITING_KINDS.get(activity.waitingFor ?? '') ?? 'other' }
+    case 'running':
     case 'idle':
       return { state: activity.state }
     case 'unknown':
