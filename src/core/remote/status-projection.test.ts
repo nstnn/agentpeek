@@ -217,16 +217,50 @@ describe('projectRemoteStatus semantics', () => {
       policy()
     )
     const rows = firstProject(status).sessions
-    expect(rows.map((row) => [row.activity, row.attention, row.lastActivityAt])).toEqual([
-      [{ state: 'running' }, NO_ATTENTION, 4 * 60_000],
-      [{ state: 'waiting' }, { ...NO_ATTENTION, waiting: true }, 3 * 60_000],
+    expect(
+      rows.map((row) => [row.activity, row.attention, row.attentionSince, row.lastActivityAt])
+    ).toEqual([
+      [{ state: 'running' }, NO_ATTENTION, null, 4 * 60_000],
+      [{ state: 'waiting', kind: 'other' }, { ...NO_ATTENTION, waiting: true }, null, 3 * 60_000],
       [
         { state: 'unknown', reason: 'process-ended' },
         { ...NO_ATTENTION, newReply: true },
+        1,
         2 * 60_000
       ],
-      [{ state: 'idle' }, { ...NO_ATTENTION, error: true }, 60_000]
+      [{ state: 'idle' }, { ...NO_ATTENTION, error: true }, 1, 60_000]
     ])
+  })
+
+  it('maps the waiting reason to a fixed kind and never sends the tool text', () => {
+    const waiting = (id: string, waitingFor: string | null, minute: number) =>
+      session(id, { activity: { state: 'waiting', waitingFor }, minute })
+    const status = projectRemoteStatus(
+      snapshot([
+        waiting('perm', 'permission prompt', 6),
+        waiting('sandbox', 'sandbox request', 5),
+        waiting('question', 'input needed', 4),
+        waiting('dialog', 'dialog open', 3.5),
+        waiting('worker', 'worker request', 3),
+        waiting('goal', 'goal proposal', 2.5),
+        waiting('new', 'SENTINEL future value', 2),
+        waiting('none', null, 1.5),
+        waiting('proto', 'constructor', 1)
+      ]),
+      policy()
+    )
+    expect(firstProject(status).sessions.map((row) => row.activity)).toEqual([
+      { state: 'waiting', kind: 'permission' },
+      { state: 'waiting', kind: 'sandbox' },
+      { state: 'waiting', kind: 'question' },
+      { state: 'waiting', kind: 'dialog' },
+      { state: 'waiting', kind: 'worker' },
+      { state: 'waiting', kind: 'goal' },
+      { state: 'waiting', kind: 'other' },
+      { state: 'waiting', kind: 'other' },
+      { state: 'waiting', kind: 'other' }
+    ])
+    expect(JSON.stringify(status)).not.toMatch(/prompt|request|needed|open|proposal|SENTINEL/)
   })
 
   it('keeps an alias when the session’s activity changes', () => {
