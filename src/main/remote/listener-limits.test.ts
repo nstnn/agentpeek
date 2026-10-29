@@ -1,7 +1,9 @@
 import { connect, type Socket } from 'node:net'
-import { afterEach, describe, expect, it } from 'vitest'
+import { ServerResponse } from 'node:http'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { REMOTE_LIMITS, type RemoteFrame, type StatusFrame } from '../../core/remote/protocol'
-import { REMOTE_STATUS_LIMITS } from '../../core/remote/status-projection'
 import { createSnapshot, type SessionsSnapshot } from '../../core/snapshot'
 import { testSession } from '../test-support'
 import {
@@ -50,9 +52,8 @@ function snapshot(step = 0, count = 2, title = 'Synthetic session'): SessionsSna
   })
 }
 
-/** The most rows the projection keeps, each with the longest title, in four-byte characters. */
-const largest = (step: number) =>
-  snapshot(step, REMOTE_STATUS_LIMITS.maxSessions, '😀'.repeat(REMOTE_STATUS_LIMITS.maxTextLength))
+/** 250 full wire rows with long ASCII titles, below the payload cap. */
+const loadSnapshot = (step: number) => snapshot(step, 250, 'x'.repeat(160))
 
 const VIEWER: ViewerFiles = {
   page: Buffer.from('<!doctype html><title>AgentPeek</title><div id="root"></div>'),
@@ -84,6 +85,7 @@ async function start(change: Partial<RemoteListenerOptions> = {}) {
 }
 afterEach(async () => {
   await Promise.all(listeners.splice(0).map((listener) => listener.close('shutdown')))
+  vi.restoreAllMocks()
 })
 
 /** A clock that moves `step` ms each time it is read, so the rate limit never runs dry. */
@@ -351,35 +353,82 @@ describe('remote listener request size and time', () => {
 })
 
 describe('remote listener stream budget', () => {
-  it('ends a stream that stops reading at its byte budget, without holding up the others', async () => {
+  it('ends a stream that stops reading without holding up the others', async () => {
     const before = timers().length
-    let latest = largest(0)
+    let peakQueuedBytes = 0
+    let maxEventBytes = 0
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- applied with the original response below
+    const original = ServerResponse.prototype.write
+    vi.spyOn(ServerResponse.prototype, 'write').mockImplementation(function (
+      this: ServerResponse,
+      ...args: Parameters<typeof original>
+    ) {
+      const sent = original.apply(this, args)
+      peakQueuedBytes = Math.max(peakQueuedBytes, this.writableLength)
+      maxEventBytes = Math.max(maxEventBytes, Buffer.byteLength(String(args[0])))
+      return sent
+    })
+    const started = Date.now()
+    let latest = loadSnapshot(0)
     // Each read of the clock moves a second, so every publish is sent at once, unthrottled.
     const { listener, port } = await start({ snapshot: () => latest, now: stepping(1_000) })
-    const viewer = subscribe(port)
-    await expect.poll(() => viewer.frames.length).toBe(1)
+    const fast = Array.from({ length: 4 }, () => subscribe(port))
+    const viewer = fast[0]!
+    await expect.poll(() => fast.every((stream) => stream.frames.length === 1)).toBe(true)
     const stuck = connect({ host: '127.0.0.1', port })
     stuck.on('error', () => undefined)
     stuck.write(rawHead(['GET /v1/status HTTP/1.1', ...OWNER_LINES]))
     stuck.pause()
-    await expect.poll(() => listener.streamCount()).toBe(2)
+    await expect.poll(() => listener.streamCount()).toBe(5)
 
-    // Statuses of about 192 KiB until the stuck stream is gone: first loopback's buffers fill (about
-    // ten statuses on the Mac this was written on, more on others), then the 512 KiB budget. The
-    // stream is ended and, unable to flush, dropped after the grace period. The reading viewer
-    // takes each status before the next one, as it would at two a second.
+    // Fill the real loopback send buffers with 250-row frames. Once write() returns false,
+    // later statuses replace one pending status instead of filling an unbounded queue. The reading
+    // viewer takes each change before the next one; the stuck socket never delays it.
     let step = 0
-    while (listener.streamCount() === 2 && step < 40) {
+    while (listener.streamCount() === 5 && step < 40) {
       step += 1
-      latest = largest(step)
+      latest = loadSnapshot(step)
       listener.publish(latest)
-      await expect.poll(() => statuses(viewer.frames).length).toBe(1 + step)
+      await expect
+        .poll(() => fast.every((stream) => statuses(stream.frames).length === 1 + step))
+        .toBe(true)
     }
-    expect(listener.streamCount()).toBe(1)
-    expect(viewer.frames.some((frame) => frame.type === 'end')).toBe(false)
+    // Once write() reports backpressure, newer statuses replace one pending status. A socket
+    // that never drains is closed at the 45 s silence bound even when coalescing keeps bytes low.
+    await expect
+      .poll(() => listener.streamCount(), { timeout: REMOTE_LIMITS.silenceLimitMs + 1_000 })
+      .toBe(4)
+    const elapsedMs = Date.now() - started
+    const evidence = join(import.meta.dirname, '../../../test-results/remote-resilience')
+    await mkdir(evidence, { recursive: true })
+    await writeFile(
+      join(evidence, 'queue-budget.json'),
+      JSON.stringify(
+        {
+          streams: 5,
+          rowsPerStream: 250,
+          peakQueuedBytes,
+          maxEventBytes,
+          conservativeQueuedPlusPendingBytes: peakQueuedBytes + maxEventBytes,
+          budgetBytes: REMOTE_LIMITS.maxBufferedBytesPerStream,
+          publishedChanges: step,
+          fastStatuses: fast.map((stream) => statuses(stream.frames).length),
+          slowStreamClosedMs: elapsedMs,
+          scope:
+            'Real paused TCP consumer with 250 full wire rows and four reading streams; pending replacement and exact byte threshold also tested with injected delayed writable'
+        },
+        null,
+        2
+      )
+    )
+    expect(peakQueuedBytes + maxEventBytes).toBeLessThanOrEqual(
+      REMOTE_LIMITS.maxBufferedBytesPerStream
+    )
+    expect(fast.every((stream) => stream.frames.every((frame) => frame.type !== 'end'))).toBe(true)
     // Every frame stayed within its payload budget and said how many rows it left out.
     for (const frame of statuses(viewer.frames)) {
-      expect(frame.status.omitted.sessions).toBeGreaterThan(0)
+      expect(frame.status.omitted.sessions).toBe(0)
+      expect(frame.status.projects[0]!.sessions).toHaveLength(250)
       expect(Buffer.byteLength(JSON.stringify(frame))).toBeLessThanOrEqual(
         REMOTE_LIMITS.maxFrameBytes
       )
@@ -390,5 +439,5 @@ describe('remote listener stream budget', () => {
     await listener.close('shutdown')
     // No timer of this listener is left; one from an earlier test may have finished meanwhile.
     expect(timers().length).toBeLessThanOrEqual(before)
-  })
+  }, 60_000)
 })

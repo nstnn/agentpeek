@@ -103,6 +103,7 @@ if (!app.requestSingleInstanceLock()) {
     quitting = true
     removeIpc?.()
     powerMonitor.removeListener('resume', onResume)
+    powerMonitor.removeListener('suspend', onSuspend)
     // A quit during the store open stops that service before it can start.
     void (async () => {
       try {
@@ -218,6 +219,7 @@ if (!app.requestSingleInstanceLock()) {
         mainWindow = null
       })
       powerMonitor.on('resume', onResume)
+      powerMonitor.on('suspend', onSuspend)
       updateMenu()
       await service.start()
     })
@@ -227,6 +229,11 @@ if (!app.requestSingleInstanceLock()) {
     })
 }
 
+function onSuspend(): void {
+  remote?.suspend()
+}
+
 function onResume(): void {
+  remote?.resume()
   void lifecycle?.reload()
 }

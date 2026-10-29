@@ -22,6 +22,8 @@ type Reply =
   | { kind: 'network' }
 
 function harness(replies: Reply[]) {
+  let clock = 0
+  let wallClock = 0
   const states: ViewerState[] = []
   const requests: { url: string; init: RequestInit | undefined }[] = []
   const timers: { run: () => void; ms: number }[] = []
@@ -53,6 +55,8 @@ function harness(replies: Reply[]) {
   }
   const connection = createConnection({
     fetch: scripted,
+    now: () => clock,
+    wallNow: () => wallClock,
     random: () => 0.5,
     onChange: (state) => states.push(state),
     setTimer: (run, ms) => {
@@ -70,6 +74,10 @@ function harness(replies: Reply[]) {
     states,
     requests,
     timers,
+    advance(ms: number, wallMs = ms) {
+      clock += ms
+      wallClock += wallMs
+    },
     last: () => states.at(-1),
     /** Runs the one pending reconnect timer and returns its delay. */
     async fire() {
@@ -243,7 +251,7 @@ describe('Remote View connection', () => {
     expect(h.timers).toHaveLength(1)
     h.connection.retryNow()
     await settle()
-    expect(h.timers).toHaveLength(0)
+    expect(h.timers.map((timer) => timer.ms)).toEqual([REMOTE_LIMITS.silenceLimitMs])
     expect(h.last()?.kind).toBe('live')
   })
 
@@ -309,5 +317,171 @@ describe('Remote View connection', () => {
     h.connection.start()
     await settle()
     expect(h.requests).toHaveLength(1)
+  })
+})
+
+describe('Remote View silence and resume', () => {
+  it('leaves Live at 45 s of silence, aborts the old stream and starts with a full status', async () => {
+    const h = harness([streamOf(sse(VALID_STATUS_FRAME)), streamOf(sse(NARROWED_STATUS_FRAME))])
+    h.connection.start()
+    await settle()
+    h.advance(REMOTE_LIMITS.silenceLimitMs)
+    expect(await h.fire()).toBe(45_000)
+    expect(h.last()).toMatchObject({ kind: 'lost', data: { frame: VALID_STATUS_FRAME } })
+    expect(h.requests[0]!.init!.signal!.aborted).toBe(true)
+    await h.fire()
+    expect(h.last()).toMatchObject({ kind: 'live', data: { frame: NARROWED_STATUS_FRAME } })
+    h.connection.stop()
+    expect(h.timers).toHaveLength(0)
+  })
+
+  it('keeps an unchanged old observation live while valid heartbeats arrive, preserving source health', async () => {
+    let open!: OpenStream
+    const h = harness([{ kind: 'stream', ready: (stream) => (open = stream) }])
+    h.connection.start()
+    await settle()
+    open.push(sse(VALID_STATUS_FRAME))
+    await settle()
+    for (let beat = 1; beat <= 6; beat += 1) {
+      h.advance(15_000)
+      open.push(
+        sse({
+          v: 1,
+          type: 'heartbeat',
+          snapshotId: VALID_STATUS_FRAME.snapshotId,
+          generation: VALID_STATUS_FRAME.generation,
+          sentAt: VALID_STATUS_FRAME.sentAt + beat * 15_000
+        })
+      )
+      await settle()
+      expect(h.last()).toMatchObject({
+        kind: 'live',
+        data: { frame: VALID_STATUS_FRAME, lastSentAt: VALID_STATUS_FRAME.sentAt + beat * 15_000 }
+      })
+    }
+    h.connection.stop()
+  })
+
+  it('does not count partial bytes as a valid frame', async () => {
+    let open!: OpenStream
+    const h = harness([{ kind: 'stream', ready: (stream) => (open = stream) }])
+    h.connection.start()
+    await settle()
+    open.push(sse(VALID_STATUS_FRAME))
+    await settle()
+    h.advance(44_000)
+    open.push('event: heartbeat\ndata: ')
+    await settle()
+    h.advance(1_000)
+    await h.fire()
+    expect(h.last()?.kind).toBe('lost')
+    h.connection.stop()
+  })
+
+  it('detects OS sleep before accepting buffered frames, even if the monotonic clock paused', async () => {
+    let open!: OpenStream
+    const h = harness([{ kind: 'stream', ready: (stream) => (open = stream) }])
+    h.connection.start()
+    await settle()
+    open.push(sse(VALID_STATUS_FRAME))
+    await settle()
+    h.advance(0, 60_000)
+    open.push(sse(NARROWED_STATUS_FRAME))
+    await settle()
+    expect(h.last()).toMatchObject({ kind: 'lost', data: { frame: VALID_STATUS_FRAME } })
+    expect(h.requests[0]!.init!.signal!.aborted).toBe(true)
+    h.connection.stop()
+  })
+
+  it('suspends with no active timers and requires a new full status on resume', async () => {
+    const h = harness([streamOf(sse(VALID_STATUS_FRAME)), streamOf(sse(NARROWED_STATUS_FRAME))])
+    h.connection.start()
+    await settle()
+    h.connection.suspend()
+    expect(h.last()).toMatchObject({ kind: 'reconnecting', data: { frame: VALID_STATUS_FRAME } })
+    expect(h.timers).toHaveLength(0)
+    h.advance(60_000)
+    h.connection.resume()
+    await settle()
+    expect(h.requests).toHaveLength(2)
+    expect(h.last()).toMatchObject({ kind: 'live', data: { frame: NARROWED_STATUS_FRAME } })
+    h.connection.stop()
+  })
+
+  it('does not retry a final refusal when the tab resumes', async () => {
+    const h = harness([errorReply('not-allowed')])
+    h.connection.start()
+    await settle()
+    h.connection.suspend()
+    h.connection.resume()
+    h.connection.start()
+    await settle()
+    expect(h.requests).toHaveLength(1)
+    expect(h.last()).toEqual({ kind: 'not-allowed' })
+    expect(h.timers).toHaveLength(0)
+  })
+
+  it('requires a status before any heartbeat and resyncs on a mismatched heartbeat', async () => {
+    const heartbeat = {
+      v: 1,
+      type: 'heartbeat',
+      snapshotId: 'unknown',
+      generation: VALID_STATUS_FRAME.generation,
+      sentAt: 1
+    }
+    for (const prefix of [[], [sse(VALID_STATUS_FRAME)]]) {
+      const h = harness([streamOf(...prefix, sse(heartbeat))])
+      h.connection.start()
+      await settle()
+      expect(h.last()?.kind).toBe('reconnecting')
+      h.connection.stop()
+    }
+  })
+
+  it('bounds a request that never returns headers, and ignores its late response after resync', async () => {
+    let release!: (response: Response) => void
+    let calls = 0
+    const states: ViewerState[] = []
+    const timers: { run: () => void; ms: number }[] = []
+    let clock = 0
+    const response = (frame: RemoteFrame) =>
+      new Response(
+        new ReadableStream({
+          start(c) {
+            c.enqueue(new TextEncoder().encode(sse(frame)))
+          }
+        }),
+        { headers: { 'Content-Type': 'text/event-stream' } }
+      )
+    const connection = createConnection({
+      fetch: () =>
+        ++calls === 1
+          ? new Promise((done) => (release = done))
+          : Promise.resolve(response(NARROWED_STATUS_FRAME)),
+      now: () => clock,
+      wallNow: () => clock,
+      onChange: (state) => states.push(state),
+      setTimer: (run, ms) => {
+        const timer = { run, ms }
+        timers.push(timer)
+        return timer
+      },
+      clearTimer: (timer) => {
+        const index = timers.indexOf(timer as (typeof timers)[number])
+        if (index >= 0) timers.splice(index, 1)
+      }
+    })
+    connection.start()
+    clock = 45_000
+    timers.shift()!.run()
+    expect(states.at(-1)?.kind).toBe('lost')
+    connection.retryNow()
+    await settle()
+    expect(states.at(-1)).toMatchObject({ kind: 'live', data: { frame: NARROWED_STATUS_FRAME } })
+    release(response(VALID_STATUS_FRAME))
+    await settle()
+    expect(states.at(-1)).toMatchObject({ kind: 'live', data: { frame: NARROWED_STATUS_FRAME } })
+    connection.stop()
+    expect(timers).toHaveLength(0)
   })
 })

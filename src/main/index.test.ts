@@ -85,6 +85,8 @@ function setup() {
     startPreviewServer: startPreview
   }))
   const remoteView = {
+    suspend: vi.fn(),
+    resume: vi.fn(),
     open: vi.fn().mockResolvedValue(undefined),
     publish: vi.fn(),
     close: vi.fn().mockResolvedValue(undefined)
@@ -201,7 +203,10 @@ describe('main process lifecycle', () => {
     s.window.emit('focus')
     await vi.advanceTimersByTimeAsync(250)
     expect(s.service.reconcile).toHaveBeenCalledOnce()
+    s.powerMonitor.emit('suspend')
+    expect(s.remoteView.suspend).toHaveBeenCalledOnce()
     s.powerMonitor.emit('resume')
+    expect(s.remoteView.resume).toHaveBeenCalledOnce()
     await vi.advanceTimersByTimeAsync(0)
     expect(s.service.reconcile).toHaveBeenCalledTimes(2)
     const { onSnapshot } = s.open.mock.calls[0]?.[0] as { onSnapshot: () => void }
@@ -230,6 +235,7 @@ describe('main process lifecycle', () => {
     expect(s.app.quit).not.toHaveBeenCalled()
     expect(s.service.stop).toHaveBeenCalledOnce()
     expect(s.powerMonitor.listenerCount('resume')).toBe(0)
+    expect(s.powerMonitor.listenerCount('suspend')).toBe(0)
     expect(s.ipcMain.removeHandler).toHaveBeenCalledTimes(22)
     expect(vi.getTimerCount()).toBe(0)
     finish()

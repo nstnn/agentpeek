@@ -85,6 +85,7 @@ export function createRemoteView(options: RemoteViewOptions) {
    */
   let listening = false
   let resumed = false
+  let suspended = false
   let startError: RemoteStartError | null = null
   let generation = 0
   /** Bumped by every operation, so an older one in flight stops at its next step. */
@@ -170,6 +171,7 @@ export function createRemoteView(options: RemoteViewOptions) {
         return 'cancelled'
       }
       listener = result.listener
+      if (suspended) listener.suspend()
       return null
     })()
     starts = Promise.allSettled([starts, started])
@@ -350,6 +352,16 @@ export function createRemoteView(options: RemoteViewOptions) {
       if (turnedOff) generation += 1
       listener?.publish(snapshot)
       if (turnedOff) listener?.resync()
+    },
+
+    suspend(): void {
+      suspended = true
+      listener?.suspend()
+    },
+
+    resume(): void {
+      suspended = false
+      listener?.resume()
     },
 
     status(): RemoteViewStatus {

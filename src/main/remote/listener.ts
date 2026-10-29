@@ -80,6 +80,9 @@ export interface RemoteListener {
    * current policy now, ahead of coalescing.
    */
   resync(): void
+  /** Sleep closes existing streams; wake requires every viewer to get a full snapshot again. */
+  suspend(): void
+  resume(): void
   /** Ends every stream with `reason`, drops pending sends and closes the socket. Idempotent. */
   close(reason: EndReason): Promise<void>
 }
@@ -160,6 +163,10 @@ interface Stream {
   /** The last status this stream got; null until the first one. */
   snapshotId: string | null
   generation: number
+  /** One pending status refers to the latest snapshot, never a queue of old projections. */
+  pending: boolean
+  blocked: boolean
+  stall: ReturnType<typeof setTimeout> | undefined
   lastStatusAt: number
   timer: ReturnType<typeof setTimeout> | undefined
   /** After a `slow-consumer` end: drops the socket if the frame cannot flush in time. */
@@ -201,6 +208,7 @@ export async function startRemoteListener(
   let current: Current | null = null
   let heartbeat: ReturnType<typeof setInterval> | undefined
   let closing: Promise<void> | null = null
+  let suspended = false
 
   /** The projection of the latest snapshot under the current policy, made once per change. */
   function status(): Current {
@@ -240,23 +248,41 @@ export async function startRemoteListener(
       endSlowStream(stream)
       return false
     }
-    response.write(encoded.event)
+    if (stream.blocked) {
+      if (frame.type === 'status') stream.pending = true
+      return false
+    }
+    if (!response.write(encoded.event)) {
+      stream.blocked = true
+      // A permanently stalled socket must not occupy one of five slots forever. Heartbeats
+      // cannot reach it either; use the same bounded silence window as the viewer.
+      stream.stall = setTimeout(() => endSlowStream(stream), REMOTE_LIMITS.silenceLimitMs)
+    }
     return true
   }
 
-  function endSlowStream(stream: Stream): void {
+  function endStream(stream: Stream, reason: EndReason): void {
     clearTimeout(stream.timer)
+    clearTimeout(stream.stall)
     stream.timer = undefined
-    const ending = encodeFrame({ v: PROTOCOL_VERSION, type: 'end', reason: 'slow-consumer' })
+    stream.stall = undefined
+    stream.pending = false
+    if (stream.response.writableEnded || stream.response.destroyed) return
+    const ending = encodeFrame({ v: PROTOCOL_VERSION, type: 'end', reason })
     stream.response.end(ending.ok ? ending.event : undefined)
     // The frame waits behind everything the viewer has not read; the socket goes if it stays stuck.
     stream.drop = setTimeout(() => stream.response.destroy(), REMOTE_CLOSE_GRACE_MS)
   }
 
+  function endSlowStream(stream: Stream): void {
+    endStream(stream, 'slow-consumer')
+  }
+
   function sendStatus(stream: Stream): void {
     clearTimeout(stream.timer)
     stream.timer = undefined
-    if (closing) return
+    if (closing || suspended) return
+    stream.pending = false
     const { snapshotId, generation, status: body } = status()
     if (snapshotId === stream.snapshotId) return
     const sentAt = now()
@@ -277,13 +303,20 @@ export async function startRemoteListener(
 
   /** At most one status per stream every 500 ms; the newest snapshot wins. */
   function schedule(stream: Stream): void {
-    if (closing || stream.timer) return
+    if (closing || suspended || stream.response.writableEnded) return
+    if (stream.blocked) {
+      // Replace the pending projection and check its size together with bytes already queued.
+      sendStatus(stream)
+      return
+    }
+    if (stream.timer) return
     const wait = stream.lastStatusAt + REMOTE_LIMITS.minStatusIntervalMs - now()
     if (wait <= 0) sendStatus(stream)
     else stream.timer = setTimeout(() => sendStatus(stream), wait)
   }
 
   function beat(): void {
+    if (suspended) return
     const sentAt = now()
     for (const stream of streams) {
       if (stream.snapshotId === null) continue
@@ -327,7 +360,8 @@ export async function startRemoteListener(
   }
 
   function openStream(response: ServerResponse): void {
-    if (streams.size >= REMOTE_LIMITS.maxStreams) return refuse(response, 'busy', false)
+    if (suspended || streams.size >= REMOTE_LIMITS.maxStreams)
+      return refuse(response, 'busy', false)
     response.writeHead(200, {
       ...COMMON_HEADERS,
       'Cache-Control': 'no-store',
@@ -340,14 +374,24 @@ export async function startRemoteListener(
       response,
       snapshotId: null,
       generation: 0,
+      pending: false,
+      blocked: false,
+      stall: undefined,
       lastStatusAt: -Infinity,
       timer: undefined,
       drop: undefined
     }
     streams.add(stream)
     response.on('error', () => undefined)
+    response.on('drain', () => {
+      clearTimeout(stream.stall)
+      stream.stall = undefined
+      stream.blocked = false
+      if (stream.pending) schedule(stream)
+    })
     response.on('close', () => {
       clearTimeout(stream.timer)
+      clearTimeout(stream.stall)
       clearTimeout(stream.drop)
       streams.delete(stream)
       if (streams.size === 0) {
@@ -437,7 +481,20 @@ export async function startRemoteListener(
     },
     resync() {
       if (closing) return
-      for (const stream of streams) sendStatus(stream)
+      for (const stream of streams) {
+        // Socket bytes cannot be recalled. A blocked old-policy stream must clear its data and
+        // reauthorize, rather than put a new-policy status behind bytes it has not read yet.
+        if (stream.blocked) endStream(stream, 'access-changed')
+        else sendStatus(stream)
+      }
+    },
+    suspend() {
+      suspended = true
+      for (const stream of streams) endStream(stream, 'shutdown')
+    },
+    resume() {
+      suspended = false
+      for (const stream of streams) endStream(stream, 'shutdown')
     },
     close(reason) {
       closing ??= new Promise<void>((resolve) => {
@@ -446,6 +503,7 @@ export async function startRemoteListener(
         const ending = encodeFrame({ v: PROTOCOL_VERSION, type: 'end', reason })
         for (const stream of streams) {
           clearTimeout(stream.timer)
+          clearTimeout(stream.stall)
           stream.timer = undefined
           // The force close below covers a slow stream's socket too.
           clearTimeout(stream.drop)
