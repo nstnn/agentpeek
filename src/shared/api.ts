@@ -51,6 +51,13 @@ export interface AgentPeekApi {
   onCommand(callback: (command: MenuCommand) => void): () => void
   /** Remote View settings (TASK-016). None of these runs, reads or configures Tailscale. */
   getRemoteStatus(): Promise<RemoteStatusView>
+  /** Every change of the status, including viewer page counts (TASK-042). */
+  onRemoteStatus(callback: (status: RemoteStatusView) => void): () => void
+  /**
+   * The "Session N" alias the viewer shows for this session, or null while Remote View is off,
+   * titles are shared or the session is not shared (TASK-042).
+   */
+  getRemoteAlias(key: SessionKey): Promise<string | null>
   retryRemoteLoad(): Promise<void>
   setRemoteEnabled(enabled: boolean): Promise<RemoteActionResult>
   saveRemoteConnection(connection: RemoteConnectionInput): Promise<RemoteActionResult>

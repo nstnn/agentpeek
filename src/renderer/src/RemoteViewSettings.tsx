@@ -10,17 +10,13 @@ import {
   type RemoteStatusView
 } from '../../shared/remote-settings'
 import { candidateFolders, folderName } from './remote-folders'
+import { statusLine, type Busy, type Notice } from './remote-status'
 
 // The Remote View section of Settings (TASK-016, UX contract TASK-002 option A). The main process
 // owns every rule: it validates the connection, checks each folder against the sessions it lists
 // and decides what is sent. This section shows the saved state and the owner's Tailscale steps as
 // text; AgentPeek never runs them.
 
-type Busy = 'enabling' | 'disabling' | 'saving' | 'sharing' | 'titles'
-interface Notice {
-  tone: 'info' | 'warning' | 'error'
-  text: string
-}
 interface Draft {
   ownerLogin: string
   hostName: string
@@ -36,58 +32,12 @@ const SAVED_NOTICE_MS = 3000
 const COPIED_MS = 2000
 const LOADING_RETRY_MS = 500
 
-const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`
-const projects = (count: number) => plural(count, 'project', 'projects')
-
 function draftOf(settings: RemoteSettingsView): Draft {
   return {
     ownerLogin: settings.ownerLogin,
     hostName: settings.hostName,
     port: String(settings.port)
   }
-}
-
-function statusLine(status: RemoteStatusView | null, busy: Busy | null): Notice {
-  if (status === null || status.state === 'loading')
-    return { tone: 'info', text: 'Loading Remote View settings…' }
-  if (status.state === 'load-failed')
-    return { tone: 'error', text: "Couldn't load Remote View settings. Remote View stays off." }
-  const { port, ownerLogin, hostName, sharedWorkspaces } = status.settings
-  if (busy === 'enabling') return { tone: 'info', text: `Starting on port ${port}…` }
-  if (busy === 'disabling') return { tone: 'info', text: 'Turning off…' }
-  if (status.state === 'on') {
-    const count = sharedWorkspaces.length
-    if (status.resumed)
-      return {
-        tone: 'info',
-        text: `On, port ${port}. Turned on again because it was on when AgentPeek quit.`
-      }
-    if (status.streams > 0)
-      return {
-        tone: 'info',
-        text: `On, port ${port}. ${plural(status.streams, 'viewer page', 'viewer pages')} open.`
-      }
-    return {
-      tone: 'info',
-      text:
-        count === 0
-          ? `On, port ${port}. No projects shared yet, so the page shows an empty list.`
-          : `On, port ${port}. Sharing ${projects(count)}.`
-    }
-  }
-  if (status.startError === 'port-in-use')
-    return {
-      tone: 'error',
-      text: `Port ${port} is already used by another app. Choose another port, save, and turn Remote View on again.`
-    }
-  if (status.startError === 'start-failed')
-    return { tone: 'error', text: "Couldn't start Remote View. Try again." }
-  if (ownerLogin === '' || hostName === '')
-    return {
-      tone: 'info',
-      text: 'Add your Tailscale login and Mac address to turn on Remote View.'
-    }
-  return { tone: 'info', text: 'Off. Nothing is shared.' }
 }
 
 export function RemoteViewSettings({
@@ -140,7 +90,15 @@ export function RemoteViewSettings({
       pending.clear()
     }
   }, [])
-  // Snapshots arrive on change, so viewer counts and resumed state stay close to current.
+  // Every status change the main process announces, viewer page counts included (TASK-042).
+  useEffect(
+    () =>
+      api.onRemoteStatus((next) => {
+        if (mounted.current) setStatus(next)
+      }),
+    [api]
+  )
+  // Snapshots arrive on change, so resumed state stays close to current.
   useEffect(() => {
     let active = true
     void api.getRemoteStatus().then(
@@ -156,10 +114,11 @@ export function RemoteViewSettings({
     }
   }, [api, snapshot])
   // Settings load once at launch; a dialog opened before that asks again shortly.
-  const stillLoading = status?.state === 'loading'
+  const stillLoading =
+    status?.state === 'loading' || (status && 'pending' in status && status.pending)
   useEffect(() => {
     if (stillLoading) later(LOADING_RETRY_MS, () => void refresh())
-  }, [stillLoading, later, refresh])
+  }, [stillLoading, status, later, refresh])
 
   const settings = status?.state === 'on' || status?.state === 'off' ? status.settings : null
   const saved = settings ? draftOf(settings) : null
@@ -172,7 +131,10 @@ export function RemoteViewSettings({
       form.hostName !== saved.hostName ||
       form.port !== saved.port)
   const configured = settings !== null && settings.ownerLogin !== '' && settings.hostName !== ''
-  const on = status?.state === 'on'
+  const on =
+    status?.state === 'on' ||
+    (status !== null && 'requestedEnabled' in status && status.requestedEnabled === true)
+  const unsaved = status && 'unsavedChanges' in status && status.unsavedChanges
 
   /** One action at a time; a second one while busy is reported as cancelled, which shows nothing. */
   async function run(
@@ -234,12 +196,19 @@ export function RemoteViewSettings({
       setConnectionNotice(saved)
       // Clears only this notice: a later save or error keeps its own.
       later(SAVED_NOTICE_MS, () => setConnectionNotice((shown) => (shown === saved ? null : shown)))
+    } else if (result && 'connectionSaved' in result && result.connectionSaved) {
+      setInvalid([])
+      setDraft(null)
+      setConnectionNotice({
+        tone: 'error',
+        text: 'Connection settings saved. Remote View is now off because it could not restart. Resolve the start error above, then turn it on again.'
+      })
     } else if (result && result.error === 'invalid') {
       setInvalid(result.invalid)
     } else if (result?.error !== 'cancelled') {
       setConnectionNotice({
         tone: 'error',
-        text: "Couldn't save connection settings. Nothing changed. Try again."
+        text: "Couldn't save connection settings. Previous connection settings are kept. Check the Remote View status above and try again."
       })
     }
   }
@@ -281,6 +250,16 @@ export function RemoteViewSettings({
       })
     else if (result?.error !== 'cancelled')
       setTitlesNotice({ tone: 'error', text: "Couldn't update title sharing. Try again." })
+  }
+
+  async function retrySaving() {
+    if (!settings) return
+    const result = await run('retrying', () => api.setRemoteShareTitles(settings.shareTitles))
+    if (mounted.current && result?.ok) {
+      setSwitchNotice(null)
+      setSharingNotice(null)
+      setTitlesNotice(null)
+    }
   }
 
   async function copy(target: RemoteCopyTarget) {
@@ -383,6 +362,17 @@ export function RemoteViewSettings({
         </div>
       )}
       {notice(switchNotice)}
+      {unsaved && (
+        <div className="remote-notice remote-warning" role="alert">
+          <p>
+            Some Remote View changes are not saved. They apply for now, but previously saved sharing
+            settings may return next time AgentPeek opens.
+          </p>
+          <button type="button" disabled={busy !== null} onClick={() => void retrySaving()}>
+            Retry saving Remote View settings
+          </button>
+        </div>
+      )}
 
       <form
         className="remote-group"

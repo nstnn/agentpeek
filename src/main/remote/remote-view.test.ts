@@ -9,8 +9,9 @@ import type { RemoteListener, RemoteListenerStart } from './listener'
 import { createSnapshot, type SessionsSnapshot } from '../../core/snapshot'
 import { testSession } from '../test-support'
 import { accepts, freePort, HOST, OWNER, OWNER_HEADERS, send, subscribe } from './http-test-support'
-import { createRemoteView, type RemoteView } from './remote-view'
+import { createRemoteView, type RemoteView, type RemoteViewOptions } from './remote-view'
 import { REMOTE_SETTINGS_FILE } from './settings'
+import * as settingsStore from './settings'
 
 // Synthetic data only: a temporary state folder, simulated Serve headers, no window.
 const SHARED = '/Users/synthetic/projects/shared-demo'
@@ -25,7 +26,11 @@ const snapshot = createSnapshot({
 
 const folders: string[] = []
 const views: RemoteView[] = []
-async function setup(saved?: object, current: () => SessionsSnapshot = () => snapshot) {
+async function setup(
+  saved?: object,
+  current: () => SessionsSnapshot = () => snapshot,
+  onChange?: RemoteViewOptions['onChange']
+) {
   const folder = await mkdtemp(join(tmpdir(), 'agentpeek-remote-view-'))
   folders.push(folder)
   const port = await freePort()
@@ -45,13 +50,15 @@ async function setup(saved?: object, current: () => SessionsSnapshot = () => sna
   const view = createRemoteView({
     folder,
     viewerFolder: join(folder, 'no-viewer-build'),
-    snapshot: current
+    snapshot: current,
+    onChange
   })
   views.push(view)
   await view.open()
   return { folder, port, view }
 }
 afterEach(async () => {
+  vi.restoreAllMocks()
   await Promise.all(views.splice(0).map((view) => view.close()))
   for (const folder of folders.splice(0)) {
     await chmod(folder, 0o700)
@@ -264,6 +271,7 @@ describe('Remote View quit', () => {
       const late: RemoteListener = {
         port: 47613,
         streamCount: () => 0,
+        aliasFor: () => null,
         publish: vi.fn(),
         resync: vi.fn(),
         suspend: vi.fn(),
@@ -399,7 +407,7 @@ describe('Remote View sharing policy', () => {
     expect(viewer.frames).toHaveLength(2)
     expect(view.status()).toMatchObject({ settings: { sharedWorkspaces: [OTHER] } })
     expect(await savedFile(folder)).toMatchObject({ sharedWorkspaces: [SHARED, OTHER] })
-    expect(await view.unshareWorkspace(SHARED)).toEqual({ ok: true })
+    expect(await view.unshareWorkspace(SHARED)).toEqual({ ok: false, error: 'save-failed' })
   })
 
   it('shares titles only once saved and hides them again at once', async () => {
@@ -573,4 +581,263 @@ it('retains sleep state across enabling and requires a new full status after wak
   const second = subscribe(port)
   await expect.poll(() => second.frames.length).toBe(1)
   expect(second.frames[0]).toMatchObject({ type: 'status', observedAt: 1 })
+})
+
+// TASK-041: real saved files and streams, with a deferred first write for deterministic overlap.
+function holdFirstSave() {
+  let release!: () => void
+  let entered!: () => void
+  const started = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const save = settingsStore.saveRemoteSettings
+  vi.spyOn(settingsStore, 'saveRemoteSettings').mockImplementationOnce(async (folder, next) => {
+    entered()
+    await gate
+    await save(folder, next)
+  })
+  return { release, started }
+}
+
+describe('Remote View durable recovery', () => {
+  it.each(['project', 'titles'] as const)(
+    'retries failed %s narrowing durably before resuming ON',
+    async (kind) => {
+      const { folder, port, view } = await setup({ enabled: true, shareTitles: true })
+      const narrow = () =>
+        kind === 'project' ? view.unshareWorkspace(SHARED) : view.setShareTitles(false)
+      await chmod(folder, 0o500)
+      expect(await narrow()).toEqual({ ok: false, error: 'save-failed' })
+      expect(await narrow()).toEqual({ ok: false, error: 'save-failed' })
+      expect(view.status()).toMatchObject({ state: 'on', unsavedChanges: true })
+      const current = subscribe(port)
+      await expect.poll(() => current.frames.length).toBe(1)
+      const projects = (current.frames[0] as StatusFrame).status.projects
+      if (kind === 'project') expect(projects).toEqual([])
+      else expect(projects[0]!.sessions[0]!.title).toBe('Session 1')
+      await chmod(folder, 0o700)
+      expect(await narrow()).toEqual({ ok: true })
+      expect(view.status()).not.toHaveProperty('unsavedChanges')
+      await view.close()
+      const restarted = createRemoteView({ folder, viewerFolder: folder, snapshot: () => snapshot })
+      views.push(restarted)
+      await restarted.open()
+      expect(restarted.status()).toMatchObject({ state: 'on', resumed: true })
+      const resumed = subscribe(port)
+      await expect.poll(() => resumed.frames.length).toBe(1)
+      const resumedProjects = (resumed.frames[0] as StatusFrame).status.projects
+      if (kind === 'project') expect(resumedProjects).toEqual([])
+      else expect(resumedProjects[0]!.sessions[0]!.title).toBe('Session 1')
+      expect(await savedFile(folder)).toMatchObject(
+        kind === 'project' ? { sharedWorkspaces: [] } : { shareTitles: false }
+      )
+    }
+  )
+
+  it.each([false, true])(
+    'hands pending enable to a connection save (changed: %s)',
+    async (changed) => {
+      const { folder, port, view } = await setup({ enabled: false })
+      const held = holdFirstSave()
+      const enabling = view.enable()
+      await held.started
+      expect(view.status()).toMatchObject({ pending: true, requestedEnabled: true })
+      const next = { ...connection(port), ownerLogin: changed ? 'new-owner@example.com' : OWNER }
+      const saving = view.saveConnection(next)
+      held.release()
+      expect(await enabling).toEqual({ ok: false, error: 'cancelled' })
+      expect(await saving).toEqual({ ok: true })
+      expect(view.status()).toMatchObject({ state: 'on', settings: { enabled: true, ...next } })
+      expect(view.status()).not.toHaveProperty('pending')
+      expect(await savedFile(folder)).toMatchObject({ enabled: true, ...next })
+      const viewer = subscribe(port, { ...OWNER_HEADERS, 'Tailscale-User-Login': next.ownerLogin })
+      await expect.poll(() => viewer.frames.length).toBe(1)
+    }
+  )
+
+  it.each(['off', 'quit'] as const)(
+    'never starts superseded work after %s during enable/save',
+    async (end) => {
+      const { folder, port, view } = await setup({ enabled: false })
+      const held = holdFirstSave()
+      const enabling = view.enable()
+      await held.started
+      const saving = view.saveConnection(connection(port))
+      const ending = end === 'off' ? view.disable() : view.close()
+      held.release()
+      expect(await enabling).toEqual({ ok: false, error: 'cancelled' })
+      expect(await saving).toEqual({ ok: false, error: 'cancelled' })
+      await ending
+      expect(await accepts(port)).toBe(false)
+      expect(await savedFile(folder)).toMatchObject({ enabled: false })
+    }
+  )
+
+  it.each(['project', 'titles'] as const)(
+    'does not apply stale %s widening after narrowing',
+    async (kind) => {
+      const { folder, port, view } = await setup({ enabled: true, sharedWorkspaces: [] })
+      const held = holdFirstSave()
+      const widening = kind === 'project' ? view.shareWorkspace(SHARED) : view.setShareTitles(true)
+      await held.started
+      const narrowing =
+        kind === 'project' ? view.unshareWorkspace(SHARED) : view.setShareTitles(false)
+      held.release()
+      expect(await widening).toEqual({ ok: false, error: 'cancelled' })
+      expect(await narrowing).toEqual({ ok: true })
+      expect(await savedFile(folder)).toMatchObject({ sharedWorkspaces: [], shareTitles: false })
+      const viewer = subscribe(port)
+      await expect.poll(() => viewer.frames.length).toBe(1)
+      expect((viewer.frames[0] as StatusFrame).status.projects).toEqual([])
+    }
+  )
+
+  it('distinguishes saved connection values from an occupied-port restart failure', async () => {
+    const { folder, port, view } = await setup({ enabled: true })
+    const busy = await freePort()
+    const other = createServer()
+    await new Promise<void>((resolve) => other.listen(busy, '127.0.0.1', resolve))
+    try {
+      const next = { ...connection(busy), ownerLogin: 'new-owner@example.com' }
+      expect(await view.saveConnection(next)).toEqual({
+        ok: false,
+        error: 'port-in-use',
+        connectionSaved: true
+      })
+      expect(view.status()).toMatchObject({
+        state: 'off',
+        settings: { ...next, enabled: false },
+        startError: 'port-in-use'
+      })
+      expect(await savedFile(folder)).toMatchObject({ ...next, enabled: false })
+      expect(await accepts(port)).toBe(false)
+      expect(await view.saveConnection(connection(port))).toEqual({ ok: true })
+      expect(await view.enable()).toEqual({ ok: true })
+    } finally {
+      await new Promise<void>((resolve) => other.close(() => resolve()))
+    }
+  })
+})
+
+it('reports both a failed connection save and a failed restart without hiding unsaved OFF', async () => {
+  const { folder, port, view } = await setup({ enabled: true })
+  const other = createServer()
+  const save = settingsStore.saveRemoteSettings
+  await chmod(folder, 0o500)
+  vi.spyOn(settingsStore, 'saveRemoteSettings').mockImplementationOnce(async (target, next) => {
+    try {
+      await save(target, next)
+    } catch {
+      await new Promise<void>((resolve) => other.listen(port, '127.0.0.1', resolve))
+      throw new Error('Synthetic save failure')
+    }
+  })
+  try {
+    expect(
+      await view.saveConnection({ ...connection(port), ownerLogin: 'new-owner@example.com' })
+    ).toEqual({ ok: false, error: 'save-failed' })
+    expect(view.status()).toMatchObject({
+      state: 'off',
+      settings: { ownerLogin: OWNER, enabled: false },
+      startError: 'port-in-use',
+      unsavedChanges: true
+    })
+    expect(await savedFile(folder)).toMatchObject({ ownerLogin: OWNER, enabled: true })
+  } finally {
+    await new Promise<void>((resolve) => other.close(() => resolve()))
+  }
+})
+
+it('coalesces repeated enable requests until the first real save result', async () => {
+  const { folder, view } = await setup({ enabled: false })
+  const held = holdFirstSave()
+  const first = view.enable()
+  await held.started
+  const second = view.enable()
+  expect(first).toBe(second)
+  await chmod(folder, 0o500)
+  held.release()
+  expect(await first).toEqual({ ok: false, error: 'save-failed' })
+  expect(await second).toEqual({ ok: false, error: 'save-failed' })
+  expect(view.status()).toMatchObject({ state: 'off' })
+})
+
+// TASK-042: the desktop follows the runtime status and shows the viewer's alias.
+describe('Remote View desktop status', () => {
+  it('announces each changed status: resume, viewer pages, OFF and quit', async () => {
+    const onChange = vi.fn<NonNullable<RemoteViewOptions['onChange']>>()
+    const { port, view } = await setup({ enabled: true }, () => snapshot, onChange)
+    const states = () =>
+      onChange.mock.calls.map(([status]) =>
+        status.state === 'on' ? `on:${status.streams}` : status.state
+      )
+    expect(states().at(-1)).toBe('on:0')
+    expect(onChange.mock.lastCall![0]).toMatchObject({ state: 'on', resumed: true })
+    const viewer = subscribe(port)
+    await expect.poll(() => states().at(-1)).toBe('on:1')
+    viewer.disconnect()
+    await expect.poll(() => states().at(-1)).toBe('on:0')
+    // An unchanged status is not announced again.
+    const count = onChange.mock.calls.length
+    view.publish(snapshot)
+    expect(onChange).toHaveBeenCalledTimes(count)
+    await view.disable()
+    expect(states().at(-1)).toBe('off')
+    expect(states()).not.toContain('loading')
+    await view.enable()
+    expect(states().at(-1)).toBe('on:0')
+    await view.close()
+    expect(states().at(-1)).toBe('off')
+  })
+
+  it('announces a failed start as off with its error, never as on', async () => {
+    const blocker = createServer()
+    const port = await freePort()
+    await new Promise<void>((resolve) => blocker.listen(port, '127.0.0.1', resolve))
+    try {
+      const onChange = vi.fn<NonNullable<RemoteViewOptions['onChange']>>()
+      const folder = await mkdtemp(join(tmpdir(), 'agentpeek-remote-view-'))
+      folders.push(folder)
+      await writeFile(
+        join(folder, REMOTE_SETTINGS_FILE),
+        JSON.stringify({ version: 1, enabled: true, ...connection(port) })
+      )
+      const view = createRemoteView({
+        folder,
+        viewerFolder: folder,
+        snapshot: () => snapshot,
+        onChange
+      })
+      views.push(view)
+      await view.open()
+      expect(onChange.mock.calls.map(([status]) => status.state)).not.toContain('on')
+      expect(onChange.mock.lastCall![0]).toMatchObject({ state: 'off', startError: 'port-in-use' })
+    } finally {
+      await new Promise<void>((resolve) => blocker.close(() => resolve()))
+    }
+  })
+
+  it('gives the viewer alias only while on, sharing that folder, with titles hidden', async () => {
+    const ids = ['a', 'b', 'c'].map((id) => `SENTINEL-RAW-${id}`)
+    const key = { tool: 'codex', id: ids[0]! } as const
+    const many = listing(['a', 'b', 'c'].map((id) => row(id, SHARED)))
+    const { port, view } = await setup({ enabled: true }, () => many)
+    const viewer = subscribe(port)
+    await expect.poll(() => viewer.frames.length).toBe(1)
+    const frame = viewer.frames[0] as StatusFrame
+    const aliases = ids.map((id) => view.aliasFor({ tool: 'codex', id }))
+    expect(new Set(aliases)).toEqual(
+      new Set(frame.status.projects[0]!.sessions.map((session) => session.title))
+    )
+    expect(await view.setShareTitles(true)).toEqual({ ok: true })
+    expect(view.aliasFor(key)).toBeNull()
+    expect(await view.setShareTitles(false)).toEqual({ ok: true })
+    expect(await view.unshareWorkspace(SHARED)).toEqual({ ok: true })
+    expect(view.aliasFor(key)).toBeNull()
+    await view.disable()
+    expect(view.aliasFor(key)).toBeNull()
+  })
 })

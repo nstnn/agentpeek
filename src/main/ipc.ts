@@ -100,6 +100,7 @@ function isConnectionInput(value: unknown): value is RemoteConnectionInput {
 export type RemoteSettingsControl = Pick<
   RemoteView,
   | 'status'
+  | 'aliasFor'
   | 'retryLoad'
   | 'enable'
   | 'disable'
@@ -217,6 +218,9 @@ export function registerSessionIpc(options: {
   const { remote } = options
   const flag = (a: unknown[]) => a.length === 1 && typeof a[0] === 'boolean'
   register(IPC.getRemoteStatus, none, (): RemoteStatusView => remote.status())
+  register(IPC.getRemoteAlias, key, (session: SessionKey): string | null =>
+    remote.aliasFor(session)
+  )
   register(IPC.retryRemoteLoad, none, (): Promise<void> => remote.retryLoad())
   register(IPC.setRemoteEnabled, flag, (enabled: boolean): Promise<RemoteActionResult> =>
     enabled ? remote.enable() : remote.disable()

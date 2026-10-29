@@ -302,6 +302,30 @@ button[aria-disabled='true'] {
   padding-top: 8px;
   border-top: 1px solid var(--sep);
 }
+.sidebar-remote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  margin-bottom: 4px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--secondary);
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+.sidebar-remote:hover {
+  background: var(--fill);
+}
+.sidebar-collapsed .sidebar-remote {
+  justify-content: center;
+  min-height: 32px;
+  padding: 4px 0;
+}
 .sidebar-settings {
   display: flex;
   position: relative;

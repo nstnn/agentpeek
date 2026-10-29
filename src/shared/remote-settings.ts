@@ -15,23 +15,30 @@ export interface RemoteSettingsView {
 
 export type RemoteStartFailure = 'port-in-use' | 'start-failed'
 
+interface RemoteRecoveryView {
+  /** Effective settings differ from the last successful save. */
+  readonly unsavedChanges?: true
+  readonly pending?: true
+  readonly requestedEnabled?: boolean
+}
+
 export type RemoteStatusView =
   | { readonly state: 'loading' }
   | { readonly state: 'load-failed' }
-  | {
+  | (RemoteRecoveryView & {
       readonly state: 'off'
       readonly settings: RemoteSettingsView
       /** Why the last start failed, until the next turn on, off or quit. */
       readonly startError: RemoteStartFailure | null
-    }
-  | {
+    })
+  | (RemoteRecoveryView & {
       readonly state: 'on'
       readonly settings: RemoteSettingsView
       /** On because it was on when AgentPeek last quit. */
       readonly resumed: boolean
       /** Open viewer pages, a count only. */
       readonly streams: number
-    }
+    })
 
 export type RemoteActionError =
   | 'not-loaded'
@@ -46,7 +53,7 @@ export type RemoteField = 'ownerLogin' | 'hostName' | 'port' | 'shareTitles'
 
 export type RemoteActionResult =
   | { readonly ok: true }
-  | { readonly ok: false; readonly error: RemoteActionError }
+  | { readonly ok: false; readonly error: RemoteActionError; readonly connectionSaved?: boolean }
   | { readonly ok: false; readonly error: 'invalid'; readonly invalid: readonly RemoteField[] }
 
 export interface RemoteConnectionInput {

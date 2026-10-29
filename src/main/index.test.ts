@@ -197,7 +197,7 @@ describe('main process lifecycle', () => {
       stateFolder: '/synthetic/state',
       fixture: true
     })
-    expect(s.ipcMain.handle).toHaveBeenCalledTimes(22)
+    expect(s.ipcMain.handle).toHaveBeenCalledTimes(23)
     vi.useFakeTimers()
     s.window.emit('focus')
     s.window.emit('focus')
@@ -236,7 +236,7 @@ describe('main process lifecycle', () => {
     expect(s.service.stop).toHaveBeenCalledOnce()
     expect(s.powerMonitor.listenerCount('resume')).toBe(0)
     expect(s.powerMonitor.listenerCount('suspend')).toBe(0)
-    expect(s.ipcMain.removeHandler).toHaveBeenCalledTimes(22)
+    expect(s.ipcMain.removeHandler).toHaveBeenCalledTimes(23)
     expect(vi.getTimerCount()).toBe(0)
     finish()
     await vi.advanceTimersByTimeAsync(0)
@@ -312,14 +312,23 @@ describe('main process lifecycle', () => {
     await vi.waitFor(() => expect(s.service.start).toHaveBeenCalledOnce())
     expect(s.createRemoteView).toHaveBeenCalledOnce()
     const [options] = s.createRemoteView.mock.lastCall as unknown as [
-      { folder: string; viewerFolder: string; snapshot: () => unknown }
+      {
+        folder: string
+        viewerFolder: string
+        snapshot: () => unknown
+        onChange: (status: unknown) => void
+      }
     ]
     // The snapshot is all it gets: never the controller, the service's actions or system actions.
-    expect(Object.keys(options).sort()).toEqual(['folder', 'snapshot', 'viewerFolder'])
+    expect(Object.keys(options).sort()).toEqual(['folder', 'onChange', 'snapshot', 'viewerFolder'])
     expect(options.folder).toBe('/synthetic/state')
     expect(options.viewerFolder).toMatch(/remote-web$/)
     expect(options.snapshot()).toBe(s.service.snapshot())
     expect(s.remoteView.open).toHaveBeenCalledOnce()
+    // Each announced status reaches the window on its one fixed channel (TASK-042).
+    await vi.waitFor(() => expect(s.ipcMain.handle).toHaveBeenCalled())
+    options.onChange({ state: 'loading' })
+    expect(s.contents.send).toHaveBeenCalledWith(IPC.remoteStatus, { state: 'loading' })
     const { onSnapshot } = s.open.mock.calls[0]?.[0] as { onSnapshot: (value: unknown) => void }
     const next = s.service.snapshot()
     onSnapshot(next)

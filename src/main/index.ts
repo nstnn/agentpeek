@@ -165,7 +165,9 @@ if (!app.requestSingleInstanceLock()) {
       remote = createRemoteView({
         folder: paths.stateFolder,
         viewerFolder: join(__dirname, '../remote-web'),
-        snapshot: () => service.snapshot()
+        snapshot: () => service.snapshot(),
+        // The sidebar label and Settings follow every change, viewer page counts included.
+        onChange: (status) => send(IPC.remoteStatus, status)
       })
       void remote.open().catch(() => undefined)
       if (shouldStartPreview(process.env, paths)) {

@@ -18,6 +18,8 @@ export const IPC = {
   showSessionMenu: 'agentpeek:show-session-menu',
   command: 'agentpeek:command',
   getRemoteStatus: 'agentpeek:get-remote-status',
+  remoteStatus: 'agentpeek:remote-status',
+  getRemoteAlias: 'agentpeek:get-remote-alias',
   retryRemoteLoad: 'agentpeek:retry-remote-load',
   setRemoteEnabled: 'agentpeek:set-remote-enabled',
   saveRemoteConnection: 'agentpeek:save-remote-connection',

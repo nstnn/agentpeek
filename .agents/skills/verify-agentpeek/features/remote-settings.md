@@ -13,6 +13,12 @@ Settings has a Remote View section below Sources. It holds the Remote View switc
 - `remote-settings-projects`: Add Project… lists the fixture's folder by name with its parent path; adding it shows it under Shared projects and the stream gains it; Remove takes it out of the stream at once.
 - `remote-settings-titles`: Share session titles turns on and off with its confirmation line.
 - `remote-settings-setup`: the disclosure names Tailnet Lock, a neutral machine name, HTTPS certificates, the `tailscale serve --bg --https=443 http://127.0.0.1:<port>` command with the saved port, the Funnel warning, the disable path, and the owner's revocation actions (remove the device from the tailnet or change ACLs) with the limit that neither takes back what a device already showed; Copy puts exactly that command on the clipboard.
+- `remote-settings-recovery`: failed project removal/title hiding remains effective immediately, shows a restart warning and Retry saving control across Settings close/reopen, and retries durably before cold restart.
+- `remote-settings-overlap`: a pending enable remains visible after Settings reopens; a connection save takes over the start using the saved values; OFF/quit cancel pending starts.
+- `remote-settings-restart-failure`: saving an occupied new port while ON retains the new connection, turns OFF, and explains both the saved values and restart recovery.
+- `remote-settings-indicator`: with Settings closed, the sidebar footer shows a "Remote View on" button (tooltip = the Settings status line) only while the listener runs; OFF, a failed start and quit clear it, a saved-ON relaunch shows it only after listening succeeds, and clicking it opens Settings.
+- `remote-settings-alias`: while on with titles hidden, the selected shared session's detail shows "Remote: Session N" equal to the title the viewer stream carries for it; an unshared session, titles shared or OFF show no line, and a connection change remaps it together with the stream.
+- `remote-settings-viewer-count`: open Settings counts viewer pages live: a stream that opens or ends changes "<k> viewer pages open." without a new snapshot.
 - `remote-settings-modal`: focus stays inside Settings while moving through the new controls, and returns to the Settings button on close.
 
 ## How to get to it (user POV)
@@ -20,6 +26,7 @@ Settings has a Remote View section below Sources. It holds the Remote View switc
 - Open Settings (sidebar Settings button, rail gear, AgentPeek > Settings… or Command-comma) and scroll to Remote View below Sources.
 - Type in Tailscale login, Mac address and Port, then Save (or press Return in a field) or Cancel.
 - Click the Remote View switch, Add Project… and a folder in its list, Remove beside a shared folder, and the Share session titles switch.
+- If a privacy or OFF save failed, click "Retry saving Remote View settings"; the warning stays until the effective settings are saved.
 - Open "Set up Tailscale" and click Copy beside the command or beside the viewer address.
 
 ## Driving it with agentpeek.mjs
@@ -41,12 +48,15 @@ Preconditions:
 - **Titles (`remote-settings-titles`).** `click --role switch --name "Share session titles"`: checked, "Titles are shared."; click again: unchecked, "Titles are hidden; sessions show as 'Session N'."
 - **Setup (`remote-settings-setup`).** `click --selector ".remote-setup summary"`, then `aria remote-settings-setup` and `screenshot remote-settings-setup`: the steps mention Tailnet Lock, a neutral machine name, HTTPS Certificates, `tailscale serve --bg --https=443 http://127.0.0.1:<port>`, "Never use tailscale funnel for this port", `tailscale serve reset`, "remove it from your tailnet in the Tailscale admin console", "access controls (ACLs)" and "Neither takes back what a device already showed or what was copied from it." Click the Copy button in that step; the button reads "Copied", and `main-eval "electron.clipboard.readText()"` returns exactly the command with `<port>`. This overwrites the Mac's clipboard; say so in the report.
 - **Modal (`remote-settings-modal`).** Press Tab repeatedly from the Close Settings button through the Remote View controls; after each press `eval "document.activeElement?.closest('dialog') !== null"` is `true`. `key Escape` closes Settings and focus returns to the Settings button.
+- **Durability and overlap (`remote-settings-recovery`, `remote-settings-overlap`, `remote-settings-restart-failure`).** After consent and a current build, run `npx playwright test e2e/remote-settings.spec.mjs --output test-results/remote-settings-recovery-<new-id>`. This separately owned visible run uses a synthetic home/profile, real Settings controls, saved JSON and loopback streams. It makes only that scratch profile unwritable for project/title failures, proves warnings and retry after dialog reopen, then quits/restarts the same profile and checks the stream. It saves an occupied new port while ON and proves saved-connection/OFF copy, then recovers using Save and ON. For deterministic pending IPC it delays exactly one real settings-file sync, closes/reopens Settings and saves changed connection values before releasing the write. This fault injection changes no feature state directly. Retain its PNG/ARIA pairs and evidence.json (actions, launch PIDs, clean exits/process cleanup, console errors). It does not run Tailscale or touch real sessions. The helper must not attach to these separately owned processes.
+- **Indicator, alias and count (`remote-settings-indicator`, `remote-settings-alias`, `remote-settings-viewer-count`).** With Remote View on, the fixture folder shared and titles hidden, close Settings: `aria remote-settings-indicator` has a button whose name starts "Remote View on." in the sidebar footer. Select a fixture-demo session and `aria remote-settings-alias`: the detail has "Remote: Session N". Keep `curl -sN -H "$OWNER" …/v1/status` running and check that the stream's row titles include that exact `Session N` (with one session per folder it is `Session 1`). Reopen Settings: the status line says "1 viewer page open."; stop curl and, without any other action, it returns to "Sharing 1 project.". Turn Share session titles on: the alias line disappears. Turn Remote View off: the label and alias are gone. The same journey runs automatically in `e2e/remote-desktop-status.spec.mjs`.
 - Turn Remote View off before quitting, then quit with `focus` and `menu-click "AgentPeek > Quit AgentPeek"`, and `wait-exit`: `cleanExit: true`.
 
 ## Gotchas
 
 - Settings scrolls; the Remote View section is below Sources and may need `scroll_to`-style focus (Tab) before a screenshot shows it.
-- The status line updates when the window gets a new snapshot or after an action; a viewer page opened with `curl` may take until the next snapshot to be counted.
+- Pending operations are polled after dialog reopen. Unsaved settings warnings come from main-process state and survive dialog dismissal. Successful retries save the entire effective configuration, including any unsaved OFF or narrower policy.
+- The status line, the sidebar label and the alias follow main's pushed status (TASK-042); a viewer page opened with `curl` is counted as soon as its stream opens.
 - `type` inserts at the caret: select a field's text first (`key Meta+A`) to replace the port.
 - Add Project… lists only folders of sessions AgentPeek shows; the fixture has one folder.
 - Copy writes to the Mac's real clipboard (there is no isolated one).
