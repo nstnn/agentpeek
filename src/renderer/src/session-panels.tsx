@@ -7,6 +7,8 @@ import { toolHome, toolName, VIEW_NAMES } from './session-display'
 import { NavigationIcon } from './NavigationIcon'
 import { SessionIcon } from './SessionIcon'
 import { SettingsIcon } from './SettingsDialog'
+import { statusLine } from './remote-status'
+import type { RemoteStatusView } from '../../shared/remote-settings'
 
 export function Sidebar({
   snapshot,
@@ -15,7 +17,8 @@ export function Sidebar({
   collapsed = false,
   onToggle,
   controls,
-  onSettings
+  onSettings,
+  remoteStatus = null
 }: {
   snapshot: AppSnapshot | null
   view: ViewId
@@ -24,6 +27,7 @@ export function Sidebar({
   onToggle: () => void
   controls: string
   onSettings: () => void
+  remoteStatus?: RemoteStatusView | null
 }): JSX.Element {
   const views = ['active', 'pinned', 'all'] as const
   return (
@@ -131,6 +135,18 @@ export function Sidebar({
             <p className={collapsed ? 'sr-only' : 'sources-empty'}>No sources connected</p>
           )}
         </div>
+        {remoteStatus?.state === 'on' && (
+          <button
+            type="button"
+            className="sidebar-remote"
+            aria-label={`Remote View on. ${statusLine(remoteStatus, null).text}`}
+            title={statusLine(remoteStatus, null).text}
+            onClick={onSettings}
+          >
+            <span className="health-dot connected" aria-hidden="true" />
+            {!collapsed && <span aria-hidden="true">Remote View on</span>}
+          </button>
+        )}
         <button
           type="button"
           className="sidebar-settings"

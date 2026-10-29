@@ -33,6 +33,8 @@ describe('preload API', () => {
         'showSessionMenu',
         'onCommand',
         'getRemoteStatus',
+        'onRemoteStatus',
+        'getRemoteAlias',
         'retryRemoteLoad',
         'setRemoteEnabled',
         'saveRemoteConnection',
@@ -64,6 +66,7 @@ describe('preload API', () => {
     await api.setDetailOpen(true)
     await api.showSessionMenu(key)
     await api.getRemoteStatus()
+    await api.getRemoteAlias(key)
     await api.retryRemoteLoad()
     await api.setRemoteEnabled(true)
     const connection = { ownerLogin: 'owner@example.com', hostName: 'mac.tailnet.ts.net', port: 1 }
@@ -90,6 +93,7 @@ describe('preload API', () => {
       [IPC.setDetailOpen, true],
       [IPC.showSessionMenu, key],
       [IPC.getRemoteStatus],
+      [IPC.getRemoteAlias, key],
       [IPC.retryRemoteLoad],
       [IPC.setRemoteEnabled, true],
       [IPC.saveRemoteConnection, connection],
@@ -98,12 +102,17 @@ describe('preload API', () => {
       [IPC.copyRemoteText, 'serve-command']
     ])
   })
-  it.each(['snapshot', 'command'] as const)(
+  it.each(['snapshot', 'command', 'remoteStatus'] as const)(
     'strips the Electron event and removes exactly its own %s listener',
     (kind) => {
       const { api, transport } = setup()
       const callback = vi.fn()
-      const unsubscribe = kind === 'snapshot' ? api.onSnapshot(callback) : api.onCommand(callback)
+      const unsubscribe =
+        kind === 'snapshot'
+          ? api.onSnapshot(callback)
+          : kind === 'command'
+            ? api.onCommand(callback)
+            : api.onRemoteStatus(callback)
       const [channel, listener] = transport.on.mock.calls[0] as [
         string,
         (event: unknown, value: unknown) => void
@@ -111,7 +120,9 @@ describe('preload API', () => {
       const payload =
         kind === 'snapshot'
           ? { sessions: [] }
-          : { type: 'open-secondary', key: { tool: 'codex', id: 'synthetic' } }
+          : kind === 'remoteStatus'
+            ? { state: 'loading' }
+            : { type: 'open-secondary', key: { tool: 'codex', id: 'synthetic' } }
       listener({ sender: 'must never escape' }, payload)
       expect(callback.mock.calls).toEqual([[payload]])
       unsubscribe()

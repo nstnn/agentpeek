@@ -359,6 +359,76 @@ describe('remote listener status stream', () => {
   })
 })
 
+describe('remote listener desktop alias (TASK-042)', () => {
+  const sameFolder = (id: string, lastActivityAt: number): Session =>
+    testSession({
+      key: { tool: 'codex', id },
+      summary: { title: SENTINELS.title, workspacePath: SHARED, lastActivityAt, toolVersion: null }
+    })
+  const list = [sameFolder('synthetic-a', 3), sameFolder('synthetic-b', 4), ...sessions()]
+
+  it('gives each shared session exactly the alias its viewers receive', async () => {
+    const listener = await start({ snapshot: () => snapshot(list) })
+    const { port } = listener
+    const viewer = subscribe(port)
+    await expect.poll(() => viewer.frames.length).toBe(1)
+    const rows = statuses(viewer.frames)[0]!.status.projects[0]!.sessions
+    expect(rows).toHaveLength(3)
+    const received = new Set(rows.map((row) => row.title))
+    const desktop = new Set(
+      ['synthetic-a', 'synthetic-b', SENTINELS.rawId].map((id) =>
+        listener.aliasFor({ tool: 'codex', id })
+      )
+    )
+    expect(desktop).toEqual(received)
+    expect(received).toEqual(new Set(['Session 1', 'Session 2', 'Session 3']))
+  })
+
+  it('has no alias for an unshared session, with titles shared, or after close', async () => {
+    let sharing: RemoteSharing = { sharedWorkspaces: [SHARED], shareTitles: false }
+    const listener = await start({ snapshot: () => snapshot(list), sharing: () => sharing })
+    expect(listener.aliasFor({ tool: 'claude', id: `${SENTINELS.rawId}-2` })).toBeNull()
+    expect(listener.aliasFor({ tool: 'codex', id: 'not-listed' })).toBeNull()
+    expect(listener.aliasFor({ tool: 'codex', id: 'synthetic-a' })).toMatch(/^Session \d$/)
+    sharing = { sharedWorkspaces: [SHARED], shareTitles: true }
+    expect(listener.aliasFor({ tool: 'codex', id: 'synthetic-a' })).toBeNull()
+    sharing = NOTHING_SHARED
+    expect(listener.aliasFor({ tool: 'codex', id: 'synthetic-a' })).toBeNull()
+    sharing = { sharedWorkspaces: [SHARED], shareTitles: false }
+    await listener.close('remote-off')
+    expect(listener.aliasFor({ tool: 'codex', id: 'synthetic-a' })).toBeNull()
+  })
+
+  it('renumbers with a new ID secret, as the viewer does', async () => {
+    const aliases = async (fill: number) => {
+      const listener = await start({
+        snapshot: () => snapshot(list),
+        secret: new Uint8Array(32).fill(fill)
+      })
+      return ['synthetic-a', 'synthetic-b', SENTINELS.rawId].map((id) =>
+        listener.aliasFor({ tool: 'codex', id })
+      )
+    }
+    const first = await aliases(7)
+    let other = first
+    for (let fill = 8; fill < 40 && other.join() === first.join(); fill += 1)
+      other = await aliases(fill)
+    expect(new Set(other)).toEqual(new Set(first))
+    expect(other).not.toEqual(first)
+  })
+
+  it('reports each stream that opens or ends', async () => {
+    const onStreamCount = vi.fn()
+    const listener = await start({ onStreamCount })
+    const viewer = subscribe(listener.port)
+    await expect.poll(() => onStreamCount.mock.calls.length).toBe(1)
+    expect(listener.streamCount()).toBe(1)
+    viewer.disconnect()
+    await expect.poll(() => onStreamCount.mock.calls.length).toBe(2)
+    expect(listener.streamCount()).toBe(0)
+  })
+})
+
 describe('remote listener close', () => {
   it('ends every stream with its reason, drops pending sends and leaves no socket or timer', async () => {
     const timers = () => process.getActiveResourcesInfo().filter((name) => name === 'Timeout')

@@ -110,7 +110,7 @@ describe('Remote View settings', () => {
     f.api.saveRemoteConnection.mockResolvedValueOnce({ ok: false, error: 'save-failed' })
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect((await screen.findByRole('alert')).textContent).toBe(
-      "Couldn't save connection settings. Nothing changed. Try again."
+      "Couldn't save connection settings. Previous connection settings are kept. Check the Remote View status above and try again."
     )
     expect((f.remoteSwitch() as HTMLButtonElement).disabled).toBe(true)
     f.api.getRemoteStatus.mockResolvedValue(off(CONFIGURED))
@@ -289,4 +289,89 @@ describe('candidateFolders', () => {
     ])
     expect(candidateFolders(null, [])).toEqual([])
   })
+})
+
+it('keeps an unsaved privacy warning and retry after closing and reopening Settings', async () => {
+  const failed = { ...on(CONFIGURED), unsavedChanges: true as const }
+  const f = mount(failed)
+  await screen.findByText(/Some Remote View changes are not saved/)
+  f.unmount()
+  render(<SettingsDialog api={f.api} snapshot={snapshot([])} onClose={() => undefined} />)
+  const retry = await screen.findByRole('button', { name: 'Retry saving Remote View settings' })
+  f.api.setRemoteShareTitles.mockResolvedValueOnce({ ok: false, error: 'save-failed' })
+  await userEvent.click(retry)
+  expect(screen.getByText(/Some Remote View changes are not saved/)).toBeTruthy()
+  f.api.getRemoteStatus.mockResolvedValue(on(CONFIGURED))
+  await userEvent.click(retry)
+  expect(f.api.setRemoteShareTitles).toHaveBeenLastCalledWith(false)
+  await waitFor(() =>
+    expect(screen.queryByText(/Some Remote View changes are not saved/)).toBeNull()
+  )
+})
+
+it('shows saved connection values and OFF when the new port cannot restart', async () => {
+  const f = mount(on(CONFIGURED))
+  const port = await screen.findByRole<HTMLInputElement>('textbox', { name: 'Port' })
+  await userEvent.clear(port)
+  await userEvent.type(port, '47614')
+  f.api.saveRemoteConnection.mockResolvedValueOnce({
+    ok: false,
+    error: 'port-in-use',
+    connectionSaved: true
+  })
+  f.api.getRemoteStatus.mockResolvedValue(off({ ...CONFIGURED, port: 47614 }, 'port-in-use'))
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await screen.findByText(/Connection settings saved. Remote View is now off/)
+  expect(port.value).toBe('47614')
+  expect(f.remoteSwitch().getAttribute('aria-checked')).toBe('false')
+  expect(screen.getByText(/Port 47614 is already used/)).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
+})
+
+it('polls a pending enable after Settings is reopened until the listener is on', async () => {
+  const f = mount(off(CONFIGURED))
+  let finish!: (result: { ok: true }) => void
+  f.api.setRemoteEnabled.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      })
+  )
+  await screen.findByText('Off. Nothing is shared.')
+  await userEvent.click(f.remoteSwitch())
+  f.unmount()
+  f.api.getRemoteStatus.mockResolvedValue({
+    ...off(CONFIGURED),
+    pending: true,
+    requestedEnabled: true
+  })
+  render(<SettingsDialog api={f.api} snapshot={snapshot([])} onClose={() => undefined} />)
+  await screen.findByText('Starting on port 47613…')
+  expect(screen.getByRole('switch', { name: 'Remote View' }).getAttribute('aria-checked')).toBe(
+    'true'
+  )
+  f.api.getRemoteStatus.mockResolvedValue(on(CONFIGURED))
+  act(() => {
+    finish({ ok: true })
+  })
+  await screen.findByText(/On, port 47613/, {}, { timeout: 2000 })
+})
+
+it('clears the obsolete title error only after retrying the effective policy succeeds', async () => {
+  const f = mount(on({ ...CONFIGURED, shareTitles: true }))
+  const titles = await screen.findByRole('switch', { name: 'Share session titles' })
+  f.api.getRemoteStatus.mockResolvedValue({ ...on(CONFIGURED), unsavedChanges: true })
+  f.api.setRemoteShareTitles.mockResolvedValueOnce({ ok: false, error: 'save-failed' })
+  await userEvent.click(titles)
+  await screen.findByText("Couldn't update title sharing. Try again.")
+  const retry = screen.getByRole('button', { name: 'Retry saving Remote View settings' })
+  f.api.setRemoteShareTitles.mockResolvedValueOnce({ ok: false, error: 'save-failed' })
+  await userEvent.click(retry)
+  expect(screen.getByText("Couldn't update title sharing. Try again.")).toBeTruthy()
+  f.api.getRemoteStatus.mockResolvedValue(on(CONFIGURED))
+  await userEvent.click(retry)
+  await waitFor(() =>
+    expect(screen.queryByText("Couldn't update title sharing. Try again.")).toBeNull()
+  )
+  expect(screen.queryByText(/Some Remote View changes are not saved/)).toBeNull()
 })

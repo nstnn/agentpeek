@@ -1,5 +1,6 @@
 import { vi } from 'vitest'
 import type { AgentPeekApi, AppSnapshot, MenuCommand } from '../shared/api'
+import type { RemoteStatusView } from '../shared/remote-settings'
 import { createSnapshot } from '../core/snapshot'
 import type { Session } from '../core/session'
 
@@ -40,6 +41,7 @@ export function snapshot(sessions: Session[] = [], change: Partial<AppSnapshot> 
 export function fakeApi(initial = snapshot()) {
   let receive: ((s: AppSnapshot) => void) | null = null
   const commands = new Set<(c: MenuCommand) => void>()
+  const remoteListeners = new Set<(s: RemoteStatusView) => void>()
   const offSnapshot = vi.fn()
   const offCommand = vi.fn()
   const api = {
@@ -85,6 +87,13 @@ export function fakeApi(initial = snapshot()) {
       },
       startError: null
     }),
+    onRemoteStatus: vi.fn<AgentPeekApi['onRemoteStatus']>((fn) => {
+      remoteListeners.add(fn)
+      return () => {
+        remoteListeners.delete(fn)
+      }
+    }),
+    getRemoteAlias: vi.fn<AgentPeekApi['getRemoteAlias']>().mockResolvedValue(null),
     retryRemoteLoad: vi.fn<AgentPeekApi['retryRemoteLoad']>().mockResolvedValue(undefined),
     setRemoteEnabled: vi.fn<AgentPeekApi['setRemoteEnabled']>().mockResolvedValue({ ok: true }),
     saveRemoteConnection: vi
@@ -102,6 +111,8 @@ export function fakeApi(initial = snapshot()) {
     api,
     push: (s: AppSnapshot) => receive?.(s),
     command: (c: MenuCommand) => commands.forEach((fn) => fn(c)),
+    /** A Remote View status announced by the main process. */
+    remote: (status: RemoteStatusView) => remoteListeners.forEach((fn) => fn(status)),
     offSnapshot,
     offCommand
   }

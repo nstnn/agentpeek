@@ -15,6 +15,7 @@ import {
 } from '../../core/remote/protocol'
 import type { RemoteSharing } from '../../core/remote/share-policy'
 import { projectRemoteStatus, type RemoteStatus } from '../../core/remote/status-projection'
+import type { SessionKey } from '../../core/session'
 import type { SessionsSnapshot } from '../../core/snapshot'
 import { createRateLimiter } from './rate-limit'
 import { createSessionIdMinter } from './session-ids'
@@ -68,11 +69,18 @@ export interface RemoteListenerOptions {
   now?: () => number
   /** Tests shorten it; otherwise `REMOTE_REQUEST_TIMEOUT_MS`. */
   requestTimeoutMs?: number
+  /** Called after a stream opens or ends, so the desktop can show the page count. */
+  onStreamCount?: () => void
 }
 
 export interface RemoteListener {
   readonly port: number
   streamCount(): number
+  /**
+   * The alias this listener's viewers see for a session, from the same projection they receive,
+   * or null when titles are shared or the session is not in the projected list.
+   */
+  aliasFor(key: SessionKey): string | null
   /** Hands over a new snapshot; each stream gets it within its coalescing interval. */
   publish(snapshot: SessionsSnapshot): void
   /**
@@ -384,6 +392,7 @@ export async function startRemoteListener(
       drop: undefined
     }
     streams.add(stream)
+    options.onStreamCount?.()
     response.on('error', () => undefined)
     response.on('drain', () => {
       clearTimeout(stream.stall)
@@ -395,11 +404,12 @@ export async function startRemoteListener(
       clearTimeout(stream.timer)
       clearTimeout(stream.stall)
       clearTimeout(stream.drop)
-      streams.delete(stream)
+      if (!streams.delete(stream)) return
       if (streams.size === 0) {
         clearInterval(heartbeat)
         heartbeat = undefined
       }
+      options.onStreamCount?.()
     })
     // Every stream starts with a complete status, outside the coalescing of later ones.
     sendStatus(stream)
@@ -478,6 +488,17 @@ export async function startRemoteListener(
   const listener: RemoteListener = {
     port: address.port,
     streamCount: () => streams.size,
+    aliasFor(key) {
+      if (closing) return null
+      const { status: projected, sharing } = status()
+      if (sharing.shareTitles) return null
+      const id = mintId(key)
+      for (const project of projected.projects) {
+        const session = project.sessions.find((row) => row.id === id)
+        if (session) return session.title
+      }
+      return null
+    },
     publish(snapshot) {
       if (closing) return
       latest = snapshot

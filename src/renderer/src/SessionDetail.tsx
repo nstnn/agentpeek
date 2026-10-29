@@ -9,6 +9,8 @@ import {
 } from 'react'
 import type { RecentMessages, Session, SessionMessage } from '../../core/session'
 import type { AgentPeekApi } from '../../shared/api'
+import type { RemoteStatusView } from '../../shared/remote-settings'
+import { useRemoteAlias } from './remote-status'
 import { rowStatus, sessionTitle, toolName, workspaceName } from './session-display'
 import { clockTime, detailStatus } from './detail-status'
 import { SessionIcon } from './SessionIcon'
@@ -91,7 +93,9 @@ export function SessionDetail({
   sourceEpoch,
   reloadPending,
   reloadVersion,
-  onReload
+  onReload,
+  remoteStatus = null,
+  remoteRevision
 }: {
   session: Session
   api: AgentPeekApi
@@ -109,6 +113,9 @@ export function SessionDetail({
   reloadPending: boolean
   reloadVersion: number
   onReload: () => Promise<void>
+  remoteStatus?: RemoteStatusView | null
+  /** Changes with the session list, which can renumber Remote View aliases. */
+  remoteRevision?: unknown
 }): JSX.Element {
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const [retry, setRetry] = useState(0)
@@ -124,6 +131,7 @@ export function SessionDetail({
   const seen = useRef<string | null>(null)
   const revision = `${session.summary.lastActivityAt}:${session.lastReply?.cursor ?? ''}:${sourceEpoch}:${reloadVersion}`
   const { tool, id } = session.key
+  const remoteAlias = useRemoteAlias(api, session.key, remoteStatus, remoteRevision)
   useEffect(() => {
     if (!visible || missing) return
     let active = true
@@ -269,6 +277,11 @@ export function SessionDetail({
             {leadingControl}
             <DetailTitle title={sessionTitle(session)} />
           </div>
+        )}
+        {remoteAlias !== null && (
+          <p className="detail-meta detail-remote-alias" title="The name Remote View shows">
+            Remote: {remoteAlias}
+          </p>
         )}
         <p className="detail-meta" title={session.summary.workspacePath ?? 'No folder'}>
           {toolName(tool)} · {workspaceName(session)}

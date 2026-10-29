@@ -25,6 +25,7 @@ const requests: [string, unknown[]][] = [
   [IPC.setDetailOpen, [true]],
   [IPC.showSessionMenu, [key]],
   [IPC.getRemoteStatus, []],
+  [IPC.getRemoteAlias, [key]],
   [IPC.retryRemoteLoad, []],
   [IPC.setRemoteEnabled, [true]],
   [IPC.setRemoteEnabled, [false]],
@@ -52,6 +53,7 @@ function testRemote() {
   const ok = () => vi.fn().mockResolvedValue({ ok: true })
   return {
     status: vi.fn(() => ({ state: 'off', settings: { ...SAVED }, startError: null }) as const),
+    aliasFor: vi.fn<(key: unknown) => string | null>(() => 'Session 2'),
     retryLoad: vi.fn().mockResolvedValue(undefined),
     enable: ok(),
     disable: ok(),
@@ -393,7 +395,16 @@ describe('IPC trust boundary', () => {
     await expect(s.invoke(IPC.copyRemoteText, ['serve-command'])).resolves.toBe(false)
     expect(s.copyText).not.toHaveBeenCalled()
   })
+  it('answers an alias request for exactly the one session asked', async () => {
+    const s = setup()
+    await expect(s.invoke(IPC.getRemoteAlias, [key])).resolves.toBe('Session 2')
+    expect(s.remote.aliasFor.mock.calls).toEqual([[key]])
+  })
   it.each([
+    [IPC.getRemoteAlias, []],
+    [IPC.getRemoteAlias, [{ ...key, extra: 1 }]],
+    [IPC.getRemoteAlias, [{ tool: 'other', id: 'x' }]],
+    [IPC.getRemoteAlias, [key, key]],
     [IPC.setRemoteEnabled, ['true']],
     [IPC.setRemoteEnabled, []],
     [IPC.setRemoteShareTitles, [1]],
@@ -425,6 +436,7 @@ describe('IPC trust boundary', () => {
     expect(remoteChannels.sort()).toEqual(
       [
         IPC.getRemoteStatus,
+        IPC.getRemoteAlias,
         IPC.retryRemoteLoad,
         IPC.setRemoteEnabled,
         IPC.saveRemoteConnection,

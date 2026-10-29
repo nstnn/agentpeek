@@ -8,6 +8,7 @@ import {
   sourceTurnedOff,
   type RemoteSharing
 } from '../../core/remote/share-policy'
+import type { SessionKey } from '../../core/session'
 import type { SessionsSnapshot } from '../../core/snapshot'
 import { startRemoteListener, type RemoteListener, type RemoteStartError } from './listener'
 import {
@@ -48,14 +49,24 @@ export type RemoteViewError =
 
 export type RemoteViewResult =
   | { ok: true }
-  | { ok: false; error: RemoteViewError }
+  | { ok: false; error: RemoteViewError; connectionSaved?: boolean }
   | { ok: false; error: 'invalid'; invalid: (ConnectionField | 'shareTitles')[] }
 
 export type RemoteViewStatus =
   | { state: 'loading' }
   | { state: 'load-failed' }
-  | { state: 'off'; settings: RemoteSettings; startError: RemoteStartError | null }
-  | { state: 'on'; settings: RemoteSettings; resumed: boolean; streams: number }
+  | ({
+      state: 'off'
+      settings: RemoteSettings
+      startError: RemoteStartError | null
+    } & RecoveryStatus)
+  | ({ state: 'on'; settings: RemoteSettings; resumed: boolean; streams: number } & RecoveryStatus)
+
+interface RecoveryStatus {
+  unsavedChanges?: true
+  pending?: true
+  requestedEnabled?: boolean
+}
 
 export interface RemoteViewOptions {
   /** The app state folder, which holds `remote-view.json`. */
@@ -64,6 +75,8 @@ export interface RemoteViewOptions {
   viewerFolder: string
   snapshot: () => SessionsSnapshot
   now?: () => number
+  /** Called with each status that differs from the last one announced (TASK-042). */
+  onChange?: (status: RemoteViewStatus) => void
 }
 
 export type RemoteView = ReturnType<typeof createRemoteView>
@@ -74,13 +87,17 @@ export function createRemoteView(options: RemoteViewOptions) {
   let loading = true
   /** Null while loading and after a load failure. */
   let settings: RemoteSettings | null = null
+  let persisted: RemoteSettings | null = null
+  let pending = 0
+  let enabling: Promise<RemoteViewResult> | null = null
+  let policyEpoch = 0
   /** The policy the listener applies; a new frozen object on every change. */
   let sharing: RemoteSharing = NOTHING_SHARED
   /** The last snapshot handed over, to notice a source that was turned off. */
   let published = options.snapshot()
   let listener: RemoteListener | null = null
   /**
-   * Whether this run should listen: set once "on" is saved or resumed, cleared by OFF, a failed
+   * Whether this run should listen: set at the enable request or resume, cleared by OFF, a failed
    * start and quit. `listener` is null for a moment while a start or a restart runs.
    */
   let listening = false
@@ -93,6 +110,34 @@ export function createRemoteView(options: RemoteViewOptions) {
   let closing: Promise<void> | null = null
   let starts: Promise<unknown> = Promise.resolve()
   let saving: Promise<unknown> = Promise.resolve()
+  let announced = ''
+
+  function status(): RemoteViewStatus {
+    if (loading) return { state: 'loading' }
+    if (!settings) return { state: 'load-failed' }
+    return listener
+      ? {
+          state: 'on',
+          settings: { ...settings },
+          resumed,
+          streams: listener.streamCount(),
+          ...recovery()
+        }
+      : { state: 'off', settings: { ...settings }, startError, ...recovery() }
+  }
+
+  /**
+   * Tells the desktop about a changed status. Called after every step that may change it; an
+   * unchanged status is not announced again.
+   */
+  function announce(): void {
+    if (!options.onChange) return
+    const next = status()
+    const text = JSON.stringify(next)
+    if (text === announced) return
+    announced = text
+    options.onChange(next)
+  }
 
   /**
    * Saves in call order; resolves false on failure. Each save writes `update` of the settings in
@@ -101,13 +146,41 @@ export function createRemoteView(options: RemoteViewOptions) {
    */
   function persist(update: SettingsUpdate = (current) => current): Promise<boolean> {
     const saved = saving
-      .then(() => saveRemoteSettings(options.folder, update(settings!)))
+      .then(async () => {
+        const next = update(settings!)
+        await saveRemoteSettings(options.folder, next)
+        persisted = next
+      })
       .then(
         () => true,
         () => false
       )
     saving = saved
     return saved
+  }
+
+  async function track(action: () => Promise<RemoteViewResult>): Promise<RemoteViewResult> {
+    pending += 1
+    announce()
+    try {
+      return await action()
+    } finally {
+      pending -= 1
+      announce()
+    }
+  }
+
+  function recovery(): RecoveryStatus {
+    const unsaved =
+      persisted &&
+      settings &&
+      (settings.enabled !== persisted.enabled ||
+        settings.shareTitles !== persisted.shareTitles ||
+        JSON.stringify(settings.sharedWorkspaces) !== JSON.stringify(persisted.sharedWorkspaces))
+    return {
+      ...(unsaved ? { unsavedChanges: true as const } : {}),
+      ...(pending ? { pending: true as const, requestedEnabled: listening } : {})
+    }
   }
 
   /**
@@ -119,6 +192,7 @@ export function createRemoteView(options: RemoteViewOptions) {
     sharing = Object.freeze({ sharedWorkspaces: Object.freeze([...sharedWorkspaces]), shareTitles })
     generation += 1
     listener?.resync()
+    announce()
   }
 
   /**
@@ -126,15 +200,20 @@ export function createRemoteView(options: RemoteViewOptions) {
    * only once saved. `update` runs on the settings of the moment, so concurrent changes add up.
    */
   async function changeSharing(update: SettingsUpdate): Promise<RemoteViewResult> {
-    if (narrowsSharing(settings!, update(settings!))) {
+    return track(async () => {
+      if (narrowsSharing(settings!, update(settings!))) {
+        settings = update(settings!)
+        applySharing()
+        return (await persist()) ? { ok: true } : { ok: false, error: 'save-failed' }
+      }
+      const op = policyEpoch
+      const saved = await persist((current) => (op === policyEpoch ? update(current) : current))
+      if (op !== policyEpoch) return { ok: false, error: 'cancelled' }
+      if (!saved) return { ok: false, error: 'save-failed' }
       settings = update(settings!)
       applySharing()
-      return (await persist()) ? { ok: true } : { ok: false, error: 'save-failed' }
-    }
-    if (!(await persist(update))) return { ok: false, error: 'save-failed' }
-    settings = update(settings!)
-    applySharing()
-    return { ok: true }
+      return { ok: true }
+    })
   }
 
   /**
@@ -145,6 +224,7 @@ export function createRemoteView(options: RemoteViewOptions) {
     generation += 1
     const stopping = listener?.close(reason) ?? Promise.resolve()
     listener = null
+    announce()
     return stopping
   }
 
@@ -163,7 +243,8 @@ export function createRemoteView(options: RemoteViewOptions) {
         snapshot: options.snapshot,
         sharing: () => sharing,
         generation: () => generation,
-        now: options.now
+        now: options.now,
+        onStreamCount: announce
       })
       if (!result.ok) return op === epoch ? result.error : 'cancelled'
       if (op !== epoch) {
@@ -172,6 +253,7 @@ export function createRemoteView(options: RemoteViewOptions) {
       }
       listener = result.listener
       if (suspended) listener.suspend()
+      announce()
       return null
     })()
     starts = Promise.allSettled([starts, started])
@@ -179,11 +261,13 @@ export function createRemoteView(options: RemoteViewOptions) {
   }
 
   /** The switch shows off after a failed start, so a later launch must not turn it on alone. */
-  function failStart(error: RemoteStartError): RemoteViewResult {
+  async function failStart(error: RemoteStartError): Promise<RemoteViewResult> {
     startError = error
     listening = false
     settings = { ...settings!, enabled: false }
-    void persist()
+    announce()
+    await persist()
+    announce()
     return { ok: false, error }
   }
 
@@ -191,15 +275,17 @@ export function createRemoteView(options: RemoteViewOptions) {
   async function open(): Promise<void> {
     const load = await loadRemoteSettings(options.folder)
     loading = false
-    if (closing || !load.ok) return
+    if (closing || !load.ok) return announce()
     settings = load.settings
+    persisted = load.settings
     applySharing()
     if (!settings.enabled || !isConfigured(settings)) return
     const op = ++epoch
     listening = true
     const error = await listen(op)
     if (error === null) resumed = true
-    else if (error !== 'cancelled') failStart(error)
+    else if (error !== 'cancelled') await failStart(error)
+    announce()
   }
 
   return {
@@ -213,22 +299,35 @@ export function createRemoteView(options: RemoteViewOptions) {
     },
 
     /** Saves "on" first, then listens. */
-    async enable(): Promise<RemoteViewResult> {
-      if (closing) return { ok: false, error: 'cancelled' }
-      if (!settings) return { ok: false, error: 'not-loaded' }
-      if (!isConfigured(settings)) return { ok: false, error: 'not-configured' }
-      if (listening) return { ok: true }
-      const op = ++epoch
-      startError = null
-      const saved = await persist((current) => ({ ...current, enabled: true }))
-      if (op !== epoch) return { ok: false, error: 'cancelled' }
-      if (!saved) return { ok: false, error: 'save-failed' }
-      settings = { ...settings, enabled: true }
-      listening = true
-      resumed = false
-      const error = await listen(op)
-      if (error === null) return { ok: true }
-      return error === 'cancelled' ? { ok: false, error } : failStart(error)
+    enable(): Promise<RemoteViewResult> {
+      if (enabling && listening) return enabling
+      const operation = track(async () => {
+        if (closing) return { ok: false, error: 'cancelled' }
+        if (!settings) return { ok: false, error: 'not-loaded' }
+        if (!isConfigured(settings)) return { ok: false, error: 'not-configured' }
+        if (listening) return { ok: true }
+        const op = ++epoch
+        startError = null
+        listening = true
+        announce()
+        const saved = await persist((current) => ({ ...current, enabled: true }))
+        if (op !== epoch) return { ok: false, error: 'cancelled' }
+        if (!saved) {
+          listening = false
+          return { ok: false, error: 'save-failed' }
+        }
+        settings = { ...settings, enabled: true }
+        listening = true
+        resumed = false
+        const error = await listen(op)
+        if (error === null) return { ok: true }
+        return error === 'cancelled' ? { ok: false, error } : failStart(error)
+      })
+      enabling = operation
+      void operation.then(() => {
+        if (enabling === operation) enabling = null
+      })
+      return operation
     },
 
     /**
@@ -238,6 +337,7 @@ export function createRemoteView(options: RemoteViewOptions) {
     async disable(): Promise<RemoteViewResult> {
       if (closing) return { ok: false, error: 'cancelled' }
       epoch += 1
+      policyEpoch += 1
       listening = false
       const stopping = stopListener('remote-off')
       resumed = false
@@ -247,8 +347,10 @@ export function createRemoteView(options: RemoteViewOptions) {
         return { ok: true }
       }
       settings = { ...settings, enabled: false }
+      announce()
       const saved = await persist()
       await stopping
+      announce()
       return saved ? { ok: true } : { ok: false, error: 'save-failed' }
     },
 
@@ -258,40 +360,52 @@ export function createRemoteView(options: RemoteViewOptions) {
      * login leaves meanwhile. It then listens again with a new ID secret: with the new values once
      * saved, or with the saved ones when the save fails, which changes nothing else.
      */
-    async saveConnection(input: {
+    saveConnection(input: {
       ownerLogin: unknown
       hostName: unknown
       port: unknown
     }): Promise<RemoteViewResult> {
-      if (closing) return { ok: false, error: 'cancelled' }
-      if (!settings) return { ok: false, error: 'not-loaded' }
-      const check = checkConnection(input)
-      if (!check.ok) return { ok: false, error: 'invalid', invalid: check.invalid }
-      const op = ++epoch
-      const { connection } = check
-      const changed =
-        connection.ownerLogin !== settings.ownerLogin ||
-        connection.hostName !== settings.hostName ||
-        connection.port !== settings.port
-      // A start or an earlier restart still running has no listener yet, but must still listen.
-      const restart = listening && (changed || listener === null)
-      const stopping = restart ? stopListener('access-changed') : Promise.resolve()
-      // Whatever an older operation was starting is closed again before this one listens.
-      const earlier = starts
-      if (restart) resumed = false
-      const saved = await persist((current) => ({ ...current, ...connection }))
-      // The file and memory agree even when a later operation replaced this one.
-      if (saved) settings = { ...settings, ...connection }
-      await Promise.all([stopping, earlier])
-      if (op !== epoch) return { ok: false, error: 'cancelled' }
-      // A start error was about the old values; the status must not repeat it with the new ones.
-      if (saved && changed) startError = null
-      if (!restart) return saved ? { ok: true } : { ok: false, error: 'save-failed' }
-      const error = await listen(op)
-      if (error !== null && error !== 'cancelled') failStart(error)
-      if (!saved) return { ok: false, error: 'save-failed' }
-      if (error === null) return { ok: true }
-      return { ok: false, error }
+      return track(async () => {
+        if (closing) return { ok: false, error: 'cancelled' }
+        if (!settings) return { ok: false, error: 'not-loaded' }
+        const check = checkConnection(input)
+        if (!check.ok) return { ok: false, error: 'invalid', invalid: check.invalid }
+        const op = ++epoch
+        const { connection } = check
+        const changed =
+          connection.ownerLogin !== settings.ownerLogin ||
+          connection.hostName !== settings.hostName ||
+          connection.port !== settings.port
+        // A start or an earlier restart still running has no listener yet, but must still listen.
+        const restart = listening && (changed || listener === null)
+        const stopping = restart ? stopListener('access-changed') : Promise.resolve()
+        // Whatever an older operation was starting is closed again before this one listens.
+        const earlier = starts
+        if (restart) resumed = false
+        const saved = await persist((current) => ({
+          ...current,
+          ...connection,
+          enabled: listening
+        }))
+        // The file and memory agree even when a later operation replaced this one.
+        if (saved) settings = { ...settings, ...connection, enabled: listening }
+        // An overlapping enable may have saved ON before handing its start to this operation.
+        else if (listening && persisted?.enabled) settings = { ...settings, enabled: true }
+        await Promise.all([stopping, earlier])
+        if (op !== epoch) return { ok: false, error: 'cancelled' }
+        // A start error was about the old values; the status must not repeat it with the new ones.
+        if (saved && changed) startError = null
+        if (!restart) return saved ? { ok: true } : { ok: false, error: 'save-failed' }
+        if (!settings.enabled) {
+          listening = false
+          return { ok: false, error: 'save-failed', connectionSaved: saved }
+        }
+        const error = await listen(op)
+        if (error !== null && error !== 'cancelled') await failStart(error)
+        if (!saved) return { ok: false, error: 'save-failed' }
+        if (error === null) return { ok: true }
+        return { ok: false, error, connectionSaved: true }
+      })
     },
 
     /**
@@ -321,13 +435,13 @@ export function createRemoteView(options: RemoteViewOptions) {
 
     /**
      * Stops sharing a folder: its rows leave every stream before the change is saved. A folder
-     * that is not shared is already in the requested state.
+     * that is not shared still retries saving the effective policy.
      */
     async unshareWorkspace(workspace: unknown): Promise<RemoteViewResult> {
       if (closing) return { ok: false, error: 'cancelled' }
       if (!settings) return { ok: false, error: 'not-loaded' }
       if (typeof workspace !== 'string') return { ok: false, error: 'unknown-workspace' }
-      if (!settings.sharedWorkspaces.includes(workspace)) return { ok: true }
+      policyEpoch += 1
       return changeSharing((current) => ({
         ...current,
         sharedWorkspaces: current.sharedWorkspaces.filter((shared) => shared !== workspace)
@@ -341,7 +455,7 @@ export function createRemoteView(options: RemoteViewOptions) {
       if (typeof shareTitles !== 'boolean') {
         return { ok: false, error: 'invalid', invalid: ['shareTitles'] }
       }
-      if (settings.shareTitles === shareTitles) return { ok: true }
+      if (!shareTitles) policyEpoch += 1
       return changeSharing((current) => ({ ...current, shareTitles }))
     },
 
@@ -364,18 +478,21 @@ export function createRemoteView(options: RemoteViewOptions) {
       listener?.resume()
     },
 
-    status(): RemoteViewStatus {
-      if (loading) return { state: 'loading' }
-      if (!settings) return { state: 'load-failed' }
-      return listener
-        ? { state: 'on', settings: { ...settings }, resumed, streams: listener.streamCount() }
-        : { state: 'off', settings: { ...settings }, startError }
+    status,
+
+    /**
+     * The alias the viewer shows for `key` (TASK-042), from the running listener's own projection,
+     * so it matches the page exactly: same policy, generation and opaque-ID order. Null while off.
+     */
+    aliasFor(key: SessionKey): string | null {
+      return listener?.aliasFor(key) ?? null
     },
 
     /** Quit: ends every stream with `shutdown`, closes the listener and waits for saves. */
     close(): Promise<void> {
       closing ??= (async () => {
         epoch += 1
+        policyEpoch += 1
         listening = false
         const stopping = stopListener('shutdown')
         await Promise.allSettled([stopping, starts, saving])
