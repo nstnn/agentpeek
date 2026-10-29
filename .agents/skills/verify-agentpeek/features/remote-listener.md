@@ -12,6 +12,7 @@ When Remote View is on in AgentPeek's saved settings, AgentPeek listens on `127.
 - `remote-share` shows only the exact saved folders: the fixture's shared folder with its sessions under aliases, and nothing when no folder is saved.
 - `remote-limits` bounds what a client can make it do, before any check of the login: a burst over 20 requests gets `rate-limited`, a sixth stream `busy`, oversize headers and a request too slow to arrive `bad-request`, and a POST with a large body `method-not-allowed` at once without being invited to send it. It still listens only on `127.0.0.1` at the saved port afterwards.
 - `remote-source-off` sends a replacement status with a higher `generation` and no rows of a source as soon as it is turned off in Settings.
+- `remote-viewer-entry` shows the viewer page's connection states in a browser: Live for the owner; Not allowed or the wrong-address page, with no data and no retry, for another login or Host; Connection lost with the last data dimmed while the listener is gone, then Live again with a full status; Remote View is off with the list cleared; and nothing left in browser storage or history.
 - `remote-quit` ends open streams with `end: shutdown` when AgentPeek quits, closes the port and exits cleanly.
 
 ## How to get to it (user POV)
@@ -43,6 +44,7 @@ Preconditions:
   - The per-stream byte budget (`end: slow-consumer` at 512 KiB) cannot be reached with fixture data; it is covered by `src/main/remote/listener-limits.test.ts` only.
 - **Source off.** With `curl -sN -H "$OWNER" …/v1/status > <evidence>/remote-source-off.txt` running, open Settings and use `click --role switch --name "Monitor Codex"`. Within a second the file gains a `status` frame with a `generation` higher than the first frame's, `sources.codex` `{"state":"off"}` and no session whose `tool` is `codex`; the Claude Code rows stay. Turn Monitor Codex on again before quitting, so the next run starts with both sources.
 - **Quit.** With a `curl -sN -H "$OWNER" …/v1/status` stream still open, choose AgentPeek > Quit AgentPeek (`focus`, then `menu-click "AgentPeek > Quit AgentPeek"`), then `wait-exit`: `cleanExit: true`. The curl output ends with `event: end` and `{"v":1,"type":"end","reason":"shutdown"}`, and the port then refuses connections.
+- **Viewer entry.** `npm run test:remote-browser` builds the page and drives it in headless Chrome (no window, no AgentPeek launch) against the real listener behind a loopback proxy that adds the login and Host the way Serve does. It prints `Tests  8 passed (8)`: Live with the folder `shared-demo` and no title, path or login on the page; the fixed Not allowed page for a missing and for a different login with no `/v1/status` request; the fixed wrong-address page for a foreign Host; an open page whose login or Host stops matching shows Not allowed or the wrong address, with no data and no further request for 2-3 s; a stopped listener shows `Connection lost · showing data from …` with the list dimmed and the Tailscale-error hint, and a restarted one with a second folder shows Live with `later-demo`; `end: remote-off` shows `Remote View is off` with the list cleared, then Live after a restart; storage, cookies, caches and IndexedDB stay empty and no history entry is added.
 - **Off.** Launch a fresh run without `--state`. `lsof` lists only the helper's debug ports.
 
 ## Gotchas
@@ -53,4 +55,5 @@ Preconditions:
 - A checkout without the viewer build answers `/` with `{"v":1,"error":"not-found"}`; `npm run build` builds it.
 - The helper's `--remote-debugging-port=0` and `--inspect=0` also listen on loopback; tell them apart by port.
 - The rate limit is global, 10 requests a second with a burst of 20. Run the limit checks last, or wait a few seconds after the burst, or the next check gets `429` instead of its own answer.
+- `test:remote-browser` uses the installed Google Chrome through Playwright's `chrome` channel with a fresh temporary profile; it fails at launch without Chrome. Its page sets `Math.random` low so reconnects come within a second; real pages wait up to 30 s.
 - `stop` deletes the copied state folder; the original `<state>` folder stays and is synthetic.

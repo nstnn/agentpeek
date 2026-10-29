@@ -20,6 +20,7 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:remote-web": "vitest run --project remote-web --project remote-web-boundary",
+    "test:remote-browser": "npm run build:remote-web && vitest run --config remote/web/browser/vitest.config.ts",
     "fixture": "node scripts/fixture/index.mjs",
     "e2e": "playwright test"
   },
