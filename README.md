@@ -148,16 +148,17 @@ synthetic fixture overrides, just like development runs.
 
 ## Check
 
-| Command                     | What it does                                                                                        |
-| --------------------------- | --------------------------------------------------------------------------------------------------- |
-| `npm run typecheck`         | Type-checks the main process, the renderer and the Remote View page separately.                     |
-| `npm run lint`              | Runs ESLint, then checks formatting with Prettier.                                                  |
-| `npm test`                  | Runs the unit tests with vitest.                                                                    |
-| `npm run test:remote-web`   | Runs only the Remote View page's tests, including its import-boundary check.                        |
-| `npm run build:remote-web`  | Builds only the Remote View page into `out/remote-web/` (`npm run build` includes it).              |
-| `npm run fixture -- create` | Creates an isolated synthetic home for regression checks.                                           |
-| `npm run e2e`               | Opens the built app twice for the Playwright fixture smoke; build first and obtain launch approval. |
-| `npm run format`            | Rewrites files in the Prettier style.                                                               |
+| Command                       | What it does                                                                                        |
+| ----------------------------- | --------------------------------------------------------------------------------------------------- |
+| `npm run typecheck`           | Type-checks the main process, the renderer and the Remote View page separately.                     |
+| `npm run lint`                | Runs ESLint, then checks formatting with Prettier.                                                  |
+| `npm test`                    | Runs the unit tests with vitest.                                                                    |
+| `npm run test:remote-web`     | Runs only the Remote View page's tests, including its import-boundary check.                        |
+| `npm run build:remote-web`    | Builds only the Remote View page into `out/remote-web/` (`npm run build` includes it).              |
+| `npm run test:remote-browser` | Checks the Remote View page in headless Chrome through a simulated Tailscale Serve (needs Chrome).  |
+| `npm run fixture -- create`   | Creates an isolated synthetic home for regression checks.                                           |
+| `npm run e2e`                 | Opens the built app twice for the Playwright fixture smoke; build first and obtain launch approval. |
+| `npm run format`              | Rewrites files in the Prettier style.                                                               |
 
 The [fixture guide](scripts/fixture/README.md) lists the simulator commands and expected states.
 The smoke checks bootstrap, a live update within 2 seconds, safe detail rendering, independent

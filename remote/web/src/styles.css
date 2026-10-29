@@ -1,9 +1,105 @@
 :root {
   color-scheme: light dark;
   font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --text: #1d1d1f;
+  --muted: #6e6e73;
+  --surface: #ffffff;
+  --line: #d2d2d7;
+  --live: #1a7f37;
+  --warn: #9a6700;
+  --error: #c62828;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #f5f5f7;
+    --muted: #a1a1a6;
+    --surface: #1c1c1e;
+    --line: #3a3a3c;
+    --live: #4ac26b;
+    --warn: #d4a72c;
+    --error: #ff6b6b;
+  }
 }
 
 body {
   margin: 0;
-  padding: 16px;
+  padding: 0 16px 16px;
+  color: var(--text);
+  background: var(--surface);
+}
+
+header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 12px 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+h2 {
+  margin: 16px 0 4px;
+  font-size: 1rem;
+}
+
+p {
+  margin: 4px 0;
+}
+
+.pill {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.pill-neutral {
+  color: var(--muted);
+}
+
+.pill-live {
+  color: var(--live);
+}
+
+.pill-warn {
+  color: var(--warn);
+}
+
+.pill-error {
+  color: var(--error);
+}
+
+.notice {
+  margin: 16px 0;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+button {
+  min-width: 44px;
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 0 16px;
+  font: inherit;
+}
+
+.dimmed {
+  opacity: 0.55;
+}
+
+.skeleton div {
+  height: 20px;
+  margin: 16px 0;
+  border-radius: 4px;
+  background: var(--line);
 }
