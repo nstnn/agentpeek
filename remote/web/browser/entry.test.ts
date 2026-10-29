@@ -36,9 +36,9 @@ const sessions = (folders: string[]): Session[] =>
     })
   )
 
-const snapshotOf = (folders: string[]) =>
+const snapshotOf = (folders: string[], list = sessions(folders)) =>
   createSnapshot({
-    sessions: sessions(folders),
+    sessions: list,
     health: { codex: { state: 'connected', lastReadAt: 1 }, claude: { state: 'not-installed' } },
     localState: { kind: 'available' },
     firstLaunch: false,
@@ -101,13 +101,13 @@ let listenerPort = 0
 let listener: RemoteListener | null = null
 let serve: Serve
 
-async function startListener(folders = [SHARED]): Promise<void> {
+async function startListener(folders = [SHARED], list?: Session[]): Promise<void> {
   const result = await startRemoteListener({
     port: listenerPort,
     access: { ownerLogin: OWNER, hostName: HOST },
     secret: new Uint8Array(32).fill(7),
     viewer,
-    snapshot: () => snapshotOf(folders),
+    snapshot: () => snapshotOf(folders, list),
     sharing: () => ({ sharedWorkspaces: folders, shareTitles: false }),
     generation: () => 0
   })
@@ -120,8 +120,8 @@ async function stopListener(reason: EndReason): Promise<void> {
   listener = null
 }
 
-async function openPage(): Promise<Page> {
-  const context = await browser.newContext()
+async function openPage(viewport?: { width: number; height: number }): Promise<Page> {
+  const context = await browser.newContext(viewport ? { viewport } : {})
   const page = await context.newPage()
   // Short, still jittered waits, so a reconnect takes well under a second in this test.
   await page.addInitScript(() => {
@@ -284,5 +284,114 @@ describe('Remote View connection entry in a browser', () => {
     await page.getByText('Remote View was turned off on the Mac.').waitFor()
     await startListener()
     await expect.poll(() => pill(page).textContent(), { timeout: 15_000 }).toBe('Live')
+  })
+})
+
+describe('Remote View session list in a browser', () => {
+  // Both tools, two projects and every attention kind, so the filters and the attention group show.
+  const mixed = (): Session[] => [
+    testSession({
+      key: { tool: 'claude', id: 'SENTINEL-RAW-ID-wait' },
+      summary: {
+        title: SENTINEL_TITLE,
+        workspacePath: SHARED,
+        lastActivityAt: 30,
+        toolVersion: '1'
+      },
+      activity: { state: 'waiting', waitingFor: 'permission prompt' },
+      attention: { waiting: true, newReply: false, error: false }
+    }),
+    testSession({
+      key: { tool: 'codex', id: 'SENTINEL-RAW-ID-reply' },
+      summary: {
+        title: SENTINEL_TITLE,
+        workspacePath: LATER,
+        lastActivityAt: 20,
+        toolVersion: '1'
+      },
+      attention: { waiting: false, newReply: true, error: false }
+    }),
+    testSession({
+      key: { tool: 'codex', id: 'SENTINEL-RAW-ID-run' },
+      summary: {
+        title: SENTINEL_TITLE,
+        workspacePath: SHARED,
+        lastActivityAt: 10,
+        toolVersion: '1'
+      },
+      activity: { state: 'running' }
+    }),
+    testSession({
+      key: { tool: 'claude', id: 'SENTINEL-RAW-ID-idle' },
+      summary: { title: SENTINEL_TITLE, workspacePath: LATER, lastActivityAt: 5, toolVersion: '1' }
+    })
+  ]
+
+  beforeAll(async () => {
+    listenerPort = await freePort()
+    serve = await startServe(() => listenerPort)
+  })
+
+  afterEach(async () => {
+    for (const context of browser.contexts()) await context.close()
+    await stopListener('shutdown')
+    serve.requests.length = 0
+  })
+
+  afterAll(async () => {
+    await new Promise<void>((done) => serve.server.close(() => done()))
+  })
+
+  it('fits a 320-pixel viewport with no horizontal scroll and wrapped rows', async () => {
+    await startListener([SHARED, LATER], mixed())
+    const page = await openPage({ width: 320, height: 640 })
+    await page.getByRole('heading', { level: 2, name: 'Needs attention' }).waitFor()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+    const row = page.locator('.row').first()
+    const title = await row.locator('.row-title').boundingBox()
+    const state = await row.locator('.row-state').boundingBox()
+    expect(state!.y).toBeGreaterThan(title!.y + title!.height - 1)
+    for (const select of await page.locator('select').all()) {
+      expect((await select.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+    }
+    const text = await page.locator('body').innerText()
+    expect(text).toContain('Waiting for you · Permission')
+    expect(text).toContain('1 needs you · 1 new reply')
+    expect(text).not.toContain(SENTINEL_TITLE)
+    expect(text).not.toContain('SENTINEL-RAW-ID')
+    await page.screenshot({ path: join(repo, 'test-results/remote-list-320.png'), fullPage: true })
+  })
+
+  it('works from the keyboard and sends nothing but the status stream', async () => {
+    await startListener([SHARED, LATER], mixed())
+    const page = await openPage({ width: 1024, height: 768 })
+    await page.getByRole('heading', { level: 2, name: 'Needs attention' }).waitFor()
+    const rowsBefore = await page.locator('.row').count()
+    expect(rowsBefore).toBe(4)
+
+    // Rows are not focusable: the first Tab stop is the Project filter, the next the Tool filter.
+    await page.keyboard.press('Tab')
+    expect(await page.evaluate(() => document.activeElement?.id)).toBe(
+      await page.getByLabel('Project').getAttribute('id')
+    )
+    await page.keyboard.type('later')
+    await expect.poll(() => page.getByLabel('Project').inputValue()).toBe('later-demo')
+    expect(await page.locator('.row').count()).toBe(2)
+    expect(await page.getByRole('heading', { level: 2, name: 'shared-demo' }).count()).toBe(0)
+
+    await page.keyboard.press('Tab')
+    expect(await page.evaluate(() => document.activeElement?.id)).toBe(
+      await page.getByLabel('Tool').getAttribute('id')
+    )
+    await page.keyboard.type('claude')
+    await expect.poll(() => page.locator('.row').count()).toBe(1)
+    expect(await page.locator('.row').innerText()).toContain('Idle')
+    await page.screenshot({ path: join(repo, 'test-results/remote-list-1024.png'), fullPage: true })
+
+    expect(await page.evaluate(() => location.pathname + location.search + location.hash)).toBe('/')
+    expect(await kept(page)).toEqual(NOTHING_KEPT)
+    const paths = serve.requests.map((path) => (path.startsWith('/assets/') ? '/assets/' : path))
+    expect([...new Set(paths)].sort()).toEqual(['/', '/assets/', '/v1/status'])
+    expect(statusRequests()).toBe(1)
   })
 })

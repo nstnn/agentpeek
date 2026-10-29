@@ -113,7 +113,11 @@ describe('Remote View connection', () => {
     })
     expect(h.last()).toEqual({
       kind: 'live',
-      data: { frame: VALID_STATUS_FRAME, lastSentAt: VALID_STATUS_FRAME.sentAt }
+      data: {
+        frame: VALID_STATUS_FRAME,
+        lastSentAt: VALID_STATUS_FRAME.sentAt,
+        receivedAt: expect.any(Number) as number
+      }
     })
   })
 
@@ -140,7 +144,11 @@ describe('Remote View connection', () => {
     await settle()
     expect(h.last()).toEqual({
       kind: 'live',
-      data: { frame: VALID_STATUS_FRAME, lastSentAt: heartbeat.sentAt }
+      data: {
+        frame: VALID_STATUS_FRAME,
+        lastSentAt: heartbeat.sentAt,
+        receivedAt: expect.any(Number) as number
+      }
     })
   })
 

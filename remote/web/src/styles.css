@@ -103,3 +103,139 @@ button {
   border-radius: 4px;
   background: var(--line);
 }
+
+.summary {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.source-issue {
+  margin: 12px 0 0;
+  color: var(--warn);
+  font-size: 0.875rem;
+}
+
+.all-clear {
+  margin: 16px 0 0;
+  color: var(--live);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 12px 0 0;
+}
+
+.filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.filter label {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+select {
+  min-height: 44px;
+  max-width: 100%;
+  font: inherit;
+}
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Under 720 px each row wraps: title, then tool, then the status label and time on their own line. */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.row-title {
+  flex-basis: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.row-meta,
+.row-time {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.row-meta {
+  flex-basis: 100%;
+}
+
+.row-state {
+  font-size: 0.875rem;
+}
+
+.row-time {
+  white-space: nowrap;
+}
+
+.state-waiting,
+.state-error {
+  font-weight: 600;
+}
+
+.state-waiting {
+  color: var(--warn);
+}
+
+.state-error {
+  color: var(--error);
+}
+
+.state-reply {
+  color: var(--live);
+}
+
+.state-unknown {
+  color: var(--muted);
+}
+
+/* From 720 px a row is one line: title, tool, status, time. */
+@media (min-width: 720px) {
+  .row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(6rem, 14rem) 14rem 9rem;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  .row-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .row-meta {
+    flex-basis: auto;
+  }
+
+  .row-time {
+    text-align: right;
+  }
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

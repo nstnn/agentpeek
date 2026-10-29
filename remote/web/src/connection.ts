@@ -21,6 +21,8 @@ export interface ViewerData {
   frame: StatusFrame
   /** The Mac clock of the latest frame of any type: "checked" and "showing data from". */
   lastSentAt: number
+  /** This device's monotonic clock when that frame arrived, for `macNow`. */
+  receivedAt: number
 }
 
 export type ViewerState =
@@ -49,6 +51,8 @@ export interface ConnectionOptions {
   fetch: typeof fetch
   onChange: (state: ViewerState) => void
   random?: () => number
+  /** A monotonic local clock in milliseconds; `performance.now` by default. */
+  now?: () => number
   setTimer?: (run: () => void, ms: number) => unknown
   clearTimer?: (timer: unknown) => void
 }
@@ -74,6 +78,7 @@ const ERROR_CODES = new Set(Object.keys(REMOTE_ERROR_STATUS))
 
 export function createConnection(options: ConnectionOptions): Connection {
   const random = options.random ?? Math.random
+  const now = options.now ?? (() => performance.now())
   const setTimer = options.setTimer ?? ((run, ms) => setTimeout(run, ms))
   const clearTimer =
     options.clearTimer ?? ((timer) => clearTimeout(timer as ReturnType<typeof setTimeout>))
@@ -244,9 +249,12 @@ export function createConnection(options: ConnectionOptions): Connection {
           if (frame.type === 'status') {
             attempt = 0
             failures = 0
-            set({ kind: 'live', data: { frame, lastSentAt: frame.sentAt } })
+            set({ kind: 'live', data: { frame, lastSentAt: frame.sentAt, receivedAt: now() } })
           } else if (state.kind === 'live' && frame.snapshotId === state.data.frame.snapshotId) {
-            set({ kind: 'live', data: { ...state.data, lastSentAt: frame.sentAt } })
+            set({
+              kind: 'live',
+              data: { ...state.data, lastSentAt: frame.sentAt, receivedAt: now() }
+            })
           }
         }
         if (buffer.length > MAX_EVENT_CHARS) return done('dropped')
