@@ -48,8 +48,26 @@ export function App({ fetch: fetchImpl, random, now = defaultNow, tickMs = TICK_
       }
     })
     connection.current = created
-    created.start()
-    return () => created.stop()
+    const visibility = () => {
+      if (document.hidden) created.suspend()
+      else created.resume()
+    }
+    const hide = () => created.suspend()
+    document.addEventListener('visibilitychange', visibility)
+    document.addEventListener('freeze', hide)
+    document.addEventListener('resume', visibility)
+    window.addEventListener('pagehide', hide)
+    window.addEventListener('pageshow', visibility)
+    if (document.hidden) created.suspend()
+    else created.start()
+    return () => {
+      document.removeEventListener('visibilitychange', visibility)
+      document.removeEventListener('freeze', hide)
+      document.removeEventListener('resume', visibility)
+      window.removeEventListener('pagehide', hide)
+      window.removeEventListener('pageshow', visibility)
+      created.stop()
+    }
   }, [fetchImpl, random, now])
 
   const live = state.kind === 'live'
@@ -113,7 +131,11 @@ function pillOf(
     case 'connecting':
       return { label: 'Connecting…', tone: 'neutral' }
     case 'live':
-      return { label: 'Live', detail: `checked ${time(state.data.lastSentAt)}`, tone: 'live' }
+      return {
+        label: 'Live',
+        detail: `last change ${time(state.data.frame.observedAt)} · checked ${time(state.data.lastSentAt)}`,
+        tone: 'live'
+      }
     case 'reconnecting':
       return { label: 'Reconnecting', detail: from(state.data), tone: 'warn' }
     case 'lost':

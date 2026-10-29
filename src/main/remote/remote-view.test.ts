@@ -266,6 +266,8 @@ describe('Remote View quit', () => {
         streamCount: () => 0,
         publish: vi.fn(),
         resync: vi.fn(),
+        suspend: vi.fn(),
+        resume: vi.fn(),
         close: closeLate
       }
       finish!({ ok: true, listener: late })
@@ -554,4 +556,21 @@ describe('Remote View access changes during a pending send', () => {
       (frame as StatusFrame).status.projects[0]!.sessions[0]!.id
     expect(id(again.frames[0])).not.toBe(id(viewer.frames[0]))
   })
+})
+
+it('retains sleep state across enabling and requires a new full status after wake', async () => {
+  const { view, port } = await setup({ enabled: false })
+  view.suspend()
+  expect(await view.enable()).toEqual({ ok: true })
+  expect((await send(port, { path: '/v1/status' })).status).toBe(503)
+  view.resume()
+  const first = subscribe(port)
+  await expect.poll(() => first.frames.length).toBe(1)
+  view.suspend()
+  await first.ended
+  expect(first.frames.at(-1)).toEqual({ v: 1, type: 'end', reason: 'shutdown' })
+  view.resume()
+  const second = subscribe(port)
+  await expect.poll(() => second.frames.length).toBe(1)
+  expect(second.frames[0]).toMatchObject({ type: 'status', observedAt: 1 })
 })
