@@ -2,6 +2,7 @@
 import { createServer, request, type IncomingHttpHeaders, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { join } from 'node:path'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { chromium, type Browser, type Page } from '@playwright/test'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { EndReason } from '../../../src/core/remote/protocol'
@@ -53,10 +54,20 @@ interface Serve {
   host: string
   requests: string[]
   server: Server
+  silent: boolean
+  sent: { observedAt: number; sentAt: number }[]
 }
 
 async function startServe(listenerPort: () => number): Promise<Serve> {
-  const serve: Serve = { port: 0, login: OWNER, host: HOST, requests: [], server: createServer() }
+  const serve: Serve = {
+    port: 0,
+    login: OWNER,
+    host: HOST,
+    requests: [],
+    server: createServer(),
+    silent: false,
+    sent: []
+  }
   serve.server.on('request', (incoming, outgoing) => {
     serve.requests.push(incoming.url ?? '')
     const headers: IncomingHttpHeaders = {}
@@ -78,7 +89,27 @@ async function startServe(listenerPort: () => number): Promise<Serve> {
       },
       (reply) => {
         outgoing.writeHead(reply.statusCode ?? 502, reply.headers)
-        reply.pipe(outgoing)
+        let buffer = ''
+        reply.on('data', (chunk: Buffer) => {
+          if (incoming.url === '/v1/status') {
+            buffer += chunk.toString()
+            let end: number
+            while ((end = buffer.indexOf('\n\n')) >= 0) {
+              const text = buffer.slice(0, end)
+              buffer = buffer.slice(end + 2)
+              if (text.startsWith('event: status\ndata: ')) {
+                const frame = JSON.parse(text.slice('event: status\ndata: '.length)) as {
+                  observedAt: number
+                  sentAt: number
+                }
+                serve.sent.push({ observedAt: frame.observedAt, sentAt: frame.sentAt })
+              }
+            }
+          }
+          if (!serve.silent) outgoing.write(chunk)
+        })
+        reply.on('end', () => outgoing.end())
+        reply.on('error', () => outgoing.destroy())
       }
     )
     // What Serve answers while nothing listens behind it: its own error, not AgentPeek's.
@@ -175,6 +206,8 @@ describe('Remote View connection entry in a browser', () => {
     await stopListener('shutdown')
     serve.login = OWNER
     serve.host = HOST
+    serve.silent = false
+    serve.sent.length = 0
     serve.requests.length = 0
   })
 
@@ -335,6 +368,8 @@ describe('Remote View session list in a browser', () => {
   afterEach(async () => {
     for (const context of browser.contexts()) await context.close()
     await stopListener('shutdown')
+    serve.silent = false
+    serve.sent.length = 0
     serve.requests.length = 0
   })
 
@@ -393,5 +428,192 @@ describe('Remote View session list in a browser', () => {
     const paths = serve.requests.map((path) => (path.startsWith('/assets/') ? '/assets/' : path))
     expect([...new Set(paths)].sort()).toEqual(['/', '/assets/', '/v1/status'])
     expect(statusRequests()).toBe(1)
+  })
+})
+
+describe('Remote View resilience budgets in a browser', () => {
+  beforeAll(async () => {
+    listenerPort = await freePort()
+    serve = await startServe(() => listenerPort)
+  })
+  afterEach(async () => {
+    for (const context of browser.contexts()) await context.close()
+    await stopListener('shutdown')
+    serve.silent = false
+    serve.sent.length = 0
+    serve.requests.length = 0
+  })
+  afterAll(async () => {
+    await new Promise<void>((done) => serve.server.close(() => done()))
+  })
+
+  it('measures source-detection to DOM render with five streams of 250 rows', async () => {
+    const load = (running: boolean) =>
+      Array.from({ length: 250 }, (_, n) =>
+        testSession({
+          key: { tool: 'codex', id: `synthetic-load-${n}` },
+          summary: {
+            title: 'Synthetic load',
+            workspacePath: SHARED,
+            lastActivityAt: 1,
+            toolVersion: '1'
+          },
+          activity: { state: running ? 'running' : 'idle' }
+        })
+      )
+    await startListener([SHARED], load(false))
+    const pages: Page[] = []
+    // Sequential page entry stays inside the fixed request burst (four requests per page).
+    for (let n = 0; n < 5; n += 1) {
+      const page = await openPage()
+      await expect.poll(() => page.locator('.row').count()).toBe(250)
+      pages.push(page)
+    }
+    expect(listener!.streamCount()).toBe(5)
+    const samples: { detectedAt: number; sentAt: number; renderedAt: number; ms: number }[] = []
+    for (let step = 1; step <= 12; step += 1) {
+      const running = step % 2 === 1
+      const label = running ? 'Running' : 'Idle'
+      // Observe actual React DOM changes and the next frame opportunity; do not write app state.
+      await Promise.all(
+        pages.map((page) =>
+          page.evaluate((expected) => {
+            const target = window as typeof window & { rendered?: Promise<number> }
+            target.rendered = new Promise((resolve) => {
+              const observer = new MutationObserver(() => {
+                const rows = Array.from(document.querySelectorAll('.row-state'))
+                if (rows.length !== 250 || !rows.every((row) => row.textContent === expected))
+                  return
+                observer.disconnect()
+                requestAnimationFrame(() => resolve(performance.timeOrigin + performance.now()))
+              })
+              observer.observe(document.body, {
+                subtree: true,
+                childList: true,
+                characterData: true
+              })
+            })
+          }, label)
+        )
+      )
+      // Synthetic source detection begins here, immediately before handing its snapshot over.
+      const detectedAt = Date.now()
+      listener!.publish({ ...snapshotOf([SHARED], load(running)), takenAt: detectedAt })
+      const rendered = await Promise.all(
+        pages.map((page) =>
+          page.evaluate(() => (window as typeof window & { rendered: Promise<number> }).rendered)
+        )
+      )
+      const sent = serve.sent.filter((frame) => frame.observedAt === detectedAt)
+      expect(sent).toHaveLength(5)
+      rendered.forEach((renderedAt, index) =>
+        samples.push({
+          detectedAt,
+          sentAt: sent[index]!.sentAt,
+          renderedAt,
+          ms: renderedAt - detectedAt
+        })
+      )
+    }
+    const ordered = samples.map((sample) => sample.ms).sort((a, b) => a - b)
+    const p95 = ordered[Math.ceil(ordered.length * 0.95) - 1]!
+    const evidence = join(repo, 'test-results/remote-resilience')
+    await mkdir(evidence, { recursive: true })
+    await writeFile(
+      join(evidence, 'load-budget.json'),
+      JSON.stringify(
+        {
+          streams: 5,
+          rows: 250,
+          samples: samples.length,
+          p95Ms: p95,
+          maxMs: ordered.at(-1),
+          targetMs: 2_000,
+          scope:
+            'Synthetic source detection -> real listener -> simulated Serve -> Chrome DOM commit plus next animation frame; not file write, real reader detection or physical display paint',
+          measurements: samples
+        },
+        null,
+        2
+      )
+    )
+    expect(p95).toBeLessThanOrEqual(2_000)
+  })
+
+  it('shows connection lost after actual 45 s frame silence, then resyncs', async () => {
+    const list = Array.from({ length: 250 }, (_, n) =>
+      testSession({
+        key: { tool: 'codex', id: `synthetic-silence-${n}` },
+        summary: {
+          title: 'Synthetic silence',
+          workspacePath: SHARED,
+          lastActivityAt: 1,
+          toolVersion: '1'
+        }
+      })
+    )
+    await startListener([SHARED], list)
+    const pages: { page: Page; liveAt: number }[] = []
+    for (let n = 0; n < 5; n += 1) {
+      const page = await openPage()
+      await expect.poll(() => page.locator('.row').count()).toBe(250)
+      pages.push({ page, liveAt: Date.now() })
+    }
+    expect(listener!.streamCount()).toBe(5)
+    const page = pages[0]!.page
+    serve.silent = true
+    const elapsed = await Promise.all(
+      pages.map(async ({ page, liveAt }) => {
+        await expect
+          .poll(() => pill(page).textContent(), { timeout: 48_000 })
+          .toBe('Connection lost')
+        const ms = Date.now() - liveAt
+        expect(ms).toBeGreaterThanOrEqual(44_000)
+        expect(ms).toBeLessThan(48_000)
+        expect(await page.locator('.status.dimmed').count()).toBe(1)
+        return ms
+      })
+    )
+    const evidence = join(repo, 'test-results/remote-resilience')
+    await mkdir(evidence, { recursive: true })
+    await page.screenshot({ path: join(evidence, 'silence-lost.png'), fullPage: true })
+    await writeFile(
+      join(evidence, 'silence-budget.json'),
+      JSON.stringify(
+        {
+          streams: 5,
+          rowsPerStream: 250,
+          targetMs: 45_000,
+          observedMs: elapsed,
+          scope: 'real timers, proxy withholds complete frames'
+        },
+        null,
+        2
+      )
+    )
+    serve.silent = false
+    await stopListener('shutdown')
+    await startListener([LATER])
+    await Promise.all(
+      pages.map(({ page }) =>
+        expect.poll(() => pill(page).textContent(), { timeout: 10_000 }).toBe('Live')
+      )
+    )
+    await page.getByRole('heading', { name: 'later-demo' }).waitFor()
+    expect(await page.getByRole('heading', { name: 'shared-demo' }).count()).toBe(0)
+    await page.screenshot({ path: join(evidence, 'silence-recovered.png'), fullPage: true })
+  }, 65_000)
+
+  it('discards the old stream on page freeze and requests a full snapshot on resume', async () => {
+    await startListener()
+    const page = await openPage()
+    await expect.poll(() => pill(page).textContent()).toBe('Live')
+    // Chromium lifecycle events exercise the page wiring; physical phone suspension is TASK-027.
+    await page.evaluate(() => document.dispatchEvent(new Event('freeze')))
+    await expect.poll(() => pill(page).textContent()).toBe('Reconnecting')
+    await expect.poll(() => listener!.streamCount()).toBe(0)
+    await page.evaluate(() => document.dispatchEvent(new Event('resume')))
+    await expect.poll(() => pill(page).textContent()).toBe('Live')
+    expect(statusRequests()).toBe(2)
   })
 })

@@ -53,6 +53,8 @@ export interface ConnectionOptions {
   random?: () => number
   /** A monotonic local clock in milliseconds; `performance.now` by default. */
   now?: () => number
+  /** Used only for elapsed silence across OS sleep, never compared with Mac timestamps. */
+  wallNow?: () => number
   setTimer?: (run: () => void, ms: number) => unknown
   clearTimer?: (timer: unknown) => void
 }
@@ -63,6 +65,10 @@ export interface Connection {
   retryNow(): void
   /** Ends the stream and every timer, for example when the page goes away. */
   stop(): void
+  /** Hidden/frozen pages cannot establish liveness. */
+  suspend(): void
+  /** Resume with a new stream and full snapshot, never with buffered old frames. */
+  resume(): void
 }
 
 /** Failed attempts in a row before "Reconnecting" turns into "Connection lost". */
@@ -79,6 +85,7 @@ const ERROR_CODES = new Set(Object.keys(REMOTE_ERROR_STATUS))
 export function createConnection(options: ConnectionOptions): Connection {
   const random = options.random ?? Math.random
   const now = options.now ?? (() => performance.now())
+  const wallNow = options.wallNow ?? Date.now
   const setTimer = options.setTimer ?? ((run, ms) => setTimeout(run, ms))
   const clearTimer =
     options.clearTimer ?? ((timer) => clearTimeout(timer as ReturnType<typeof setTimeout>))
@@ -90,6 +97,34 @@ export function createConnection(options: ConnectionOptions): Connection {
   let timer: unknown
   let abort: AbortController | null = null
   let stopped = false
+  let suspended = false
+  let final = false
+  let watchdog: unknown
+  let checkedAt = 0
+  let checkedWallAt = 0
+
+  const silent = () =>
+    Math.max(now() - checkedAt, wallNow() - checkedWallAt) >= REMOTE_LIMITS.silenceLimitMs
+
+  function watch(): void {
+    clearTimer(watchdog)
+    checkedAt = now()
+    checkedWallAt = wallNow()
+    watchdog = setTimer(expire, REMOTE_LIMITS.silenceLimitMs)
+  }
+
+  function expire(): void {
+    if (stopped || suspended || !abort) return
+    // A local wall-clock duration catches OS sleep on platforms where performance.now pauses.
+    if (!silent()) {
+      watchdog = setTimer(expire, REMOTE_LIMITS.silenceLimitMs - (now() - checkedAt))
+      return
+    }
+    stopStream()
+    failures = LOST_AFTER_FAILURES
+    if (state.kind !== 'off') set({ kind: 'lost', data: dataOf(state) })
+    connectSoon(reconnectDelayMs(attempt++, random))
+  }
 
   function set(next: ViewerState): void {
     state = next
@@ -125,6 +160,7 @@ export function createConnection(options: ConnectionOptions): Connection {
 
   /** Ends access for good on this page: the data goes with it and nothing retries. */
   function finish(kind: 'not-allowed' | 'bad-host' | 'update-needed' | 'failed'): void {
+    final = true
     stopStream()
     set({ kind })
   }
@@ -151,9 +187,11 @@ export function createConnection(options: ConnectionOptions): Connection {
   }
 
   async function connect(): Promise<void> {
-    if (stopped) return
+    if (stopped || suspended || final) return
     const controller = new AbortController()
     abort = controller
+    // Also bounds a request stuck waiting for headers, its error body or its first status.
+    watch()
     let response: Response
     try {
       response = await options.fetch(REMOTE_ROUTES.status, {
@@ -167,24 +205,27 @@ export function createConnection(options: ConnectionOptions): Connection {
       })
     } catch {
       if (abort !== controller) return
-      abort = null
+      stopStream()
       return retry()
     }
-    if (abort !== controller) return
+    if (abort !== controller) {
+      void response.body?.cancel().catch(() => undefined)
+      return
+    }
     if (!response.ok) {
       const code = await errorCode(response)
       if (abort !== controller) return
-      abort = null
+      stopStream()
       return refused(code)
     }
     if (!response.body || !isEventStream(response)) {
       void response.body?.cancel().catch(() => undefined)
-      abort = null
+      stopStream()
       return retry()
     }
     const outcome = await read(response.body, controller)
     if (abort !== controller) return
-    abort = null
+    stopStream()
     switch (outcome) {
       case 'remote-off':
         set({ kind: 'off' })
@@ -217,6 +258,9 @@ export function createConnection(options: ConnectionOptions): Connection {
     let buffer = ''
     /** Within one stream the generation never decreases; a lower one is ignored. */
     let generation = -1
+    let statusId: string | null = null
+    const cancel = () => void reader.cancel().catch(() => undefined)
+    controller.signal.addEventListener('abort', cancel, { once: true })
     const done = (outcome: ReadOutcome): ReadOutcome => {
       void reader.cancel().catch(() => undefined)
       return outcome
@@ -225,6 +269,10 @@ export function createConnection(options: ConnectionOptions): Connection {
       for (;;) {
         const chunk = await reader.read()
         if (abort !== controller) return done('dropped')
+        if (silent()) {
+          expire()
+          return done('dropped')
+        }
         if (chunk.done) return 'dropped'
         buffer += decoder.decode(chunk.value, { stream: true })
         let end: number
@@ -245,8 +293,20 @@ export function createConnection(options: ConnectionOptions): Connection {
             )
           }
           if (frame.generation < generation) continue
+          if (frame.type === 'heartbeat') {
+            // A heartbeat cannot establish a connection or prove a different snapshot current.
+            if (
+              statusId === null ||
+              frame.snapshotId !== statusId ||
+              frame.generation !== generation
+            ) {
+              return done('dropped')
+            }
+          }
           generation = frame.generation
+          watch()
           if (frame.type === 'status') {
+            statusId = frame.snapshotId
             attempt = 0
             failures = 0
             set({ kind: 'live', data: { frame, lastSentAt: frame.sentAt, receivedAt: now() } })
@@ -261,19 +321,24 @@ export function createConnection(options: ConnectionOptions): Connection {
       }
     } catch {
       return 'dropped'
+    } finally {
+      controller.signal.removeEventListener('abort', cancel)
+      cancel()
     }
   }
 
   function stopStream(): void {
     clearTimer(timer)
+    clearTimer(watchdog)
     timer = undefined
+    watchdog = undefined
     abort?.abort()
     abort = null
   }
 
   return {
     start() {
-      if (stopped || abort || timer !== undefined) return
+      if (stopped || suspended || final || abort || timer !== undefined) return
       void connect()
     },
     retryNow() {
@@ -285,6 +350,17 @@ export function createConnection(options: ConnectionOptions): Connection {
     stop() {
       stopped = true
       stopStream()
+    },
+    suspend() {
+      if (stopped || final || suspended) return
+      suspended = true
+      stopStream()
+      if (state.kind !== 'off') set({ kind: 'reconnecting', data: dataOf(state) })
+    },
+    resume() {
+      if (stopped || final || !suspended) return
+      suspended = false
+      void connect()
     }
   }
 }
