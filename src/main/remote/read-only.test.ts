@@ -71,7 +71,7 @@ describe('Remote View read-only boundary', () => {
     const viewer = join(folder, 'viewer')
     await fs.mkdir(join(viewer, 'assets'), { recursive: true })
     await fs.writeFile(join(viewer, 'index.html'), '<!doctype html><title>AgentPeek</title>')
-    await fs.writeFile(join(viewer, 'assets', 'index-AbC123.js'), 'void 0')
+    await fs.writeFile(join(viewer, 'assets', 'index-AbC12345.js'), 'void 0')
     const port = await freePort()
     await fs.writeFile(
       join(folder, REMOTE_SETTINGS_FILE),
@@ -105,7 +105,7 @@ describe('Remote View read-only boundary', () => {
     const replies = new Map<string, number>()
     for (const [method, path] of [
       ['GET', '/'],
-      ['GET', '/assets/index-AbC123.js'],
+      ['GET', '/assets/index-AbC12345.js'],
       ['GET', '/assets/../index.html'],
       ['GET', '/assets/..%2F..%2Fsettings.json'],
       ['GET', `/assets/${REMOTE_SETTINGS_FILE}`],
@@ -124,9 +124,9 @@ describe('Remote View read-only boundary', () => {
     stream.disconnect()
 
     expect(replies.get('GET /')).toBe(200)
-    expect(replies.get('GET /assets/index-AbC123.js')).toBe(200)
+    expect(replies.get('GET /assets/index-AbC12345.js')).toBe(200)
     for (const [request, status] of replies) {
-      if (request === 'GET /' || request === 'GET /assets/index-AbC123.js') continue
+      if (request === 'GET /' || request === 'GET /assets/index-AbC12345.js') continue
       expect([400, 404, 405], request).toContain(status)
     }
     for (const [name, action] of Object.entries(service)) {

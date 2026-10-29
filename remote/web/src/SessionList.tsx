@@ -113,6 +113,8 @@ function FilterBar({
         <div className="filter">
           <label htmlFor={projectId}>Project</label>
           <select
+            // Prevent browser session restoration from persisting a selected project label.
+            autoComplete="off"
             id={projectId}
             value={filters.project ?? ''}
             onChange={(event) => onFilters({ ...filters, project: event.target.value || null })}
@@ -130,6 +132,8 @@ function FilterBar({
         <div className="filter">
           <label htmlFor={toolId}>Tool</label>
           <select
+            // Prevent browser session restoration from persisting a selected project label.
+            autoComplete="off"
             id={toolId}
             value={filters.tool ?? ''}
             onChange={(event) =>

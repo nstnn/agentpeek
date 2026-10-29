@@ -14,6 +14,11 @@ export interface ViewerAsset {
   type: string
 }
 
+// Vite's default eight-character content hash. Unversioned scripts/styles and other build files
+// never enter the served map, whose responses may be cached immutably. Keep the 64-character
+// basename bound from protocol v1.
+const HASHED_ASSET = /^[A-Za-z0-9_-]{1,55}-[A-Za-z0-9_-]{8}\.(?:js|css)$/
+
 const ASSET_TYPES: Readonly<Record<string, string>> = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8'
@@ -29,7 +34,7 @@ export async function loadViewerFiles(folder: string): Promise<ViewerFiles> {
   const entries = await readdir(join(folder, 'assets'), { withFileTypes: true }).catch(() => [])
   for (const entry of entries) {
     const type = ASSET_TYPES[entry.name.slice(entry.name.lastIndexOf('.'))]
-    if (!entry.isFile() || type === undefined) continue
+    if (!entry.isFile() || !HASHED_ASSET.test(entry.name) || type === undefined) continue
     const body = await readFile(join(folder, 'assets', entry.name)).catch(() => null)
     if (body) assets.set(`/assets/${entry.name}`, { body, type })
   }

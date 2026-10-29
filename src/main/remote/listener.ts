@@ -103,6 +103,8 @@ export const VIEWER_CSP = [
   "style-src 'self'",
   "connect-src 'self'",
   "img-src 'self'",
+  "worker-src 'none'",
+  "child-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",
   "frame-ancestors 'none'"
@@ -404,6 +406,8 @@ export async function startRemoteListener(
     heartbeat ??= setInterval(beat, REMOTE_LIMITS.heartbeatIntervalMs)
   }
 
+  // Deliberately no request/error logging: the allowlist is empty. Headers, targets, exceptions
+  // and status payloads can contain private text; only fixed protocol codes leave these handlers.
   function handle(request: IncomingMessage, response: ServerResponse): void {
     if (closing) {
       request.socket.destroy()
