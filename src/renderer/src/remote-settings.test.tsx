@@ -51,6 +51,11 @@ describe('Remote View settings', () => {
     expect(setup.textContent).toContain('tailscale serve --bg --https=443 http://127.0.0.1:47613')
     expect(setup.textContent).toContain('Never use tailscale funnel for this port')
     expect(setup.textContent).toContain('tailscale serve reset')
+    expect(setup.textContent).toContain(
+      'remove it from your tailnet in the Tailscale admin console'
+    )
+    expect(setup.textContent).toContain('access controls (ACLs)')
+    expect(setup.textContent).toContain('Neither takes back what a device already showed')
     expect(within(f.section()).queryByText(/Viewer address/)).toBeNull()
     expect(f.api.setRemoteEnabled).not.toHaveBeenCalled()
   })
