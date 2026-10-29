@@ -593,7 +593,9 @@ export function RemoteViewSettings({
         <p className="settings-source-status">
           To stop: turn Remote View off here. Optionally also run <code>tailscale serve reset</code>
           . Either one alone stops remote viewing. To stop one device from viewing, remove it from
-          your tailnet in the Tailscale admin console.
+          your tailnet in the Tailscale admin console, or change your tailnet&rsquo;s access
+          controls (ACLs) so it can&rsquo;t reach this Mac. Neither takes back what a device already
+          showed or what was copied from it.
         </p>
       </details>
     </section>

@@ -316,3 +316,31 @@ it('says nothing needs you, and shows projects with no sessions', async () => {
   const beta = screen.getByRole('region', { name: 'beta' })
   expect(within(beta).getByText('No sessions.')).toBeTruthy()
 })
+
+it('clears the list when access changes and the next request is not allowed', async () => {
+  const replies = [
+    () =>
+      openStream(
+        event(frame('s1', [{ label: 'alpha', sessions: [row('a')] }])) +
+          event({ v: 1, type: 'end', reason: 'access-changed' })
+      ),
+    () =>
+      new Response(JSON.stringify({ v: 1, error: 'not-allowed' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' }
+      })
+  ]
+  const fetch = (() => Promise.resolve(replies.shift()!())) as typeof globalThis.fetch
+  render(<App fetch={fetch} random={() => 0} />)
+  await settle()
+  await settle()
+  expect(replies).toHaveLength(0)
+  expect(
+    screen.getByText(
+      'Not allowed. This page only opens for the Tailscale login set in AgentPeek on the Mac.'
+    )
+  ).toBeTruthy()
+  expect(screen.queryByTestId('status')).toBeNull()
+  expect(screen.queryByText(/Session a/)).toBeNull()
+  expect(screen.queryByRole('listitem')).toBeNull()
+})

@@ -461,3 +461,97 @@ describe('Remote View sharing policy', () => {
     expect((await savedFile(folder)).sharedWorkspaces).toEqual(many.slice(2, 50))
   })
 })
+
+// TASK-019: every access change ends or replaces the affected streams before anything is awaited,
+// so a send waiting for its coalescing interval never leaves afterwards.
+describe('Remote View access changes during a pending send', () => {
+  const NEW_LOGIN = 'new-owner@example.com'
+  const busy = (takenAt: number) =>
+    listing([row('exact', SHARED, { activity: { state: 'running' } })], takenAt)
+
+  async function pending() {
+    let latest = listing([row('exact', SHARED)], 2)
+    const opened = await setup({ enabled: true }, () => latest)
+    const viewer = subscribe(opened.port)
+    await expect.poll(() => viewer.frames.length).toBe(1)
+    // Inside the coalescing interval of the first status: this one waits.
+    latest = busy(3)
+    opened.view.publish(latest)
+    return { ...opened, viewer, publish: (next: SessionsSnapshot) => (latest = next) }
+  }
+
+  it('sends only the end after OFF, never the pending status', async () => {
+    const { port, view, viewer } = await pending()
+    expect(await view.disable()).toEqual({ ok: true })
+    await viewer.ended
+    await wait(REMOTE_LIMITS.minStatusIntervalMs + 100)
+    expect(viewer.frames.map((frame) => frame.type)).toEqual(['status', 'end'])
+    expect(viewer.frames[1]).toEqual({ v: 1, type: 'end', reason: 'remote-off' })
+    expect(await accepts(port)).toBe(false)
+  })
+
+  it('replaces the pending status when a source turns off, and sends nothing after', async () => {
+    const { view, viewer, publish } = await pending()
+    view.publish(publish(listing([row('exact', SHARED)], 4, 'off')))
+    await expect.poll(() => viewer.frames.length).toBe(2)
+    await wait(REMOTE_LIMITS.minStatusIntervalMs + 100)
+    expect(viewer.frames).toHaveLength(2)
+    const cleared = statusFrames(viewer.frames)[1]!
+    expect(cleared.status.projects).toEqual([{ label: 'shared-demo', sessions: [] }])
+    expect(cleared.status.sources.codex).toEqual({ state: 'off' })
+  })
+
+  it('ends streams on a login change before saving, so the old login gets nothing more', async () => {
+    const { folder, port, view, viewer } = await pending()
+    const saving = view.saveConnection({ ownerLogin: NEW_LOGIN, hostName: HOST, port })
+    // Already ended, while the save is still running.
+    expect(view.status()).toMatchObject({ state: 'off' })
+    expect(await saving).toEqual({ ok: true })
+    await viewer.ended
+    await wait(REMOTE_LIMITS.minStatusIntervalMs + 100)
+    expect(viewer.frames.map((frame) => frame.type)).toEqual(['status', 'end'])
+    expect(viewer.frames[1]).toEqual({ v: 1, type: 'end', reason: 'access-changed' })
+    expect(await savedFile(folder)).toMatchObject({ ownerLogin: NEW_LOGIN })
+    expect((await send(port, { path: '/v1/status' })).status).toBe(403)
+    expect(view.status()).toMatchObject({ state: 'on', settings: { ownerLogin: NEW_LOGIN } })
+  })
+
+  it('keeps listening when a second connection save overlaps the first', async () => {
+    for (const second of ['third-owner@example.com', OWNER]) {
+      const { folder, port, view, viewer } = await pending()
+      const first = view.saveConnection({ ownerLogin: NEW_LOGIN, hostName: HOST, port })
+      const last = view.saveConnection({ ownerLogin: second, hostName: HOST, port })
+      expect(await first).toEqual({ ok: false, error: 'cancelled' })
+      expect(await last).toEqual({ ok: true })
+      await viewer.ended
+      expect(view.status()).toMatchObject({ state: 'on', settings: { ownerLogin: second } })
+      expect(await savedFile(folder)).toMatchObject({ enabled: true, ownerLogin: second })
+      const again = subscribe(port, { ...OWNER_HEADERS, 'Tailscale-User-Login': second })
+      await expect.poll(() => again.frames.length).toBe(1)
+      await view.close()
+    }
+  })
+
+  it('keeps the saved login when the save fails, with new opaque IDs', async () => {
+    const { folder, port, view, viewer } = await pending()
+    await chmod(folder, 0o500)
+    expect(await view.saveConnection({ ownerLogin: NEW_LOGIN, hostName: HOST, port })).toEqual({
+      ok: false,
+      error: 'save-failed'
+    })
+    await viewer.ended
+    expect(viewer.frames.at(-1)).toEqual({ v: 1, type: 'end', reason: 'access-changed' })
+    expect(view.status()).toMatchObject({ state: 'on', settings: { ownerLogin: OWNER } })
+    expect(await savedFile(folder)).toMatchObject({ ownerLogin: OWNER })
+    const refused = await send(port, {
+      path: '/v1/status',
+      headers: { ...OWNER_HEADERS, 'Tailscale-User-Login': NEW_LOGIN }
+    })
+    expect(refused.status).toBe(403)
+    const again = subscribe(port)
+    await expect.poll(() => again.frames.length).toBe(1)
+    const id = (frame: RemoteFrame | undefined) =>
+      (frame as StatusFrame).status.projects[0]!.sessions[0]!.id
+    expect(id(again.frames[0])).not.toBe(id(viewer.frames[0]))
+  })
+})
