@@ -54,7 +54,7 @@ Preconditions:
 
 ## Gotchas
 
-- Settings scrolls; the Remote View section is below Sources and may need `scroll_to`-style focus (Tab) before a screenshot shows it.
+- Settings scrolls; the Remote View section is below Sources and may need `scroll_to`-style focus (Tab) before a screenshot shows it. After scrolling to the setup steps, the Remote View switch can sit under the dialog's sticky header, right behind Close Settings; `click` reports `recentered` when it had to scroll a covered control into view. Before that guard (TASK-026), such a click closed Settings instead.
 - Pending operations are polled after dialog reopen. Unsaved settings warnings come from main-process state and survive dialog dismissal. Successful retries save the entire effective configuration, including any unsaved OFF or narrower policy.
 - The status line, the sidebar label and the alias follow main's pushed status (TASK-042); a viewer page opened with `curl` is counted as soon as its stream opens.
 - `type` inserts at the caret: select a field's text first (`key Meta+A`) to replace the port.
