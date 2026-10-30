@@ -337,6 +337,36 @@ async function evalMain() {
   printAndLog(run, 'main-eval', { expression }, value)
 }
 
+// The center of the element's border box, and what covers that point when the topmost node there
+// is neither the element nor inside it (hit-tested like a real pointer).
+async function clickPoint(s, backendNodeId) {
+  const { model } = await s.send('DOM.getBoxModel', { backendNodeId })
+  const [x1, y1, , , x3, y3] = model.border
+  const x = (x1 + x3) / 2
+  const y = (y1 + y3) / 2
+  const hit = await s.send('DOM.getNodeForLocation', { x: Math.round(x), y: Math.round(y) })
+  const { object: target } = await s.send('DOM.resolveNode', { backendNodeId })
+  const { object: top } = await s.send('DOM.resolveNode', { backendNodeId: hit.backendNodeId })
+  const { result, exceptionDetails } = await s.send('Runtime.callFunctionOn', {
+    objectId: target.objectId,
+    // A click on a control's own <label> reaches the control, so that counts as a hit too.
+    // The cover is named by tag and role only: labels can hold session titles or paths.
+    functionDeclaration: `function (top) {
+      const el = top.nodeType === 1 ? top : top.parentElement
+      if (this === top || this.contains(top) || el?.closest('label')?.control === this) return null
+      if (!el) return top.nodeName.toLowerCase()
+      const control = el.closest('button, a, input, select, textarea, summary, [role]')
+      const kind = control && (control.getAttribute('role') || control.tagName.toLowerCase())
+      return el.tagName.toLowerCase() + (kind ? ' in ' + kind : '')
+    }`,
+    arguments: [{ objectId: top.objectId }],
+    returnByValue: true
+  })
+  // Never fall back to an unchecked click when the hit test itself failed.
+  if (exceptionDetails) throw new Error(`hit test failed: ${exceptionDetails.text}`)
+  return { x, y, coveredBy: result.value }
+}
+
 async function click() {
   const run = loadLiveRun()
   const nth = Number(flags.nth ?? 0)
@@ -375,10 +405,19 @@ async function click() {
       throw new Error('click needs --role and --name, or --selector')
     }
     await s.send('DOM.scrollIntoViewIfNeeded', { backendNodeId })
-    const { model } = await s.send('DOM.getBoxModel', { backendNodeId })
-    const [x1, y1, , , x3, y3] = model.border
-    const x = (x1 + x3) / 2
-    const y = (y1 + y3) / 2
+    let { x, y, coveredBy } = await clickPoint(s, backendNodeId)
+    const recentered = coveredBy ? { from: coveredBy } : undefined
+    if (coveredBy) {
+      // Partly visible under a sticky header or overlay: scroll it to the middle, as a user would,
+      // and refuse rather than press whatever covers it.
+      const { object } = await s.send('DOM.resolveNode', { backendNodeId })
+      await s.send('Runtime.callFunctionOn', {
+        objectId: object.objectId,
+        functionDeclaration: "function () { this.scrollIntoView({ block: 'center' }) }"
+      })
+      ;({ x, y, coveredBy } = await clickPoint(s, backendNodeId))
+      if (coveredBy) throw new Error(`target is covered by ${coveredBy} at its center`)
+    }
     const base = { x, y, button: 'left' }
     // No mouseMoved first: when the window is in the background, Chromium holds a move event for
     // about 5 seconds. Press and release alone produce mousedown, mouseup, and click.
@@ -396,7 +435,7 @@ async function click() {
         buttons: 0
       })
     }
-    return { clickedAt: { x: Math.round(x), y: Math.round(y) } }
+    return { clickedAt: { x: Math.round(x), y: Math.round(y) }, recentered }
   })
   printAndLog(
     run,
