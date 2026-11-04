@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import type { RemoteSession, RemoteStatus } from '../../../src/core/remote/status-projection'
 import {
+  activeGroupOf,
+  DEFAULT_CHOICES,
   durationText,
-  NO_FILTERS,
+  listView,
   omittedText,
   rowStatus,
   rowTime,
   sourceIssues,
-  statusView,
-  summaryText
+  sourceLines,
+  viewSummary,
+  type Row
 } from './status-view'
 
 // Synthetic sessions only: aliases, invented folder names, opaque-looking IDs.
@@ -86,84 +89,79 @@ describe('rowStatus', () => {
   })
 })
 
-describe('statusView', () => {
-  it('groups attention across projects, waiting then errors then replies, oldest first', () => {
-    const reply = replied(NOW - 9 * MIN)
-    const lateError = errored(NOW - 1 * MIN)
-    const earlyError = errored(NOW - 3 * MIN)
-    const wait = waiting()
-    const idle = session()
-    const view = statusView(
-      status([
-        { label: 'alpha', sessions: [reply, lateError, idle] },
-        { label: 'beta', sessions: [earlyError, wait] }
-      ]),
-      NO_FILTERS
-    )
-    expect(view.attention.map((row) => row.session.id)).toEqual([
-      wait.id,
-      earlyError.id,
-      lateError.id,
-      reply.id
+describe('listView', () => {
+  const projects = () => [
+    {
+      label: 'alpha',
+      sessions: [
+        errored(NOW - 4 * MIN, { lastActivityAt: NOW - 4 * MIN }),
+        session({ tool: 'claude', activity: { state: 'running' }, lastActivityAt: NOW - MIN }),
+        session({ lastActivityAt: NOW - 20 * MIN })
+      ]
+    },
+    {
+      label: 'beta',
+      sessions: [
+        waiting({ tool: 'claude', lastActivityAt: NOW - 2 * MIN }),
+        replied(NOW - 3 * MIN, { lastActivityAt: NOW - 3 * MIN }),
+        session({ activity: { state: 'unknown', reason: 'quiet' }, lastActivityAt: NOW - 9 * MIN }),
+        session({ activity: { state: 'unknown', reason: 'unreadable' } })
+      ]
+    }
+  ]
+
+  it('groups the Active view by status in the desktop order, newest first', () => {
+    const view = listView(status(projects()), DEFAULT_CHOICES)
+    expect(view.groups.map((group) => [group.label, group.note, group.rows.length])).toEqual([
+      ['Waiting for you', '1 outstanding', 1],
+      ['Errors', '1 outstanding', 1],
+      ['New replies', '1 outstanding', 1],
+      ['Running', '1 current', 1],
+      ['Unknown', '1 current', 1]
     ])
-    expect(view.attention[0]!.project).toBe('beta')
-    expect(view.projects).toEqual([
-      { label: 'alpha', rows: [expect.objectContaining({ session: idle })], total: 3 },
-      { label: 'beta', rows: [], total: 2 }
-    ])
-    expect(view.counts).toEqual({ waiting: 1, error: 2, reply: 1 })
+    // Idle and an unreadable unknown are not active, as on the desktop.
+    expect(view.shown).toBe(5)
+    expect(view.needsAttention).toBe(3)
+    expect(view.total).toBe(7)
   })
 
-  it('filters by project and tool, but counts every session', () => {
-    const codex = session({ tool: 'codex' })
-    const claude = session({ tool: 'claude' })
-    const claudeWait = waiting({ tool: 'claude' })
-    const other = session()
-    const s = status([
-      { label: 'alpha', sessions: [codex, claude, claudeWait] },
-      { label: 'beta', sessions: [other] }
-    ])
-    const byTool = statusView(s, { project: null, tool: 'claude' })
-    expect(byTool.attention.map((row) => row.session.id)).toEqual([claudeWait.id])
-    expect(byTool.projects.map((p) => p.rows.map((row) => row.session.id))).toEqual([
-      [claude.id],
-      []
-    ])
-    expect(byTool.counts.waiting).toBe(1)
-
-    const byProject = statusView(s, { project: 'beta', tool: null })
-    expect(byProject.attention).toEqual([])
-    expect(byProject.projects.map((p) => p.label)).toEqual(['beta'])
-    expect(byProject.counts.waiting).toBe(1)
+  it('shows every session, newest first, in All Sessions', () => {
+    const view = listView(status(projects()), { ...DEFAULT_CHOICES, view: 'all' })
+    expect(view.groups).toHaveLength(1)
+    expect(view.groups[0]!.label).toBe('All Sessions')
+    const ages = view.groups[0]!.rows.map((row) => NOW - row.session.lastActivityAt)
+    expect(ages).toEqual([...ages].sort((x, y) => x - y))
+    expect(view.shown).toBe(7)
   })
 
-  it('drops a project filter whose project is no longer shared', () => {
-    const view = statusView(status([{ label: 'alpha', sessions: [session()] }]), {
-      project: 'gone',
-      tool: null
-    })
-    expect(view.filters.project).toBeNull()
-    expect(view.projects.map((p) => p.label)).toEqual(['alpha'])
+  it('groups by project in the order the Mac shares them, with attention and running notes', () => {
+    const view = listView(status(projects()), { ...DEFAULT_CHOICES, grouping: 'project' })
+    expect(view.groups.map((group) => [group.label, group.note])).toEqual([
+      ['alpha', '1 need attention · 1 running'],
+      ['beta', '2 need attention']
+    ])
   })
 
-  it('offers only filters that change something, and keeps an active one', () => {
-    const one = statusView(status([{ label: 'alpha', sessions: [session()] }]), NO_FILTERS)
-    expect(one.projectChoices).toEqual([])
-    expect(one.toolChoices).toEqual([])
-    const two = statusView(
-      status([
-        { label: 'alpha', sessions: [session({ tool: 'claude' })] },
-        { label: 'beta', sessions: [session()] }
-      ]),
-      NO_FILTERS
-    )
-    expect(two.projectChoices).toEqual(['alpha', 'beta'])
-    expect(two.toolChoices).toEqual(['codex', 'claude'])
-    const kept = statusView(status([{ label: 'alpha', sessions: [session()] }]), {
-      project: null,
-      tool: 'claude'
-    })
-    expect(kept.toolChoices).toEqual(['codex', 'claude'])
+  it('filters by tool and counts each tool in the view before filtering', () => {
+    const view = listView(status(projects()), { ...DEFAULT_CHOICES, tool: 'claude' })
+    expect(view.toolCounts).toEqual({ all: 5, codex: 3, claude: 2 })
+    expect(view.shown).toBe(2)
+    expect(view.groups.map((group) => group.label)).toEqual(['Waiting for you', 'Running'])
+  })
+
+  it('offers the tool filter only when both tools have sessions, or one is chosen', () => {
+    const codexOnly = status([{ label: 'alpha', sessions: [session()] }])
+    expect(listView(codexOnly, DEFAULT_CHOICES).toolChoices).toBe(false)
+    expect(listView(codexOnly, { ...DEFAULT_CHOICES, tool: 'claude' }).toolChoices).toBe(true)
+    expect(listView(status(projects()), DEFAULT_CHOICES).toolChoices).toBe(true)
+  })
+
+  it('puts a session in the first matching Active group only', () => {
+    expect(
+      activeGroupOf(waiting({ attention: { waiting: true, newReply: true, error: true } }))
+    ).toBe('waiting')
+    expect(activeGroupOf(errored(NOW, { activity: { state: 'running' } }))).toBe('errors')
+    expect(activeGroupOf(session())).toBeNull()
   })
 })
 
@@ -177,50 +175,49 @@ describe('times', () => {
   })
 
   it('gives a date instead of an age from a week on', () => {
-    const [row] = statusView(
+    const [row] = listView(
       status([
         { label: 'alpha', sessions: [session({ lastActivityAt: NOW - 8 * 24 * 60 * MIN })] }
       ]),
-      NO_FILTERS
-    ).projects[0]!.rows
+      { ...DEFAULT_CHOICES, view: 'all' }
+    ).groups[0]!.rows
     expect(rowTime(row!, NOW)?.text).toMatch(/^on \S/)
     expect(rowTime(row!, NOW)?.text).not.toMatch(/ago/)
   })
 
   it('gives attention rows how long, other rows when, and waiting-only rows nothing', () => {
-    const view = statusView(
-      status([
-        {
-          label: 'alpha',
-          sessions: [
-            errored(NOW - 4 * MIN),
-            waiting(),
-            session({ lastActivityAt: NOW - 2 * MIN }),
-            session({ lastActivityAt: NOW - 10_000 })
-          ]
-        }
-      ]),
-      NO_FILTERS
-    )
-    const [wait, error] = view.attention
-    expect(rowTime(error!, NOW)?.text).toBe('for 4 min')
-    expect(rowTime(wait!, NOW)).toBeNull()
-    expect(view.projects[0]!.rows.map((row) => rowTime(row, NOW)?.text)).toEqual([
-      '2 min ago',
-      'just now'
-    ])
+    const row = (value: RemoteSession): Row => ({
+      session: value,
+      project: 'alpha',
+      ...rowStatus(value)
+    })
+    expect(rowTime(row(errored(NOW - 4 * MIN)), NOW)?.text).toBe('for 4 min')
+    expect(rowTime(row(waiting()), NOW)).toBeNull()
+    expect(rowTime(row(session({ lastActivityAt: NOW - 2 * MIN })), NOW)?.text).toBe('2 min ago')
+    expect(rowTime(row(session({ lastActivityAt: NOW - 10_000 })), NOW)?.text).toBe('just now')
   })
 })
 
 describe('copy', () => {
-  it('summarizes attention with plurals', () => {
-    expect(summaryText({ waiting: 2, error: 1, reply: 1 })).toBe(
-      '2 need you · 1 error · 1 new reply'
-    )
-    expect(summaryText({ waiting: 1, error: 2, reply: 3 })).toBe(
-      '1 needs you · 2 errors · 3 new replies'
-    )
-    expect(summaryText({ waiting: 0, error: 0, reply: 0 })).toBe('')
+  it('summarizes the shared sessions like the desktop list header', () => {
+    const shared = status([
+      {
+        label: 'alpha',
+        sessions: [waiting(), errored(NOW), session({ activity: { state: 'running' } }), session()]
+      }
+    ])
+    expect(viewSummary(shared)).toBe('2 need attention · 1 running · 0 unknown')
+  })
+
+  it('names each source and its state for the sidebar', () => {
+    const lines = sourceLines({
+      codex: { state: 'connected', lastReadAt: NOW },
+      claude: { state: 'no-access', lastReadAt: null }
+    })
+    expect(lines.map((line) => `${line.name}: ${line.text}`)).toEqual([
+      'Codex: Connected',
+      'Claude Code: No access'
+    ])
   })
 
   it('names the sources the Mac cannot read', () => {

@@ -2,25 +2,28 @@ import { useId } from 'react'
 import type { AgentTool } from '../../../src/core/tools'
 import type { ViewerData } from './connection'
 import {
-  NO_FILTERS,
+  listView,
   omittedText,
   rowTime,
   sourceIssues,
-  statusView,
   toolName,
-  type Filters,
+  type Grouping,
+  type ListChoices,
+  type ListGroup,
   type Row
 } from './status-view'
 
-// The read-only session list (TASK-018). Rows are text: nothing here acts on a session, and the
-// filters are page state only, so viewing, filtering and switching projects send nothing to the
-// Mac. Row keys are the Mac's opaque session IDs. Only while the Mac shares recent messages
-// (TASK-033) is a row a button, and it only opens that session's recent messages on this page.
+// The read-only session list (TASK-018), laid out like the desktop window's list column: a
+// Group by switch (Status or Project), a tool filter with counts, then the groups. Rows are text:
+// nothing here acts on a session, and the choices are page state only, so viewing, filtering and
+// switching views send nothing to the Mac. Row keys are the Mac's opaque session IDs. Only while
+// the Mac shares recent messages (TASK-033) is a row a button, and it only opens that session's
+// recent messages on this page.
 
 export interface SessionListProps {
   data: ViewerData
-  filters: Filters
-  onFilters: (filters: Filters) => void
+  choices: ListChoices
+  onChoices: (choices: ListChoices) => void
   /** The Mac's time the ages are measured to (see App). */
   checkedAt: number
   /** Data kept from before a drop; the header says "showing data from <time>". */
@@ -33,8 +36,8 @@ export interface SessionListProps {
 
 export function SessionList({
   data,
-  filters,
-  onFilters,
+  choices,
+  onChoices,
   checkedAt,
   dimmed = false,
   onOpen,
@@ -42,12 +45,9 @@ export function SessionList({
 }: SessionListProps) {
   const rowProps = { checkedAt, onOpen, selected }
   const { status } = data.frame
-  const view = statusView(status, filters)
-  const filtered = view.filters.project !== null || view.filters.tool !== null
+  const view = listView(status, choices)
   const issues = sourceIssues(status.sources)
   const omitted = omittedText(status.omitted)
-  const shown = view.attention.length + view.projects.reduce((n, p) => n + p.rows.length, 0)
-  const anyAttention = view.counts.waiting + view.counts.error + view.counts.reply > 0
 
   return (
     <div className={dimmed ? 'status dimmed' : 'status'} data-testid="status">
@@ -57,36 +57,28 @@ export function SessionList({
         </p>
       ))}
       {status.projects.length === 0 ? (
-        <p>
+        <p className="empty">
           No projects are shared. On the Mac, open AgentPeek → Settings → Remote View → Add Project.
         </p>
       ) : (
         <>
-          <FilterBar view={view} onFilters={onFilters} />
-          {!anyAttention && <p className="all-clear">Nothing needs you right now.</p>}
-          {view.attention.length > 0 && (
-            <Group title="Needs attention" rows={view.attention} {...rowProps} withProject />
-          )}
-          {view.projects.map((project) =>
-            project.rows.length > 0 ? (
-              <Group key={project.label} title={project.label} rows={project.rows} {...rowProps} />
-            ) : filtered ? null : (
-              <section key={project.label} aria-label={project.label}>
-                <h2>{project.label}</h2>
-                <p className="hint">
-                  {project.total === 0 ? 'No sessions.' : 'No other sessions.'}
-                </p>
+          <ListControls view={view} choices={choices} onChoices={onChoices} />
+          {view.groups.map((group) => (
+            <Group key={group.id} group={group} {...rowProps} />
+          ))}
+          {view.shown === 0 &&
+            (choices.tool !== null && view.toolCounts.all > 0 ? (
+              <section className="notice">
+                <p>No sessions match this filter.</p>
+                <button type="button" onClick={() => onChoices({ ...choices, tool: null })}>
+                  Show all
+                </button>
               </section>
-            )
-          )}
-          {filtered && shown === 0 && (
-            <section className="notice">
-              <p>No sessions match these filters.</p>
-              <button type="button" onClick={() => onFilters(NO_FILTERS)}>
-                Show all
-              </button>
-            </section>
-          )}
+            ) : choices.view === 'active' ? (
+              <p className="empty">Nothing needs you right now.</p>
+            ) : (
+              <p className="empty">No sessions.</p>
+            ))}
         </>
       )}
       {omitted && <p className="hint">{omitted}</p>}
@@ -94,57 +86,60 @@ export function SessionList({
   )
 }
 
-function FilterBar({
+const GROUPINGS: readonly { id: Grouping; label: string }[] = [
+  { id: 'project', label: 'Project' },
+  { id: 'status', label: 'Status' }
+]
+
+function ListControls({
   view,
-  onFilters
+  choices,
+  onChoices
 }: {
-  view: ReturnType<typeof statusView>
-  onFilters: (filters: Filters) => void
+  view: ReturnType<typeof listView>
+  choices: ListChoices
+  onChoices: (choices: ListChoices) => void
 }) {
-  const projectId = useId()
-  const toolId = useId()
-  if (view.projectChoices.length === 0 && view.toolChoices.length === 0) return null
-  const { filters } = view
+  const groupLabel = useId()
+  const tools: readonly { id: AgentTool | null; label: string; count: number }[] = [
+    { id: null, label: 'All', count: view.toolCounts.all },
+    { id: 'codex', label: toolName('codex'), count: view.toolCounts.codex },
+    { id: 'claude', label: toolName('claude'), count: view.toolCounts.claude }
+  ]
   return (
-    <div className="filters" role="group" aria-label="Filter sessions">
-      {view.projectChoices.length > 0 && (
-        <div className="filter">
-          <label htmlFor={projectId}>Project</label>
-          <select
-            // Prevent browser session restoration from persisting a selected project label.
-            autoComplete="off"
-            id={projectId}
-            value={filters.project ?? ''}
-            onChange={(event) => onFilters({ ...filters, project: event.target.value || null })}
+    <div className="list-controls">
+      <div className="group-by" role="group" aria-labelledby={groupLabel}>
+        <span id={groupLabel} className="group-by-label">
+          Group by
+        </span>
+        {GROUPINGS.map(({ id, label }) => (
+          <button
+            key={id}
+            type="button"
+            className="chip"
+            aria-pressed={choices.grouping === id}
+            onClick={() => onChoices({ ...choices, grouping: id })}
           >
-            <option value="">All projects</option>
-            {view.projectChoices.map((label) => (
-              <option key={label} value={label}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-      {view.toolChoices.length > 0 && (
-        <div className="filter">
-          <label htmlFor={toolId}>Tool</label>
-          <select
-            // Prevent browser session restoration from persisting a selected project label.
-            autoComplete="off"
-            id={toolId}
-            value={filters.tool ?? ''}
-            onChange={(event) =>
-              onFilters({ ...filters, tool: (event.target.value || null) as AgentTool | null })
-            }
-          >
-            <option value="">All tools</option>
-            {view.toolChoices.map((tool) => (
-              <option key={tool} value={tool}>
-                {toolName(tool)}
-              </option>
-            ))}
-          </select>
+            {label}
+          </button>
+        ))}
+      </div>
+      {view.toolChoices && (
+        <div className="tool-filter" role="group" aria-label="Tool">
+          {tools.map(({ id, label, count }) => (
+            <button
+              key={label}
+              type="button"
+              aria-pressed={choices.tool === id}
+              aria-label={`${label}, ${count}`}
+              onClick={() => onChoices({ ...choices, tool: id })}
+            >
+              <span aria-hidden="true">{label}</span>
+              <span className="count" aria-hidden="true">
+                {count}
+              </span>
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -157,51 +152,38 @@ type RowProps = {
   selected?: string | null
 }
 
-function Group({
-  title,
-  rows,
-  withProject = false,
-  ...rowProps
-}: RowProps & {
-  title: string
-  rows: Row[]
-  withProject?: boolean
-}) {
+function Group({ group, ...rowProps }: RowProps & { group: ListGroup }) {
   const headingId = useId()
   return (
-    <section aria-labelledby={headingId}>
-      <h2 id={headingId}>{title}</h2>
+    <section aria-labelledby={headingId} className="group">
+      <h2 id={headingId} className="group-heading">
+        <span>{group.label}</span>
+        {group.note && (
+          <>
+            <Sep />
+            <span className="group-note">{group.note}</span>
+          </>
+        )}
+      </h2>
       <ul className="rows">
-        {rows.map((row) => (
-          <SessionRow key={row.session.id} row={row} withProject={withProject} {...rowProps} />
+        {group.rows.map((row) => (
+          <SessionRow key={row.session.id} row={row} {...rowProps} />
         ))}
       </ul>
     </section>
   )
 }
 
-/** Hidden separators, so a screen reader reads "Session 1, Codex, Running, 2 min ago". */
+/** Hidden separators, so a screen reader reads "Session 1, Codex · web, Running, 2 min ago". */
 const Sep = () => <span className="visually-hidden">, </span>
 
-function SessionRow({
-  row,
-  checkedAt,
-  withProject,
-  onOpen,
-  selected
-}: RowProps & {
-  row: Row
-  withProject: boolean
-}) {
+function SessionRow({ row, checkedAt, onOpen, selected }: RowProps & { row: Row }) {
   const time = rowTime(row, checkedAt)
-  const meta = withProject
-    ? `${toolName(row.session.tool)} · ${row.project}`
-    : toolName(row.session.tool)
   const content = (
     <>
       <span className="row-title">{row.session.title}</span>
       <Sep />
-      <span className="row-meta">{meta}</span>
+      <span className="row-meta">{`${toolName(row.session.tool)} · ${row.project}`}</span>
       <Sep />
       <span className={`row-state state-${row.kind}`}>{row.label}</span>
       {time && (
@@ -214,13 +196,14 @@ function SessionRow({
       )}
     </>
   )
-  if (!onOpen) return <li className="row">{content}</li>
+  const kind = `row kind-${row.kind}`
+  if (!onOpen) return <li className={kind}>{content}</li>
   const id = row.session.id
   return (
     <li className="row-item">
       <button
         type="button"
-        className="row row-button"
+        className={`${kind} row-button`}
         data-session={id}
         aria-current={selected === id ? 'true' : undefined}
         onClick={() => onOpen(id)}

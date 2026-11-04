@@ -57,7 +57,14 @@ async function setup(probe = false, messages?: RecentMessages) {
         sessions: [
           testSession({
             key: { tool: 'codex', id: 'SENTINEL-RAW-ID' },
-            summary: { title: TITLE, workspacePath: workspace, lastActivityAt: 1, toolVersion: '1' }
+            summary: {
+              title: TITLE,
+              workspacePath: workspace,
+              lastActivityAt: 1,
+              toolVersion: '1'
+            },
+            // Running, so the default Active view lists it.
+            activity: { state: 'running' }
           })
         ],
         health: {
@@ -135,9 +142,13 @@ describe('Remote View privacy in the production browser page', () => {
     await page.goto(origin)
     await expect.poll(() => page.getByRole('status').textContent()).toBe('Live')
     expect(await page.locator('.row-title').textContent()).toBe(TITLE)
-    expect(await page.getByRole('heading', { level: 2, name: LABEL, exact: true }).count()).toBe(1)
     expect(await page.locator('img, svg, iframe, object, embed').count()).toBe(0)
-    await page.getByLabel('Project', { exact: true }).selectOption({ label: LABEL })
+    // Grouped by project through its real control, the label is a heading, as literal text.
+    await page.getByRole('button', { name: 'Project', exact: true }).click()
+    expect(await page.locator('.group-heading > span:first-child').allTextContents()).toContain(
+      LABEL
+    )
+    expect(await page.locator('img, svg, iframe, object, embed').count()).toBe(0)
     const kept = await page.evaluate(async () => ({
       local: localStorage.length,
       session: sessionStorage.length,

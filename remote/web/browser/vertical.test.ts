@@ -146,7 +146,7 @@ it('proves the local vertical journey with real fixture readers and two viewer p
     }
     const bodies = () => Promise.all(pages.map((page) => page.locator('body').innerText()))
     const rowsAre = async (count: number) =>
-      (await Promise.all(pages.map((page) => page.getByRole('listitem').count()))).every(
+      (await Promise.all(pages.map((page) => page.locator('.rows > li').count()))).every(
         (n) => n === count
       )
     await expect
@@ -160,6 +160,8 @@ it('proves the local vertical journey with real fixture readers and two viewer p
     await expect
       .poll(async () => (await bodies()).every((text) => text.includes('fixture-demo')))
       .toBe(true)
+    // Every shared session, idle ones included: the All Sessions view in the sidebar.
+    for (const page of pages) await page.getByRole('button', { name: /^All Sessions/ }).click()
     await expect.poll(() => rowsAre(97)).toBe(true)
     expect(
       (await bodies()).every((text) => !text.includes('Fixture Codex') && !text.includes('/Users/'))
@@ -218,7 +220,7 @@ it('proves the local vertical journey with real fixture readers and two viewer p
     )
     const stateBefore = await readFile(join(fixture.userData, 'state.json'), 'utf8')
     for (const page of pages) {
-      await page.getByRole('combobox', { name: 'Tool', exact: true }).selectOption('codex')
+      await page.getByRole('button', { name: /^Codex, / }).click()
       await page.screenshot({ path: join(evidenceFolder, `viewer-${pages.indexOf(page) + 1}.png`) })
       expect(
         await page.evaluate(async () => ({
@@ -289,8 +291,7 @@ it('proves the local vertical journey with real fixture readers and two viewer p
     checks.push('A04: sixth stream rejected; healthy browser streams remain')
 
     // Restore All tools through the page before checking the source scope.
-    for (const page of pages)
-      await page.getByRole('combobox', { name: 'Tool', exact: true }).selectOption('')
+    for (const page of pages) await page.getByRole('button', { name: /^All, / }).click()
     await service.setSourceEnabled('codex', false)
     await expect.poll(() => rowsAre(50)).toBe(true)
     expect((await bodies()).every((text) => !text.includes('New reply'))).toBe(true)

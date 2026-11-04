@@ -1,16 +1,19 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { macNow, type StatusFrame } from '../../../src/core/remote/protocol'
 import { createConnection, type Connection, type ViewerData, type ViewerState } from './connection'
 import { createDetails, type Details, type DetailState } from './details'
 import { SessionDetail } from './SessionDetail'
 import { SessionList } from './SessionList'
-import { NO_FILTERS, statusView, summaryText, type Filters } from './status-view'
+import { Sidebar } from './Sidebar'
+import { DEFAULT_CHOICES, VIEW_NAMES, viewSummary, type ListChoices } from './status-view'
 
 // The Remote View page that a browser on the owner's tailnet opens. TASK-017 owns the connection
 // entry: connecting, live, reconnecting, connection lost, too many pages, off, and the final
 // not-allowed, wrong-address and update-needed states, with the TASK-002 copy. TASK-018 owns the
 // read-only session list under it and the header summary. TASK-033 adds one session's recent
-// messages while the Mac shares them: beside the list from 960 px, in its place below that.
+// messages while the Mac shares them. The layout follows the desktop window: from 960 px a
+// sidebar (views and sources), the list and the detail side by side; below 960 px the list alone,
+// the sidebar behind the header's menu button, and an open detail in the list's place.
 //
 // Back: opening a detail adds one history entry whose state is a fixed marker (never a session ID
 // or text), so the phone's Back gesture returns to the list; Back from the list leaves the page.
@@ -33,7 +36,10 @@ const TICK_MS = 10_000
 
 export function App({ fetch: fetchImpl, random, now = defaultNow, tickMs = TICK_MS }: AppProps) {
   const [state, setState] = useState<ViewerState>({ kind: 'connecting' })
-  const [filters, setFilters] = useState<Filters>(NO_FILTERS)
+  const [choices, setChoices] = useState<ListChoices>(DEFAULT_CHOICES)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const sidebarId = useId()
+  const menuButton = useRef<HTMLButtonElement>(null)
   const connection = useRef<Connection | null>(null)
   const [detail, setDetail] = useState<DetailState | null>(null)
   const details = useRef<Details | null>(null)
@@ -54,17 +60,8 @@ export function App({ fetch: fetchImpl, random, now = defaultNow, tickMs = TICK_
       onChange: (next) => {
         setState(next)
         followConnection(createdDetails, next)
-        // Project labels are session data too: when access ends and the data goes, so do the filters.
-        if (!('data' in next) || next.data === null) setFilters(NO_FILTERS)
-        // A filter on a project the Mac no longer shares goes too, so it cannot come back unasked.
-        else if (next.kind === 'live') {
-          const labels = next.data.frame.status.projects.map((project) => project.label)
-          setFilters((current) =>
-            current.project !== null && !labels.includes(current.project)
-              ? { ...current, project: null }
-              : current
-          )
-        }
+        // When access ends and the data goes, the page's choices start over too.
+        if (!('data' in next) || next.data === null) setChoices(DEFAULT_CHOICES)
       }
     })
     connection.current = created
@@ -150,41 +147,100 @@ export function App({ fetch: fetchImpl, random, now = defaultNow, tickMs = TICK_
   const checkedAt =
     data === null ? 0 : live ? macNow(data.lastSentAt, data.receivedAt, localNow) : data.lastSentAt
   const list = {
-    filters,
-    onFilters: setFilters,
+    choices,
+    onChoices: setChoices,
     checkedAt,
     // Rows open recent messages only while the Mac shares them and the stream is live.
     onOpen: live && data?.frame.details ? open : undefined,
     selected: detail?.session ?? null
   }
+  const closeMenu = () => {
+    setMenuOpen(false)
+    menuButton.current?.focus()
+  }
+  // The open menu takes focus and closes on Escape from anywhere on the page.
+  useEffect(() => {
+    if (!menuOpen) return
+    document
+      .getElementById(sidebarId)
+      ?.querySelector<HTMLElement>('[aria-current="page"], button')
+      ?.focus()
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false)
+        menuButton.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', escape)
+    return () => document.removeEventListener('keydown', escape)
+  }, [menuOpen, sidebarId])
+
   return (
-    <>
-      <header>
-        <h1>AgentPeek</h1>
-        <Pill state={state} />
-        {data && <Summary data={data} dimmed={state.kind !== 'live'} />}
-      </header>
-      <main className={shown ? 'split' : undefined}>
-        {shown ? (
-          <>
-            <div className="split-list">
-              <Body state={state} onRetry={retry} list={list} />
-            </div>
+    <div className="layout" data-js="">
+      <Sidebar
+        id={sidebarId}
+        data={data}
+        choices={choices}
+        onView={(view) => setChoices((current) => ({ ...current, view }))}
+        open={menuOpen}
+        onClose={closeMenu}
+      />
+      <div className="content">
+        <header>
+          <button
+            ref={menuButton}
+            type="button"
+            className="menu-button"
+            aria-label="Show views"
+            aria-expanded={menuOpen}
+            aria-controls={sidebarId}
+            onClick={() => setMenuOpen(true)}
+          >
+            <span className="menu-bars" aria-hidden="true" />
+          </button>
+          <h1 className="visually-hidden">AgentPeek</h1>
+          <p className="view-title">{VIEW_NAMES[choices.view]}</p>
+          <Pill state={state} />
+          {data && <Summary data={data} dimmed={state.kind !== 'live'} />}
+        </header>
+        <main className={shown ? 'split' : undefined}>
+          <div className={shown ? 'list-pane split-list' : 'list-pane'}>
+            <Body state={state} onRetry={retry} list={list} />
+          </div>
+          {shown ? (
             <SessionDetail {...shown} onBack={back} onRetry={retryDetail} />
-          </>
-        ) : (
-          <Body state={state} onRetry={retry} list={list} />
-        )}
-      </main>
-    </>
+          ) : (
+            <EmptyDetail data={data} live={live} />
+          )}
+        </main>
+      </div>
+    </div>
   )
 }
 
-/** "2 need you · 1 error · 1 new reply" over every shared session, whatever the filters. */
+/** "1 need attention · 6 running · 0 unknown" over every shared session, like the desktop. */
 function Summary({ data, dimmed }: { data: ViewerData; dimmed: boolean }) {
-  const text = summaryText(statusView(data.frame.status, NO_FILTERS).counts)
-  if (!text) return null
-  return <p className={dimmed ? 'summary dimmed' : 'summary'}>{text}</p>
+  if (data.frame.status.projects.length === 0) return null
+  return <p className={dimmed ? 'summary dimmed' : 'summary'}>{viewSummary(data.frame.status)}</p>
+}
+
+/** The detail column with nothing open; shown from 960 px only. */
+function EmptyDetail({ data, live }: { data: ViewerData | null; live: boolean }) {
+  if (!data || data.frame.status.projects.length === 0) return <div className="detail-empty" />
+  return (
+    <div className="detail-empty">
+      {live && data.frame.details ? (
+        <>
+          <p className="detail-empty-title">No session selected</p>
+          <p className="hint">Select a session to see its latest messages.</p>
+        </>
+      ) : (
+        <p className="hint">
+          To read sessions here, turn on Share recent messages in AgentPeek on the Mac.
+        </p>
+      )}
+    </div>
+  )
 }
 
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
@@ -196,8 +252,10 @@ function Pill({ state }: { state: ViewerState }) {
   if (!pill) return null
   return (
     <p className={`pill pill-${pill.tone}`}>
-      <span role="status">{pill.label}</span>
-      {pill.detail && <span> · {pill.detail}</span>}
+      <span role="status" className="pill-label">
+        {pill.label}
+      </span>
+      {pill.detail && <span className="pill-detail">{pill.detail}</span>}
     </p>
   )
 }
@@ -231,7 +289,11 @@ function pillOf(
   }
 }
 
-type ListState = { filters: Filters; onFilters: (filters: Filters) => void; checkedAt: number }
+type ListState = {
+  choices: ListChoices
+  onChoices: (choices: ListChoices) => void
+  checkedAt: number
+}
 
 function Body({
   state,

@@ -33,7 +33,9 @@ const sessions = (folders: string[]): Session[] =>
         workspacePath,
         lastActivityAt: 5 + index,
         toolVersion: 'SENTINEL-VERSION-9.9.9'
-      }
+      },
+      // Running, so the default Active view lists them.
+      activity: { state: 'running' }
     })
   )
 
@@ -167,6 +169,18 @@ async function openPage(viewport?: { width: number; height: number }): Promise<P
 const loadedHistory = new WeakMap<Page, number>()
 
 const pill = (page: Page) => page.getByRole('status')
+
+/** Rows of a shared project: each row names its project after the tool ("Codex · shared-demo"). */
+const projectRows = (page: Page, label: string) =>
+  page.locator('.row-meta', { hasText: new RegExp(` · ${label}$`) })
+const showsProject = (page: Page, label: string) => projectRows(page, label).first().waitFor()
+
+/** The All Sessions view, from the sidebar or, below 960 px, the menu button's sheet. */
+async function openAllSessions(page: Page) {
+  const menu = page.getByRole('button', { name: 'Show views' })
+  if (await menu.isVisible()) await menu.click()
+  await page.getByRole('button', { name: /^All Sessions/ }).click()
+}
 const statusRequests = () => serve.requests.filter((path) => path === '/v2/status').length
 
 /** Everything a browser could keep after the page: storage, cookies, caches, history. */
@@ -219,7 +233,7 @@ describe('Remote View connection entry in a browser', () => {
     await startListener()
     const page = await openPage()
     await expect.poll(() => pill(page).textContent()).toBe('Live')
-    await page.getByRole('heading', { level: 2, name: 'shared-demo' }).waitFor()
+    await showsProject(page, 'shared-demo')
     const text = await page.locator('body').innerText()
     expect(text).not.toContain(SENTINEL_TITLE)
     expect(text).not.toContain('/Users/')
@@ -257,7 +271,7 @@ describe('Remote View connection entry in a browser', () => {
   it('an open page whose login is no longer allowed clears its data and stops retrying', async () => {
     await startListener()
     const page = await openPage()
-    await page.getByRole('heading', { level: 2, name: 'shared-demo' }).waitFor()
+    await showsProject(page, 'shared-demo')
     serve.login = OTHER_LOGIN
     await stopListener('access-changed')
     await startListener()
@@ -277,7 +291,7 @@ describe('Remote View connection entry in a browser', () => {
   it('an open page reached from a foreign Host shows the wrong-address state', async () => {
     await startListener()
     const page = await openPage()
-    await page.getByRole('heading', { level: 2, name: 'shared-demo' }).waitFor()
+    await showsProject(page, 'shared-demo')
     serve.host = 'other-mac.example-tailnet.ts.net'
     await stopListener('access-changed')
     await startListener()
@@ -291,7 +305,7 @@ describe('Remote View connection entry in a browser', () => {
   it('a stopped listener shows disconnected, and a restart reconnects with a full status', async () => {
     await startListener()
     const page = await openPage()
-    await page.getByRole('heading', { level: 2, name: 'shared-demo' }).waitFor()
+    await showsProject(page, 'shared-demo')
     await stopListener('shutdown')
     // Reconnecting first, then lost after repeated Serve errors; the old data stays, dimmed.
     await expect.poll(() => pill(page).textContent()).toBe('Connection lost')
@@ -302,7 +316,7 @@ describe('Remote View connection entry in a browser', () => {
 
     await startListener([SHARED, LATER])
     await expect.poll(() => pill(page).textContent(), { timeout: 15_000 }).toBe('Live')
-    await page.getByRole('heading', { level: 2, name: 'later-demo' }).waitFor()
+    await showsProject(page, 'later-demo')
     expect(await page.locator('.status.dimmed').count()).toBe(0)
     expect(await kept(page)).toEqual(NOTHING_KEPT)
   })
@@ -310,7 +324,7 @@ describe('Remote View connection entry in a browser', () => {
   it('keeps the sticky header above dimmed rows when a scrolled list loses its connection', async () => {
     await startListener([SHARED], sessions(Array<string>(40).fill(SHARED)))
     const page = await openPage({ width: 375, height: 500 })
-    await page.getByRole('heading', { level: 2, name: 'shared-demo' }).waitFor()
+    await showsProject(page, 'shared-demo')
     await page.mouse.wheel(0, 900)
     await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(300)
     await stopListener('shutdown')
@@ -330,7 +344,7 @@ describe('Remote View connection entry in a browser', () => {
   it('Remote View turned off clears the list and reconnects when it is on again', async () => {
     await startListener()
     const page = await openPage()
-    await page.getByRole('heading', { level: 2, name: 'shared-demo' }).waitFor()
+    await showsProject(page, 'shared-demo')
     await stopListener('remote-off')
     await expect.poll(() => pill(page).textContent()).toBe('Remote View is off')
     expect(await page.getByTestId('status').count()).toBe(0)
@@ -400,47 +414,65 @@ describe('Remote View session list in a browser', () => {
   it('fits a 320-pixel viewport with no horizontal scroll and wrapped rows', async () => {
     await startListener([SHARED, LATER], mixed())
     const page = await openPage({ width: 320, height: 640 })
-    await page.getByRole('heading', { level: 2, name: 'Needs attention' }).waitFor()
+    await page.getByRole('heading', { level: 2, name: /^Waiting for you/ }).waitFor()
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
     const row = page.locator('.row').first()
     const title = await row.locator('.row-title').boundingBox()
     const state = await row.locator('.row-state').boundingBox()
     expect(state!.y).toBeGreaterThan(title!.y + title!.height - 1)
-    for (const select of await page.locator('select').all()) {
-      expect((await select.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+    // Below 960 px the sidebar waits behind the menu button; every control keeps 44 px.
+    expect(await page.locator('.sidebar').isVisible()).toBe(false)
+    for (const control of await page.locator('.menu-button, .chip, .tool-filter button').all()) {
+      expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(44)
     }
     const text = await page.locator('body').innerText()
     expect(text).toContain('Waiting for you · Permission')
-    expect(text).toContain('1 needs you · 1 new reply')
+    expect(text).toContain('2 need attention · 1 running · 0 unknown')
     expect(text).not.toContain(SENTINEL_TITLE)
     expect(text).not.toContain('SENTINEL-RAW-ID')
     await page.screenshot({ path: join(repo, 'test-results/remote-list-320.png'), fullPage: true })
+
+    await page.getByRole('button', { name: 'Show views' }).click()
+    await expect.poll(() => page.locator('.sidebar').isVisible()).toBe(true)
+    expect(await page.locator('.sidebar').innerText()).toContain('All Sessions')
+    await page.keyboard.press('Escape')
+    await expect.poll(() => page.locator('.sidebar').isVisible()).toBe(false)
   })
 
   it('works from the keyboard and sends nothing but the status stream', async () => {
     await startListener([SHARED, LATER], mixed())
     const page = await openPage({ width: 1024, height: 768 })
-    await page.getByRole('heading', { level: 2, name: 'Needs attention' }).waitFor()
-    const rowsBefore = await page.locator('.row').count()
-    expect(rowsBefore).toBe(4)
+    await page.getByRole('heading', { level: 2, name: /^Waiting for you/ }).waitFor()
+    // Active: waiting, new reply and running; the idle session is not active.
+    expect(await page.locator('.row').count()).toBe(3)
+    expect(await page.locator('.sidebar').isVisible()).toBe(true)
 
-    // Rows are not focusable: the first Tab stop is the Project filter, the next the Tool filter.
+    // Rows are not focusable: Tab goes Active, All Sessions, then the list's controls.
     await page.keyboard.press('Tab')
-    expect(await page.evaluate(() => document.activeElement?.id)).toBe(
-      await page.getByLabel('Project').getAttribute('id')
-    )
-    await page.keyboard.type('later')
-    await expect.poll(() => page.getByLabel('Project').inputValue()).toBe('later-demo')
-    expect(await page.locator('.row').count()).toBe(2)
-    expect(await page.getByRole('heading', { level: 2, name: 'shared-demo' }).count()).toBe(0)
+    expect(await page.evaluate(() => document.activeElement?.textContent)).toBe('Active2')
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('Enter')
+    await expect.poll(() => page.locator('.row').count()).toBe(4)
+    await page.keyboard.press('Tab')
+    expect(await page.evaluate(() => document.activeElement?.textContent)).toBe('Project')
+    await page.keyboard.press('Enter')
+    await showsProject(page, 'later-demo')
+    expect(await page.getByRole('heading', { level: 2, name: /^shared-demo/ }).count()).toBe(1)
+    expect(await page.getByRole('heading', { level: 2, name: /^later-demo/ }).count()).toBe(1)
 
+    // Status, then the tool filter: All, Codex, Claude Code.
     await page.keyboard.press('Tab')
-    expect(await page.evaluate(() => document.activeElement?.id)).toBe(
-      await page.getByLabel('Tool').getAttribute('id')
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('Tab')
+    expect(await page.evaluate(() => document.activeElement?.getAttribute('aria-label'))).toBe(
+      'Claude Code, 2'
     )
-    await page.keyboard.type('claude')
-    await expect.poll(() => page.locator('.row').count()).toBe(1)
-    expect(await page.locator('.row').innerText()).toContain('Idle')
+    await page.keyboard.press('Enter')
+    await expect.poll(() => page.locator('.row').count()).toBe(2)
+    expect(await page.locator('.row').allInnerTexts()).toEqual(
+      expect.arrayContaining([expect.stringContaining('Idle')])
+    )
     await page.screenshot({ path: join(repo, 'test-results/remote-list-1024.png'), fullPage: true })
 
     expect(await page.evaluate(() => location.pathname + location.search + location.hash)).toBe('/')
@@ -486,6 +518,8 @@ describe('Remote View resilience budgets in a browser', () => {
     // Sequential page entry stays inside the fixed request burst (four requests per page).
     for (let n = 0; n < 5; n += 1) {
       const page = await openPage()
+      // All Sessions, so the rows stay listed while they turn idle.
+      await openAllSessions(page)
       await expect.poll(() => page.locator('.row').count()).toBe(250)
       pages.push(page)
     }
@@ -576,6 +610,7 @@ describe('Remote View resilience budgets in a browser', () => {
     const pages: { page: Page; liveAt: number }[] = []
     for (let n = 0; n < 5; n += 1) {
       const page = await openPage()
+      await openAllSessions(page)
       await expect.poll(() => page.locator('.row').count()).toBe(250)
       pages.push({ page, liveAt: Date.now() })
     }
@@ -619,8 +654,8 @@ describe('Remote View resilience budgets in a browser', () => {
         expect.poll(() => pill(page).textContent(), { timeout: 10_000 }).toBe('Live')
       )
     )
-    await page.getByRole('heading', { name: 'later-demo' }).waitFor()
-    expect(await page.getByRole('heading', { name: 'shared-demo' }).count()).toBe(0)
+    await showsProject(page, 'later-demo')
+    expect(await projectRows(page, 'shared-demo').count()).toBe(0)
     await page.screenshot({ path: join(evidence, 'silence-recovered.png'), fullPage: true })
   }, 65_000)
 

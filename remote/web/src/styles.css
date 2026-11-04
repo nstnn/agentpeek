@@ -1,236 +1,90 @@
+/* Hallmark · shape: app screen · theme: project's own (the desktop window's tokens, system faces) · signature: the desktop's three columns, sidebar, list and detail · scope: app */
+/* Hallmark · waive 24b · header · the side padding keeps 16px gutters on every width with max(), not a scale step */
+/* Hallmark · dismissed 3 · the blockquote rule is how quoted text in a shared message is marked, kept from before */
+/* critique: the page reads as the desktop window: views in a sidebar, grouped rows in a list column, the detail beside it; below 960 px the list leads and the sidebar opens from a menu button. */
+
+/* The Remote View page. It loads nothing but its own files (see the CSP in index.html), so it
+   uses the system faces and no icon font, SVG or images: marks are drawn with CSS. Colors are the
+   desktop window's (src/renderer/src/styles.css), so the two read as one app. */
+
 :root {
   color-scheme: light dark;
-  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --bg: #ffffff;
+  --sidebar: #f2f1f4;
   --text: #1d1d1f;
-  --muted: #6e6e73;
-  --surface: #ffffff;
-  --line: #d2d2d7;
-  --live: #1a7f37;
-  --warn: #9a6700;
-  --error: #c62828;
+  --secondary: #68686d;
+  --sep: #e7e7eb;
+  --fill: #ececef;
+  --selection: #e8e8ed;
+  --accent: #0a64d6;
+  --accent-bg: #eaf3ff;
+  --accent-text: #0852b0;
+  --orange: #a64d00;
+  --red: #cf172b;
+  --green: #237e39;
+  --warning-bg: #fff1d4;
+  --error-bg: #fdeaec;
+  --backdrop: rgb(0 0 0 / 0.3);
+  --dur-short: 180ms;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #f5f5f7;
-    --muted: #a1a1a6;
-    --surface: #1c1c1e;
-    --line: #3a3a3c;
-    --live: #4ac26b;
-    --warn: #d4a72c;
-    --error: #ff6b6b;
+    --bg: #1e1e1f;
+    --sidebar: #29292b;
+    --text: #ededf0;
+    --secondary: #ababaf;
+    --sep: #39393c;
+    --fill: #38383b;
+    --selection: #3c3c40;
+    --accent: #3b94ff;
+    --accent-bg: #23334a;
+    --accent-text: #7ab6ff;
+    --orange: #ffad33;
+    --red: #ff6b61;
+    --green: #3dd36a;
+    --warning-bg: #3e321c;
+    --error-bg: #3f2023;
+    --backdrop: rgb(0 0 0 / 0.5);
   }
+}
+
+html,
+body {
+  overflow-x: clip;
+}
+
+/* Text sizes are rem of this root: 14px on a phone, the desktop window's 13px from 960 px. */
+html {
+  font-size: 14px;
 }
 
 body {
   margin: 0;
-  padding: 0 16px 16px;
-  color: var(--text);
-  background: var(--surface);
-}
-
-header {
-  position: sticky;
-  top: 0;
-  /* Dimmed rows (opacity) form their own layers; without this they paint over the header. */
-  z-index: 1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 12px;
-  padding: 12px 0;
-  background: var(--surface);
-  border-bottom: 1px solid var(--line);
-}
-
-h1 {
-  margin: 0;
-  font-size: 1.25rem;
-}
-
-h2 {
-  margin: 16px 0 4px;
+  font-family: var(--font);
   font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-text-size-adjust: 100%;
 }
 
 p {
   margin: 4px 0;
 }
 
-.pill {
-  margin: 0;
-  font-size: 0.875rem;
-}
-
-.pill-neutral {
-  color: var(--muted);
-}
-
-.pill-live {
-  color: var(--live);
-}
-
-.pill-warn {
-  color: var(--warn);
-}
-
-.pill-error {
-  color: var(--error);
-}
-
-.notice {
-  margin: 16px 0;
-}
-
-.hint {
-  color: var(--muted);
-  font-size: 0.875rem;
-}
-
 button {
-  min-width: 44px;
-  min-height: 44px;
-  margin-top: 8px;
-  padding: 0 16px;
   font: inherit;
+  color: inherit;
+  cursor: pointer;
 }
 
-.dimmed {
-  opacity: 0.55;
-}
-
-.skeleton div {
-  height: 20px;
-  margin: 16px 0;
-  border-radius: 4px;
-  background: var(--line);
-}
-
-.summary {
-  flex-basis: 100%;
-  margin: 0;
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
-.source-issue {
-  margin: 12px 0 0;
-  color: var(--warn);
-  font-size: 0.875rem;
-}
-
-.all-clear {
-  margin: 16px 0 0;
-  color: var(--live);
-}
-
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  margin: 12px 0 0;
-}
-
-.filter {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.filter label {
-  font-size: 0.875rem;
-  color: var(--muted);
-}
-
-select {
-  min-height: 44px;
-  max-width: 100%;
-  font: inherit;
-}
-
-.rows {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-/* Under 720 px each row wraps: title, then tool, then the status label and time on their own line. */
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 12px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.row-title {
-  flex-basis: 100%;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.row-meta,
-.row-time {
-  color: var(--muted);
-  font-size: 0.875rem;
-}
-
-.row-meta {
-  flex-basis: 100%;
-}
-
-.row-state {
-  font-size: 0.875rem;
-}
-
-.row-time {
-  white-space: nowrap;
-}
-
-.state-waiting,
-.state-error {
-  font-weight: 600;
-}
-
-.state-waiting {
-  color: var(--warn);
-}
-
-.state-error {
-  color: var(--error);
-}
-
-.state-reply {
-  color: var(--live);
-}
-
-.state-unknown {
-  color: var(--muted);
-}
-
-/* From 720 px a row is one line: title, tool, status, time. */
-@media (min-width: 720px) {
-  .row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(6rem, 14rem) 14rem 9rem;
-    align-items: baseline;
-    gap: 12px;
-  }
-
-  .row-title {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .row-meta {
-    flex-basis: auto;
-  }
-
-  .row-time {
-    text-align: right;
-  }
+button:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .visually-hidden {
@@ -240,6 +94,447 @@ select {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+.hint {
+  color: var(--secondary);
+  font-size: 0.923rem;
+}
+
+.dimmed {
+  opacity: 0.5;
+}
+
+/* Sidebar: below 960 px a sheet over the list from the menu button. The page script marks the
+   layout (data-js) and the sheet (closed); without them it is simply shown. */
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  width: min(300px, 85vw);
+  padding: 12px 8px;
+  box-sizing: border-box;
+  background: var(--sidebar);
+  border-right: 1px solid var(--sep);
+  transition: transform var(--dur-short) ease-out;
+}
+
+[data-js] .sidebar.closed {
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition:
+    transform var(--dur-short) ease-out,
+    visibility 0s linear var(--dur-short);
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--backdrop);
+}
+
+.sidebar-heading {
+  margin: 4px 8px 8px;
+  color: var(--secondary);
+  font-size: 0.923rem;
+  font-weight: 600;
+}
+
+.sidebar nav {
+  display: grid;
+  gap: 2px;
+}
+
+.sidebar-view {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+}
+
+.sidebar-view:hover {
+  background: var(--fill);
+}
+
+.sidebar-view[aria-current='page'] {
+  background: var(--selection);
+  font-weight: 600;
+}
+
+.sidebar-view .count {
+  color: var(--secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.badge {
+  min-width: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--red);
+  color: var(--bg);
+  font-size: 0.885rem;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.sources {
+  display: grid;
+  gap: 8px;
+  margin: auto 0 0;
+  padding: 12px 12px 4px;
+  border-top: 1px solid var(--sep);
+  list-style: none;
+}
+
+.source {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.923rem;
+}
+
+.source::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--secondary);
+}
+
+.source-connected::before {
+  background: var(--green);
+}
+
+.source-no-access::before,
+.source-unsupported::before {
+  background: var(--orange);
+}
+
+.source-state {
+  margin-left: auto;
+  color: var(--secondary);
+}
+
+/* Header: the menu button, the view's name and the connection state, then the summary. */
+header {
+  position: sticky;
+  top: 0;
+  /* Dimmed rows (opacity) form their own layers; without this they paint over the header. */
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 8px max(16px, env(safe-area-inset-left)) 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--sep);
+}
+
+.menu-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: 0 0 0 -12px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+}
+
+.menu-button:hover {
+  background: var(--fill);
+}
+
+.menu-bars,
+.menu-bars::before,
+.menu-bars::after {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--text);
+}
+
+.menu-bars {
+  position: relative;
+}
+
+.menu-bars::before,
+.menu-bars::after {
+  content: '';
+  position: absolute;
+  left: 0;
+}
+
+.menu-bars::before {
+  top: -6px;
+}
+
+.menu-bars::after {
+  top: 6px;
+}
+
+.view-title {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.pill {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.885rem;
+  color: var(--secondary);
+}
+
+.pill-label {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--fill);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pill-live .pill-label {
+  color: var(--green);
+}
+
+.pill-warn .pill-label {
+  background: var(--warning-bg);
+  color: var(--orange);
+}
+
+.pill-error .pill-label {
+  background: var(--error-bg);
+  color: var(--red);
+}
+
+.summary {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--secondary);
+  font-size: 0.923rem;
+}
+
+main {
+  min-width: 0;
+}
+
+.list-pane {
+  min-width: 0;
+  padding: 0 16px 24px;
+}
+
+/* List controls: Group by chips and the tool filter, as in the desktop list header. */
+.list-controls {
+  display: grid;
+  gap: 8px;
+  padding: 12px 0 4px;
+}
+
+.group-by {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.group-by-label {
+  margin-right: 4px;
+  color: var(--secondary);
+}
+
+.chip {
+  min-height: 32px;
+  margin: 0;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--fill);
+}
+
+.chip[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+
+.sidebar-view:active,
+.chip:active,
+.tool-filter button:active,
+.row-button:active,
+.menu-button:active,
+.back:active,
+.notice button:active {
+  background: var(--selection);
+}
+
+.tool-filter {
+  display: flex;
+  justify-self: start;
+  max-width: 100%;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--fill);
+  overflow-x: auto;
+}
+
+.tool-filter button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  margin: 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  white-space: nowrap;
+}
+
+.tool-filter button[aria-pressed='true'] {
+  background: var(--bg);
+  font-weight: 600;
+  box-shadow: 0 0 0 1px var(--sep);
+}
+
+.tool-filter .count {
+  color: var(--secondary);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Groups and rows, as in the desktop list: a heading with its count, then hairline rows. */
+.group-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0 0;
+  padding: 0 0 4px 8px;
+  color: var(--secondary);
+  font-size: 0.923rem;
+  font-weight: 600;
+}
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'title time'
+    'meta state';
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 10px 8px 10px 12px;
+  border-top: 1px solid var(--sep);
+}
+
+.rows > :first-child.row,
+.rows > :first-child .row {
+  border-top: 0;
+}
+
+.row-title {
+  grid-area: title;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.row-meta {
+  grid-area: meta;
+  min-width: 0;
+  color: var(--secondary);
+  font-size: 0.923rem;
+  overflow-wrap: anywhere;
+}
+
+.row-state {
+  grid-area: state;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: end;
+  font-size: 0.923rem;
+  text-align: right;
+}
+
+.row-time {
+  grid-area: time;
+  color: var(--secondary);
+  font-size: 0.885rem;
+  white-space: nowrap;
+  justify-self: end;
+}
+
+/* A new reply gets the desktop's unread dot before the title. */
+.kind-reply::before {
+  content: '';
+  position: absolute;
+  top: 17px;
+  left: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.state-waiting {
+  color: var(--orange);
+  font-weight: 600;
+}
+
+.state-error {
+  color: var(--red);
+  font-weight: 600;
+}
+
+.state-reply {
+  color: var(--accent);
+}
+
+.state-running {
+  color: var(--green);
+}
+
+/* Running: the desktop's open ring before the label. */
+.state-running::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid currentcolor;
+  border-radius: 50%;
+}
+
+.state-idle,
+.state-unknown {
+  color: var(--secondary);
 }
 
 /* Rows that open recent messages (TASK-033): the same layout as a text row, as a button. */
@@ -252,53 +547,158 @@ select {
   min-height: 44px;
   margin: 0;
   border: 0;
-  border-bottom: 1px solid var(--line);
+  border-top: 1px solid var(--sep);
   border-radius: 0;
   background: none;
-  color: inherit;
-  font: inherit;
   text-align: left;
-  cursor: pointer;
+}
+
+.row-button:hover {
+  background: var(--fill);
+}
+
+.row-button:focus-visible {
+  outline-offset: -2px;
 }
 
 .row-button[aria-current='true'] {
-  background: color-mix(in srgb, var(--line) 45%, transparent);
+  border-radius: 8px;
+  background: var(--selection);
 }
 
-/* Under 960 px the detail takes the list's place; Back returns to it. */
+.row-item:has(.row-button[aria-current='true']) + .row-item .row-button {
+  border-top-color: transparent;
+}
+
+/* States around the list. */
+.empty {
+  margin: 24px 0;
+  color: var(--secondary);
+  text-align: center;
+}
+
+.notice {
+  margin: 16px 0;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--sidebar);
+}
+
+.notice p:first-child {
+  margin-top: 0;
+}
+
+.notice button,
+.detail button:not(.back) {
+  min-width: 44px;
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 0 16px;
+  border: 1px solid var(--sep);
+  border-radius: 8px;
+  background: var(--bg);
+  font-weight: 500;
+}
+
+.source-issue {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--warning-bg);
+  color: var(--orange);
+  font-size: 0.923rem;
+}
+
+.skeleton {
+  padding: 8px 0;
+}
+
+.skeleton div {
+  height: 18px;
+  margin: 16px 0;
+  border-radius: 6px;
+  background: var(--fill);
+}
+
+/* Detail: below 960 px it takes the list's place; Back returns to it. */
 .split-list {
+  display: none;
+}
+
+.detail-empty {
   display: none;
 }
 
 .detail {
   min-width: 0;
-  padding-bottom: 16px;
+  padding: 4px 16px 24px;
+}
+
+.detail h2 {
+  margin: 4px 0 2px;
+  text-wrap: balance;
+  font-size: 1.3rem;
+  font-weight: 700;
 }
 
 .detail h2:focus {
   outline: none;
 }
 
-.back {
-  padding: 0 12px;
+.detail > .row-meta {
+  margin: 0 0 8px;
 }
 
+.back {
+  min-height: 44px;
+  margin: 0 0 0 -8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--accent);
+}
+
+.back:hover {
+  background: var(--accent-bg);
+}
+
+/* Messages: your prompts as bubbles on the right, replies full width, tool calls as a chip. */
 .messages {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   margin: 12px 0 0;
   padding: 0;
   list-style: none;
 }
 
 .entry {
-  padding: 8px 0;
-  border-bottom: 1px solid var(--line);
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.entry-meta,
+.entry-prompt {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 16px 16px 4px 16px;
+  background: var(--accent-bg);
+}
+
+.entry-meta {
+  margin: 0 0 2px;
+  color: var(--secondary);
+  font-size: 0.885rem;
+}
+
 .entry-tools {
-  color: var(--muted);
-  font-size: 0.875rem;
+  align-self: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--secondary);
+  font-size: 0.885rem;
 }
 
 .entry-who {
@@ -310,16 +710,26 @@ select {
   min-width: 0;
 }
 
+.markdown p {
+  margin: 4px 0;
+}
+
+.markdown ul,
+.markdown ol {
+  margin: 4px 0;
+  padding-left: 24px;
+}
+
 .markdown pre {
   max-width: 100%;
   overflow-x: auto;
-  padding: 8px;
-  background: color-mix(in srgb, var(--line) 35%, transparent);
-  border-radius: 4px;
+  padding: 8px 12px;
+  background: var(--fill);
+  border-radius: 8px;
 }
 
 .markdown code {
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.875em;
 }
 
@@ -333,43 +743,112 @@ select {
 .markdown th,
 .markdown td {
   padding: 2px 8px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--sep);
 }
 
 .markdown blockquote {
   margin: 4px 0;
   padding-left: 12px;
-  border-left: 3px solid var(--line);
-  color: var(--muted);
+  border-left: 3px solid var(--sep);
+  color: var(--secondary);
 }
 
 .md-heading {
   font-weight: 600;
 }
 
-/* From 960 px the list stays on the left and the detail sits beside it. */
+/* Under 960 px the filter buttons keep a 44 px touch target. */
+@media (max-width: 959px) {
+  .chip,
+  .tool-filter button {
+    min-height: 44px;
+  }
+}
+
+/* From 960 px: the desktop's three columns, each scrolling on its own. */
 @media (min-width: 960px) {
-  main.split {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 24px;
-    align-items: start;
+  html {
+    font-size: 13px;
   }
 
+  .layout {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .sidebar,
+  [data-js] .sidebar.closed {
+    position: static;
+    width: auto;
+    transform: none;
+    visibility: visible;
+    transition: none;
+  }
+
+  /* As on the desktop, the detail sits beside the list: another row replaces it, no Back. */
+  .sidebar-backdrop,
+  .menu-button,
+  .back {
+    display: none;
+  }
+
+  .content {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  header {
+    position: static;
+    padding: 16px 24px 12px;
+  }
+
+  /* Wide: the connection state sits at the right of the view's name. */
+  .pill {
+    flex-basis: auto;
+    margin-left: auto;
+  }
+
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .list-pane,
   .split-list {
     display: block;
-  }
-
-  .detail {
-    position: sticky;
-    top: 64px;
-    max-height: calc(100vh - 80px);
     overflow-y: auto;
+    border-right: 1px solid var(--sep);
   }
 
-  /* Beside the list the rows have half the width: back to the wrapped layout. */
-  main.split .row {
-    display: flex;
-    flex-wrap: wrap;
+  .detail,
+  .detail-empty {
+    display: block;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px 32px 32px;
+  }
+
+  .detail-empty {
+    display: grid;
+    place-content: center;
+    text-align: center;
+  }
+
+  .detail-empty-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  [data-js] .sidebar.closed {
+    transition: none;
   }
 }

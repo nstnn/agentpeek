@@ -83,8 +83,10 @@ Remote View lets you check session status from your phone or another computer, u
 and only the projects you pick. It is not a public release.
 
 **What it shows.** A read-only list of the sessions in the projects you share: tool, status
-(running, waiting, new reply, failed) and age, grouped under "Needs attention" and then by
-project folder name. Session titles appear only when you turn on **Share session titles**;
+(running, waiting, new reply, failed) and age, laid out like the AgentPeek window: on a wide
+screen a sidebar (Active, All Sessions, sources), the list grouped by status or by project folder
+name with a Codex / Claude Code filter, and the session detail beside it; on a phone the list,
+with the sidebar behind a menu button. Session titles appear only when you turn on **Share session titles**;
 otherwise rows are named `Session 1`, `Session 2`, … and the Mac's session detail shows the
 matching "Remote: Session N" line. Message text appears only while you turn on **Share recent
 messages** (see [Recent messages](#recent-messages-not-yet-accepted)). The page never shows folder
