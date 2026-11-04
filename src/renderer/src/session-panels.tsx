@@ -144,7 +144,13 @@ export function Sidebar({
             onClick={onSettings}
           >
             <span className="health-dot connected" aria-hidden="true" />
-            {!collapsed && <span aria-hidden="true">{sidebarLabel(remoteStatus)}</span>}
+            {!collapsed && (
+              // The accessible name says it in one line; the narrow sidebar shows two.
+              <span className="sidebar-remote-label" aria-hidden="true">
+                <span>Remote View on</span>
+                {remoteStatus.shareMessages && <span>Messages shared</span>}
+              </span>
+            )}
           </button>
         )}
         <button

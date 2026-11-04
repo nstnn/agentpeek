@@ -67,7 +67,7 @@ describe('Remote View sidebar label', () => {
     await waitFor(() => expect(label()).not.toBeNull())
     expect(label()!.textContent).toBe('Remote View on')
     f.announce({ ...on(), shareMessages: true } as RemoteStatusView)
-    expect(label()!.textContent).toBe('Remote View on · messages shared')
+    expect(label()!.textContent).toBe('Remote View onMessages shared')
     expect(label()!.getAttribute('aria-label')).toBe(
       'Remote View on · messages shared. On, port 47613. Sharing 1 project.'
     )
