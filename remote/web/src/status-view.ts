@@ -1,3 +1,4 @@
+import { looksOpen } from '../../../src/core/activity'
 import type { AgentTool } from '../../../src/core/tools'
 import type {
   RemoteSession,
@@ -6,10 +7,10 @@ import type {
 } from '../../../src/core/remote/status-projection'
 
 // What the session list shows from one status (TASK-018), as pure functions of the status, the
-// page's filters and the Mac clock. Option A of the UX contract: one cross-project "Needs
-// attention" group (waiting, errors, new replies, oldest attention first), then each shared
-// project with the rest. Labels follow the desktop's row status order and wording, kept here
-// because the page may not import the desktop renderer.
+// page's choices and the Mac clock. The page follows the desktop window: an Active and an All
+// Sessions view, grouped by status (the desktop's Active groups) or by project, with a tool filter.
+// Labels follow the desktop's row status order and wording, kept here because the page may not
+// import the desktop renderer.
 
 export type RowKind = 'waiting' | 'error' | 'reply' | 'unknown' | 'running' | 'idle'
 
@@ -53,89 +54,11 @@ export function rowStatus(session: RemoteSession): { kind: RowKind; label: strin
 
 const ATTENTION_ORDER: Partial<Record<RowKind, number>> = { waiting: 0, error: 1, reply: 2 }
 
-/** The page's filters. Page state only: never in the address, history or storage. */
-export interface Filters {
-  /** A project label from the current status, or null for every project. */
-  project: string | null
-  tool: AgentTool | null
-}
-
-export const NO_FILTERS: Filters = { project: null, tool: null }
-
 export interface Row {
   session: RemoteSession
   project: string
   kind: RowKind
   label: string
-}
-
-export interface StatusView {
-  /** Counts over every shared session, whatever the filters: "is anything waiting?". */
-  counts: { waiting: number; error: number; reply: number }
-  attention: Row[]
-  projects: { label: string; rows: Row[]; total: number }[]
-  /** Filter choices that would change something; an active filter always keeps its control. */
-  projectChoices: string[]
-  toolChoices: AgentTool[]
-  /** Filters with a project that is no longer shared dropped. */
-  filters: Filters
-}
-
-export function statusView(status: RemoteStatus, requested: Filters): StatusView {
-  const labels = status.projects.map((project) => project.label)
-  const filters: Filters = {
-    project:
-      requested.project !== null && labels.includes(requested.project) ? requested.project : null,
-    tool: requested.tool
-  }
-  const counts = { waiting: 0, error: 0, reply: 0 }
-  const tools = new Set<AgentTool>()
-  const attention: Row[] = []
-  const projects: StatusView['projects'] = []
-  for (const project of status.projects) {
-    const rows: Row[] = []
-    for (const session of project.sessions) {
-      tools.add(session.tool)
-      const row = { session, project: project.label, ...rowStatus(session) }
-      if (row.kind === 'waiting' || row.kind === 'error' || row.kind === 'reply') {
-        counts[row.kind] += 1
-      }
-      if (filters.project !== null && filters.project !== project.label) continue
-      if (filters.tool !== null && filters.tool !== session.tool) continue
-      if (ATTENTION_ORDER[row.kind] === undefined) rows.push(row)
-      else attention.push(row)
-    }
-    if (filters.project !== null && filters.project !== project.label) continue
-    projects.push({ label: project.label, rows, total: project.sessions.length })
-  }
-  attention.sort(
-    (a, b) =>
-      ATTENTION_ORDER[a.kind]! - ATTENTION_ORDER[b.kind]! ||
-      attentionTime(a.session) - attentionTime(b.session) ||
-      (a.session.id < b.session.id ? -1 : a.session.id > b.session.id ? 1 : 0)
-  )
-  return {
-    counts,
-    attention,
-    projects,
-    projectChoices: labels.length > 1 || filters.project !== null ? labels : [],
-    toolChoices:
-      tools.size > 1 || filters.tool !== null ? (['codex', 'claude'] as const).slice() : [],
-    filters
-  }
-}
-
-/** Oldest attention first; a waiting-only row has no start time, so its last activity stands in. */
-const attentionTime = (session: RemoteSession): number =>
-  session.attentionSince ?? session.lastActivityAt
-
-/** The header summary, for example "2 need you · 1 error · 1 new reply"; empty when none. */
-export function summaryText(counts: StatusView['counts']): string {
-  const parts: string[] = []
-  if (counts.waiting > 0) parts.push(`${counts.waiting} need${counts.waiting === 1 ? 's' : ''} you`)
-  if (counts.error > 0) parts.push(`${counts.error} error${counts.error === 1 ? '' : 's'}`)
-  if (counts.reply > 0) parts.push(`${counts.reply} new repl${counts.reply === 1 ? 'y' : 'ies'}`)
-  return parts.join(' · ')
 }
 
 /**
@@ -195,4 +118,160 @@ export function omittedText(omitted: RemoteStatus['omitted']): string | null {
   const projects = `${omitted.projects} project${omitted.projects === 1 ? '' : 's'}`
   const sessions = `${omitted.sessions} session${omitted.sessions === 1 ? '' : 's'}`
   return `Not everything fits: ${projects} and ${sessions} left out.`
+}
+
+/** The sidebar's views. The desktop's Pinned view has no remote counterpart: pins stay on the Mac. */
+export type ViewId = 'active' | 'all'
+export type Grouping = 'status' | 'project'
+
+/** What the page shows. Page state only: never in the address, history or storage. */
+export interface ListChoices {
+  view: ViewId
+  grouping: Grouping
+  tool: AgentTool | null
+}
+
+export const DEFAULT_CHOICES: ListChoices = { view: 'active', grouping: 'status', tool: null }
+
+export const VIEW_NAMES: Record<ViewId, string> = { active: 'Active', all: 'All Sessions' }
+
+type StatusGroupId = 'waiting' | 'errors' | 'new-replies' | 'running' | 'unknown'
+
+const STATUS_GROUPS: readonly { id: StatusGroupId; label: string; outstanding: boolean }[] = [
+  { id: 'waiting', label: 'Waiting for you', outstanding: true },
+  { id: 'errors', label: 'Errors', outstanding: true },
+  { id: 'new-replies', label: 'New replies', outstanding: true },
+  { id: 'running', label: 'Running', outstanding: false },
+  { id: 'unknown', label: 'Unknown', outstanding: false }
+]
+
+/** The desktop's Active group for a session (`activeGroupOf`), or null when it is not active. */
+export function activeGroupOf(session: RemoteSession): StatusGroupId | null {
+  const { activity, attention } = session
+  if (activity.state === 'waiting' || attention.waiting) return 'waiting'
+  if (attention.error) return 'errors'
+  if (attention.newReply) return 'new-replies'
+  if (activity.state === 'running') return 'running'
+  if (activity.state === 'unknown' && looksOpen(activity.reason)) return 'unknown'
+  return null
+}
+
+export interface ListGroup {
+  /** Stable within one status: a status group ID or `project:<label>`. */
+  id: string
+  label: string
+  rows: Row[]
+  /** The heading's right side, for example "2 outstanding" or "1 need attention · 3 running". */
+  note: string
+}
+
+export interface ListView {
+  /** The sidebar: sessions that need attention (the Active badge) and every shared session. */
+  needsAttention: number
+  total: number
+  /** Sessions in the current view per tool choice, before the tool filter. */
+  toolCounts: { all: number; codex: number; claude: number }
+  /** Tool choices are shown only when both tools have sessions somewhere, or one is chosen. */
+  toolChoices: boolean
+  groups: ListGroup[]
+  /** Rows shown after the tool filter. */
+  shown: number
+}
+
+const newestFirst = (a: Row, b: Row): number =>
+  b.session.lastActivityAt - a.session.lastActivityAt ||
+  (a.session.id < b.session.id ? -1 : a.session.id > b.session.id ? 1 : 0)
+
+export function listView(status: RemoteStatus, choices: ListChoices): ListView {
+  const rows: Row[] = []
+  const tools = new Set<AgentTool>()
+  let needsAttention = 0
+  for (const project of status.projects) {
+    for (const session of project.sessions) {
+      tools.add(session.tool)
+      const row = { session, project: project.label, ...rowStatus(session) }
+      if (ATTENTION_ORDER[row.kind] !== undefined) needsAttention += 1
+      rows.push(row)
+    }
+  }
+  const inView =
+    choices.view === 'active' ? rows.filter((row) => activeGroupOf(row.session) !== null) : rows
+  const toolCounts = { all: inView.length, codex: 0, claude: 0 }
+  for (const row of inView) toolCounts[row.session.tool] += 1
+  const shownRows = (
+    choices.tool === null ? inView : inView.filter((row) => row.session.tool === choices.tool)
+  ).sort(newestFirst)
+
+  let groups: ListGroup[]
+  if (choices.grouping === 'project') {
+    groups = status.projects.flatMap((project) => {
+      const members = shownRows.filter((row) => row.project === project.label)
+      if (members.length === 0) return []
+      const attention = members.filter((row) => ATTENTION_ORDER[row.kind] !== undefined).length
+      const running = members.filter((row) => row.kind === 'running').length
+      const note = [
+        attention > 0 ? `${attention} need attention` : '',
+        running > 0 ? `${running} running` : ''
+      ]
+        .filter(Boolean)
+        .join(' · ')
+      return [{ id: `project:${project.label}`, label: project.label, rows: members, note }]
+    })
+  } else if (choices.view === 'active') {
+    groups = STATUS_GROUPS.flatMap(({ id, label, outstanding }) => {
+      const members = shownRows.filter((row) => activeGroupOf(row.session) === id)
+      if (members.length === 0) return []
+      const note = `${members.length} ${outstanding ? 'outstanding' : 'current'}`
+      return [{ id, label, rows: members, note }]
+    })
+  } else {
+    groups =
+      shownRows.length > 0
+        ? [{ id: 'all', label: VIEW_NAMES.all, rows: shownRows, note: `${shownRows.length}` }]
+        : []
+  }
+  return {
+    needsAttention,
+    total: rows.length,
+    toolCounts,
+    toolChoices: tools.size > 1 || choices.tool !== null,
+    groups,
+    shown: shownRows.length
+  }
+}
+
+/** The list header line, like the desktop's: "1 need attention · 6 running · 0 unknown". */
+export function viewSummary(status: RemoteStatus): string {
+  let attention = 0
+  let running = 0
+  let unknown = 0
+  for (const project of status.projects) {
+    for (const session of project.sessions) {
+      const group = activeGroupOf(session)
+      if (group === 'running') running += 1
+      else if (group === 'unknown') unknown += 1
+      else if (group !== null) attention += 1
+    }
+  }
+  return `${attention} need attention · ${running} running · ${unknown} unknown`
+}
+
+/** One line per source for the sidebar footer, in the desktop's order. */
+export function sourceLines(
+  sources: Record<AgentTool, RemoteSourceHealth>
+): { tool: AgentTool; name: string; state: RemoteSourceHealth['state']; text: string }[] {
+  const words: Record<RemoteSourceHealth['state'], string> = {
+    off: 'Off',
+    checking: 'Checking',
+    'not-installed': 'Not installed',
+    unsupported: 'Unsupported format',
+    connected: 'Connected',
+    'no-access': 'No access'
+  }
+  return (['codex', 'claude'] as const).map((tool) => ({
+    tool,
+    name: toolName(tool),
+    state: sources[tool].state,
+    text: words[sources[tool].state]
+  }))
 }

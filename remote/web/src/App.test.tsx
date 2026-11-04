@@ -42,8 +42,8 @@ it('shows Connecting until the first status, then Live with the shared projects'
   release(openStream(`event: status\ndata: ${JSON.stringify(VALID_STATUS_FRAME)}\n\n`))
   await settle()
   expect(screen.getByRole('status').textContent).toBe('Live')
-  const label = VALID_STATUS_FRAME.status.projects[0]!.label
-  expect(screen.getByRole('heading', { level: 2, name: label })).toBeTruthy()
+  // The Active view, grouped by status like the desktop: the waiting session's group.
+  expect(screen.getByRole('heading', { level: 2, name: /^Waiting for you/ })).toBeTruthy()
 })
 
 it('shows Not allowed with no data and no button', async () => {
@@ -55,7 +55,11 @@ it('shows Not allowed with no data and no button', async () => {
     )
   ).toBeTruthy()
   expect(screen.queryByTestId('status')).toBeNull()
-  expect(screen.queryByRole('button')).toBeNull()
+  // Only the menu button: no Retry, no row and no view count.
+  expect(screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(
+    expect.arrayContaining(['Show views'])
+  )
+  expect(document.querySelectorAll('.rows li, .sources li, .badge, .count')).toHaveLength(0)
 })
 
 it('shows the wrong-address state for bad-host', async () => {
@@ -78,16 +82,19 @@ it('shows Too many open pages with Retry for busy', async () => {
   expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
 })
 
-it('shows the waiting session under Needs attention with the header summary', async () => {
+it('shows the waiting session in its group, with the summary, view counts and sources', async () => {
   render(<App fetch={stream(`event: status\ndata: ${JSON.stringify(VALID_STATUS_FRAME)}\n\n`)} />)
   await settle()
-  const attention = screen.getByRole('region', { name: 'Needs attention' })
-  expect(within(attention).getByRole('listitem').textContent).toBe(
+  const waiting = screen.getByRole('region', { name: /^Waiting for you/ })
+  expect(within(waiting).getByRole('listitem').textContent).toBe(
     'Session 1, Claude Code · synthetic-project, Waiting for you · Permission'
   )
-  expect(screen.getByText('1 needs you')).toBeTruthy()
+  expect(screen.getByText('1 need attention · 0 running · 0 unknown')).toBeTruthy()
+  expect(screen.getByRole('button', { name: /^Active/ }).textContent).toBe('Active1')
   expect(screen.getByText('Claude Code: no access on the Mac.')).toBeTruthy()
-  expect(screen.getByText('No other sessions.')).toBeTruthy()
+  expect(
+    within(screen.getByRole('list', { name: 'Sources on the Mac' })).getAllByRole('listitem')
+  ).toHaveLength(2)
 })
 
 it('says when nothing is shared', async () => {
@@ -151,7 +158,8 @@ function scripted() {
   return { fetch, requests, send }
 }
 
-const rowTexts = () => screen.queryAllByRole('listitem').map((item) => item.textContent)
+const rowTexts = () => [...document.querySelectorAll('.rows > li')].map((item) => item.textContent)
+const choose = (name: string | RegExp) => fireEvent.click(screen.getByRole('button', { name }))
 
 it('replaces every row on each status, with no duplicate or stale rows', async () => {
   const mac = scripted()
@@ -160,9 +168,10 @@ it('replaces every row on each status, with no duplicate or stale rows', async (
   await mac.send(
     frame('s1', [{ label: 'alpha', sessions: [row('a'), row('b', { tool: 'claude' })] }])
   )
+  choose(/^All Sessions/)
   expect(rowTexts()).toEqual([
-    'Session a, Codex, Running, 2 min ago',
-    'Session b, Claude Code, Running, 2 min ago'
+    'Session a, Codex · alpha, Running, 2 min ago',
+    'Session b, Claude Code · alpha, Running, 2 min ago'
   ])
 
   // "a" now has a new reply, "b" is gone, "c" is new.
@@ -187,79 +196,69 @@ it('replaces every row on each status, with no duplicate or stale rows', async (
   )
   expect(rowTexts()).toEqual([
     'Session a, Codex · alpha, New reply, for 4 min',
-    'Session c, Codex, Idle, 2 min ago'
+    'Session c, Codex · alpha, Idle, 2 min ago'
   ])
   expect(screen.getAllByText(/Session a/)).toHaveLength(1)
   expect(screen.queryByText(/Session b/)).toBeNull()
-  expect(screen.getByText('1 new reply')).toBeTruthy()
+  expect(screen.getByText('1 need attention · 0 running · 0 unknown')).toBeTruthy()
 })
 
-it('filters by project and tool as page state only, sending nothing to the Mac', async () => {
+it('switches views, grouping and tool as page state only, sending nothing to the Mac', async () => {
   const mac = scripted()
   render(<App fetch={mac.fetch} />)
   await settle()
   await mac.send(
     frame('s1', [
       { label: 'alpha', sessions: [row('a'), row('b', { tool: 'claude' })] },
-      { label: 'beta', sessions: [row('c')] }
+      { label: 'beta', sessions: [row('c', { activity: { state: 'idle' } })] }
     ])
   )
   const history = window.history.length
   const location = window.location.href
 
-  fireEvent.change(screen.getByLabelText('Project'), { target: { value: 'beta' } })
-  expect(rowTexts()).toEqual(['Session c, Codex, Running, 2 min ago'])
-  expect(screen.queryByRole('heading', { name: 'alpha' })).toBeNull()
-
-  fireEvent.change(screen.getByLabelText('Project'), { target: { value: '' } })
-  fireEvent.change(screen.getByLabelText('Tool'), { target: { value: 'claude' } })
-  expect(rowTexts()).toEqual(['Session b, Claude Code, Running, 2 min ago'])
-
-  fireEvent.change(screen.getByLabelText('Project'), { target: { value: 'beta' } })
-  expect(screen.getByText('No sessions match these filters.')).toBeTruthy()
-  fireEvent.click(screen.getByRole('button', { name: 'Show all' }))
+  // Active hides the idle session; All Sessions shows it.
+  expect(rowTexts()).toHaveLength(2)
+  expect(screen.getByRole('button', { name: /^All Sessions/ }).textContent).toBe('All Sessions3')
+  choose(/^All Sessions/)
   expect(rowTexts()).toHaveLength(3)
+  expect(screen.getByText('All Sessions', { selector: '.view-title' })).toBeTruthy()
 
-  // The filter survives a new status while its project is still shared.
-  fireEvent.change(screen.getByLabelText('Project'), { target: { value: 'beta' } })
-  await mac.send(
-    frame('s2', [
-      { label: 'alpha', sessions: [row('a')] },
-      { label: 'beta', sessions: [row('d')] }
-    ])
-  )
-  expect(rowTexts()).toEqual(['Session d, Codex, Running, 2 min ago'])
+  choose('Project')
+  expect(screen.getByRole('heading', { level: 2, name: /^alpha/ })).toBeTruthy()
+  expect(screen.getByRole('heading', { level: 2, name: /^beta/ })).toBeTruthy()
+
+  choose('Claude Code, 1')
+  expect(rowTexts()).toEqual(['Session b, Claude Code · alpha, Running, 2 min ago'])
+  expect(screen.queryByRole('heading', { name: /^beta/ })).toBeNull()
+
+  // A tool with no session in the view says so and offers Show all.
+  choose(/^Active/)
+  await mac.send(frame('s2', [{ label: 'alpha', sessions: [row('a')] }]))
+  expect(screen.getByText('No sessions match this filter.')).toBeTruthy()
+  choose('Show all')
+  expect(rowTexts()).toEqual(['Session a, Codex · alpha, Running, 2 min ago'])
 
   expect(mac.requests).toEqual(['GET /v2/status'])
   expect(window.history.length).toBe(history)
   expect(window.location.href).toBe(location)
 })
 
-it('drops a filter whose project the Mac stopped sharing', async () => {
+it('opens the views from the menu button and closes them on a choice or Escape', async () => {
   const mac = scripted()
   render(<App fetch={mac.fetch} />)
   await settle()
-  await mac.send(
-    frame('s1', [
-      { label: 'alpha', sessions: [row('a')] },
-      { label: 'beta', sessions: [row('c')] }
-    ])
-  )
-  fireEvent.change(screen.getByLabelText('Project'), { target: { value: 'beta' } })
-  await mac.send({ ...frame('s2', [{ label: 'alpha', sessions: [row('a')] }]), generation: 4 })
-  expect(rowTexts()).toEqual(['Session a, Codex, Running, 2 min ago'])
-  expect(screen.queryByLabelText('Project')).toBeNull()
-
-  // Shared again: the old filter does not come back on its own.
-  await mac.send({
-    ...frame('s3', [
-      { label: 'alpha', sessions: [row('a')] },
-      { label: 'beta', sessions: [row('c')] }
-    ]),
-    generation: 5
-  })
-  expect(rowTexts()).toHaveLength(2)
-  expect(screen.getByLabelText<HTMLSelectElement>('Project').value).toBe('')
+  await mac.send(frame('s1', [{ label: 'alpha', sessions: [row('a')] }]))
+  const menu = screen.getByRole('button', { name: 'Show views' })
+  fireEvent.click(menu)
+  expect(menu.getAttribute('aria-expanded')).toBe('true')
+  expect(document.activeElement?.textContent).toBe('Active')
+  fireEvent.keyDown(document, { key: 'Escape' })
+  expect(menu.getAttribute('aria-expanded')).toBe('false')
+  expect(document.activeElement).toBe(menu)
+  fireEvent.click(menu)
+  choose(/^All Sessions/)
+  expect(menu.getAttribute('aria-expanded')).toBe('false')
+  expect(screen.getByText('All Sessions', { selector: '.view-title' })).toBeTruthy()
 })
 
 it('moves live ages on with the local clock between frames', async () => {
@@ -268,10 +267,10 @@ it('moves live ages on with the local clock between frames', async () => {
   render(<App fetch={mac.fetch} now={() => local} tickMs={20} />)
   await settle()
   await mac.send(frame('s1', [{ label: 'alpha', sessions: [row('a')] }]))
-  expect(rowTexts()).toEqual(['Session a, Codex, Running, 2 min ago'])
+  expect(rowTexts()).toEqual(['Session a, Codex · alpha, Running, 2 min ago'])
   local += 3 * 60_000
   await act(() => new Promise((done) => setTimeout(done, 50)))
-  expect(rowTexts()).toEqual(['Session a, Codex, Running, 5 min ago'])
+  expect(rowTexts()).toEqual(['Session a, Codex · alpha, Running, 5 min ago'])
 })
 
 it('keeps the list on a heartbeat and moves only the checked time', async () => {
@@ -287,7 +286,7 @@ it('keeps the list on a heartbeat and moves only the checked time', async () => 
     generation: first.generation,
     sentAt: T + 3 * 60_000
   })
-  expect(rowTexts()).toEqual(['Session a, Codex, Running, 5 min ago'])
+  expect(rowTexts()).toEqual(['Session a, Codex · alpha, Running, 5 min ago'])
 })
 
 it('clears the list and asks for a reload when a frame has another version', async () => {
@@ -302,19 +301,20 @@ it('clears the list and asks for a reload when a frame has another version', asy
   expect(screen.getByRole('button', { name: 'Reload' })).toBeTruthy()
 })
 
-it('says nothing needs you, and shows projects with no sessions', async () => {
+it('says nothing needs you in Active, and no sessions in an empty All Sessions', async () => {
   const mac = scripted()
   render(<App fetch={mac.fetch} />)
   await settle()
   await mac.send(
     frame('s1', [
-      { label: 'alpha', sessions: [row('a')] },
+      { label: 'alpha', sessions: [row('a', { activity: { state: 'idle' } })] },
       { label: 'beta', sessions: [] }
     ])
   )
   expect(screen.getByText('Nothing needs you right now.')).toBeTruthy()
-  const beta = screen.getByRole('region', { name: 'beta' })
-  expect(within(beta).getByText('No sessions.')).toBeTruthy()
+  await mac.send(frame('s2', [{ label: 'beta', sessions: [] }]))
+  choose(/^All Sessions/)
+  expect(screen.getByText('No sessions.')).toBeTruthy()
 })
 
 it('clears the list when access changes and the next request is not allowed', async () => {
