@@ -192,6 +192,41 @@ describe('recent-messages content', () => {
     )
   })
 
+  it('drops the path of every other form of link to a SKILL.md (TASK-034 F1)', () => {
+    const cases: [string, string][] = [
+      ['[$demo](/Users/sentinel/My Skills/demo/SKILL.md) now', '$demo now'],
+      ['[$demo](/Users/sentinel/demo/skill.md)', '$demo'],
+      ['[$demo](/Users/sentinel/demo/SKILL.md "title") x', '$demo x'],
+      ['[$demo](/Users/sentinel/(x)/demo/SKILL.md).', '$demo.'],
+      ['[$demo](/Users/sentinel/demo/SKILL.md#part)', '$demo'],
+      ['[$demo]( /Users/sentinel/demo/SKILL.md )', '$demo'],
+      ['[$demo] (/Users/sentinel/demo/SKILL.md)', '$demo'],
+      ['[demo skill](/Users/sentinel/demo/SKILL.md)', 'demo skill'],
+      ['[$demo](/Users/sentinel/demo/SKILL.md', '$demo'],
+      ['[$a](/p/a/SKILL.md) and [$b](/p/b/SKILL.md)', '$a and $b']
+    ]
+    for (const [text, expected] of cases) expect(cleanMessageText(text), text).toBe(expected)
+  })
+
+  it('leaves links that do not lead to a SKILL.md, even with one later on the line', () => {
+    for (const text of [
+      '[docs](https://example.com/README.md) then SKILL.md',
+      '[a](x) [b](y)\nSKILL.md',
+      'Write a SKILL.md file',
+      '[$x] is not a link (SKILL.md is a file name)'
+    ]) {
+      expect(cleanMessageText(text), text).toBe(text)
+    }
+  })
+
+  it('stays fast on link starts crowded around SKILL.md', () => {
+    const text = `${'[a]('.repeat(30_000)}SKILL.md ${'[b](x)y'.repeat(20_000)} SKILL.md`
+    const started = performance.now()
+    const cleaned = cleanMessageText(text)
+    expect(performance.now() - started).toBeLessThan(1_000)
+    expect(cleaned.length).toBeLessThan(text.length)
+  })
+
   it('removes control and bidi characters but keeps tab and newline', () => {
     expect(cleanMessageText('a\u0000b\u0007c\u001b[31md\u007fe\u0085f')).toBe('abc[31mdef')
     expect(cleanMessageText('x‮y⁦z‏؜!')).toBe('xyz!')

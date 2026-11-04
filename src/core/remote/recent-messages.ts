@@ -88,18 +88,47 @@ const CONTROLS = /(?![\t\n])\p{Cc}/gu
 const BIDI = /[؜‎‏‪-‮⁦-⁩]/g
 /** Lone surrogates cannot be serialized as UTF-8 and are never part of real text. */
 const LONE_SURROGATES = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g
+/** `[label](` or `[label] (`: a label of up to 256 characters without brackets or line break. */
+const LINK_START = /\[([^[\]\n]{1,256})\][ \t]*\(/g
 /**
- * `[$name](<path>/SKILL.md)` anywhere, also in code and quotes, so no skill path leaves the Mac.
- * The destination may be written in angle brackets.
+ * From just after the `(`: up to 1,024 characters on one line that reach `SKILL.md` in any case,
+ * then whatever follows it up to the closing `)` (fragment, title, spaces, `>`). A `)` followed by
+ * a space or the line end ends the link, so the search never runs into later text; any other `)`
+ * may be part of the path.
  */
-const SKILL_LINK =
-  /\[\$([a-zA-Z0-9][a-zA-Z0-9:_-]{0,127})\]\((?:<[^<>\n]*\/SKILL\.md>|[^\s()<>]*\/SKILL\.md)\)/g
+const SKILL_DESTINATION =
+  /(?:[^\n)]|\)(?![ \t\n]|$)){0,1024}?skill\.md(?:[^\n)]{0,256}\)|(?=[ \t\n)]|$))/iy
+const SKILL_FILE = /skill\.md/gi
+/** Furthest a destination may reach before its `SKILL.md`. */
+const SKILL_REACH = 1_024
+
+/**
+ * Every link to a `SKILL.md` becomes its label (`$name` for a skill mention), also in code and
+ * quotes and in forms Markdown would not render as a link, so no skill path leaves the Mac. Stays
+ * linear: a link start is tried only with a `SKILL.md` within reach, and a match consumes it.
+ */
+function stripSkillLinks(text: string): string {
+  const files = Array.from(text.matchAll(SKILL_FILE), (match) => match.index)
+  if (files.length === 0) return text
+  let result = ''
+  let copied = 0
+  let next = 0
+  LINK_START.lastIndex = 0
+  for (let start = LINK_START.exec(text); start; start = LINK_START.exec(text)) {
+    const from = LINK_START.lastIndex
+    while (next < files.length && files[next]! < from) next += 1
+    if (next === files.length) break
+    if (files[next]! - from > SKILL_REACH) continue
+    SKILL_DESTINATION.lastIndex = from
+    if (!SKILL_DESTINATION.test(text)) continue
+    result += text.slice(copied, start.index) + start[1]!
+    copied = SKILL_DESTINATION.lastIndex
+    LINK_START.lastIndex = copied
+  }
+  return result + text.slice(copied)
+}
 
 /** The Mac-side cleaning of protocol v2. Markdown is otherwise sent as written, and is untrusted. */
 export function cleanMessageText(text: string): string {
-  return text
-    .replace(LONE_SURROGATES, '')
-    .replace(CONTROLS, '')
-    .replace(BIDI, '')
-    .replace(SKILL_LINK, (_link, name: string) => `$${name}`)
+  return stripSkillLinks(text.replace(LONE_SURROGATES, '').replace(CONTROLS, '').replace(BIDI, ''))
 }
