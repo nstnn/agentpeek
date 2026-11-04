@@ -9,7 +9,7 @@ AgentPeek is a standalone macOS app built with Electron, TypeScript, and React. 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): process boundaries, IPC, sources, state, security, and fixture mode.
 - [`plan/agent-sessions/agent-sessions.md`](plan/agent-sessions/agent-sessions.md): Phase 1 requirements, constraints, and task cards, plus the observed formats of the tools' local files.
 - [`plan/agent-sessions/evidence/acceptance.md`](plan/agent-sessions/evidence/acceptance.md): Phase 1 acceptance results, build identity, and checks that still need evidence.
-- [`plan/remote-view/README.md`](plan/remote-view/README.md): Remote View plan (planned, not implemented), with its decision records, task cards, and evidence.
+- [`plan/remote-view/README.md`](plan/remote-view/README.md): Remote View plan (status-only beta implemented on `feat/remote-view`; recent messages not approved), with its decision records, task cards, evidence, and the M1 handoff.
 
 `docs/` and `plan/` are local and ignored by Git, so other checkouts may not have them.
 
@@ -18,7 +18,7 @@ AgentPeek is a standalone macOS app built with Electron, TypeScript, and React. 
 - Treat Codex and Claude Code data as read-only. Never write, rename, lock, or delete their files, and never change their configuration.
 - Read tool files only through the path allowlist. Never open `.key` files, `auth.json`, or other credential files. See the plan's CONSTRAINT-001.
 - Show conversation text only on screen. Never log or store it, never put it in fixtures, tests, or evidence, and never send it anywhere. AgentPeek makes no outbound network requests, and tests use synthetic data only.
-- The only network exception is the planned Remote View: an opt-in listener on 127.0.0.1, off by default, that only the user's own Tailscale login can reach. It may send approved status fields, and session titles only when the user turns that on, never message text. Read the approved decision in `docs/REQUIREMENTS.md` and `plan/remote-view/design/scope-privacy-decision.md` before changing it.
+- The only network exception is Remote View (status beta, see `README.md`): an opt-in listener on 127.0.0.1, off by default, that only the user's own Tailscale login can reach. It may send approved status fields, and session titles only when the user turns that on, never message text. Read the approved decision in `docs/REQUIREMENTS.md` and `plan/remote-view/design/scope-privacy-decision.md` before changing it.
 - Keep the Electron process boundary:
   - File and system access live in the main process.
   - The renderer runs sandboxed, with context isolation and without Node integration.

@@ -1,6 +1,6 @@
 # AgentPeek
 
-AgentPeek is a macOS app that shows what your local AI coding agents are doing. Open it to see which Codex and Claude Code sessions on your Mac are running, waiting for you, have a new reply, or failed. It only reads the tools' own local files: it never changes them, never stores conversation text, and makes no network requests.
+AgentPeek is a macOS app that shows what your local AI coding agents are doing. Open it to see which Codex and Claude Code sessions on your Mac are running, waiting for you, have a new reply, or failed. It only reads the tools' own local files: it never changes them, never stores conversation text, and makes no outbound network requests. The one network feature, [Remote View](#remote-view-status-beta), is off by default; when you turn it on, AgentPeek listens on `127.0.0.1` so your own devices can see session status through your Tailscale.
 
 AgentPeek is built with Electron, TypeScript, and React.
 
@@ -75,6 +75,83 @@ Drag the divider between visible columns to resize the sidebar, sessions list or
 conversation pane. Sizes stay within readable limits and are remembered until quit/reload.
 Double-click a divider to reset it. With a divider focused, Left/Right adjusts by 10 pixels
 (Shift: 40), Home/End reaches its limits, and Enter resets it. Escape cancels an ongoing resize.
+
+## Remote View (status beta)
+
+Remote View lets you check session status from your phone or another computer, using your own
+[Tailscale](https://tailscale.com/) network. It is a personal beta: one Mac, your own devices,
+and only the projects you pick. It is not a public release.
+
+**What it shows.** A read-only list of the sessions in the projects you share: tool, status
+(running, waiting, new reply, failed) and age, grouped under "Needs attention" and then by
+project folder name. Session titles appear only when you turn on **Share session titles**;
+otherwise rows are named `Session 1`, `Session 2`, … and the Mac's session detail shows the
+matching "Remote: Session N" line. The page never shows message text, folder paths, your login
+or the Mac address, and it cannot control the tools, pin, or mark anything read.
+
+**What it does not do.** AgentPeek makes no outbound requests and never runs, installs or
+configures Tailscale. It listens only on `127.0.0.1` and answers only requests that carry your
+Tailscale login and your Mac's `*.ts.net` address, as Tailscale Serve adds them. It has no
+background process: viewing works only while AgentPeek is open on an awake Mac. If AgentPeek was
+on when you quit, it turns Remote View back on when you open the app again.
+
+### Set up
+
+Do these steps yourself; Settings > Remote View > **Set up Tailscale** shows the same list.
+
+1. Install Tailscale on the Mac and on each device you want to view from, and sign in with the
+   same account everywhere. Turn on two-factor sign-in with your login provider.
+2. In the Tailscale admin console, turn on **Tailnet Lock**, so no new device can join without a
+   signature from one of yours.
+3. Give the Mac a neutral machine name (for example `mac-01`) **before** turning on HTTPS: the name
+   becomes public in certificate logs.
+4. In the admin console, turn on HTTPS certificates (DNS → HTTPS Certificates).
+5. In AgentPeek, open **Settings > Remote View**, enter your Tailscale login and the Mac's address
+   (`<machine>.<tailnet>.ts.net`), keep or change the port (default 47613), **Save**, add the
+   projects to share and turn Remote View on.
+6. In Terminal on the Mac, run the command that Settings shows and copies, for example:
+
+   ```bash
+   tailscale serve --bg --https=443 http://127.0.0.1:47613
+   ```
+
+   Never use `tailscale funnel` for this port: Funnel makes it public on the internet.
+
+7. On your phone, with Tailscale connected, open `https://<machine>.<tailnet>.ts.net/`.
+
+While Remote View is on, the sidebar shows **Remote View on**, and Settings shows how many viewer
+pages are open.
+
+### Browsers
+
+Checked: Safari on iPhone and Safari on macOS through Tailscale Serve, and headless Chrome against
+a simulated Serve. Other current browsers that support streamed `fetch` should work but have not
+been checked. The page keeps everything in memory only: no storage, cookies or caches. If you see
+a Tailscale error page instead of AgentPeek, AgentPeek is closed, or the Mac is asleep or offline.
+
+### Turn it off or remove a device
+
+- **Stop all remote viewing:** turn Remote View off in Settings. Open pages show "Remote View is
+  off" and the port closes. You can also run `tailscale serve reset`; either one alone stops
+  remote viewing. Local use of AgentPeek is unaffected.
+- **Stop sharing something:** remove a project, turn off Share session titles, or turn off a
+  source. Open pages update at once.
+- **Stop one device:** remove it from your tailnet in the Tailscale admin console, or change your
+  access controls (ACLs) so it cannot reach the Mac. Changing the allowed login in Settings ends
+  every open page.
+
+None of these takes back what a device already showed or what was copied from it.
+
+### Known limits
+
+Accepted with synthetic data in the built desktop app, and on the owner's own Tailscale with
+Safari on a Mac and an iPhone. Not yet observed: phone network loss, lock/unlock and Mac
+sleep/wake with a page open; a fresh load while AgentPeek is closed; refusal of an outside device
+or login through the real path; `tailscale serve reset` and device removal on the real path;
+VoiceOver; and the packaged app. Two reports await a recheck: titles staying visible on an open
+iPhone Safari page after Share session titles was turned off, and helper processes taking more
+than 5 seconds to exit after Quit. Any other process on the Mac can reach the loopback port and
+send the same headers that Serve adds.
 
 ## Requirements
 
@@ -178,16 +255,16 @@ still needed for acceptance evidence.
 
 AgentPeek follows Electron's process model. Only the main process touches files and the system; the window shows what the main process sends it.
 
-| Folder              | What runs there                                                                                                 | It may import                      |
-| ------------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| `src/main/*.ts`     | Electron main process: app lifecycle, window, menus                                                             | Electron, Node.js                  |
-| `src/main/sessions` | Reading and watching the tools' files, the sessions service, and saving AgentPeek's own state (plain Node.js)   | Node.js, but not Electron          |
-| `src/main/remote`   | Remote View: the opt-in loopback listener, its limits, settings, sharing policy, lifecycle, the dev preview     | Node.js, but not Electron          |
-| `src/preload`       | The bridge that exposes `window.agentpeek`                                                                      | Electron's `contextBridge`         |
-| `src/renderer`      | The React interface, in a sandboxed window, including Settings > Remote View                                    | React, but not Node.js or Electron |
-| `src/core`          | Pure logic shared by the other parts                                                                            | Nothing from Node.js or Electron   |
-| `src/shared`        | Types used on both sides of the bridge                                                                          | Nothing from Node.js or Electron   |
-| `remote/web`        | The Remote View page (in progress), a separate Vite build served by the listener to a browser on another device | React and `src/core` only          |
+| Folder              | What runs there                                                                                               | It may import                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `src/main/*.ts`     | Electron main process: app lifecycle, window, menus                                                           | Electron, Node.js                  |
+| `src/main/sessions` | Reading and watching the tools' files, the sessions service, and saving AgentPeek's own state (plain Node.js) | Node.js, but not Electron          |
+| `src/main/remote`   | Remote View: the opt-in loopback listener, its limits, settings, sharing policy, lifecycle, the dev preview   | Node.js, but not Electron          |
+| `src/preload`       | The bridge that exposes `window.agentpeek`                                                                    | Electron's `contextBridge`         |
+| `src/renderer`      | The React interface, in a sandboxed window, including Settings > Remote View                                  | React, but not Node.js or Electron |
+| `src/core`          | Pure logic shared by the other parts                                                                          | Nothing from Node.js or Electron   |
+| `src/shared`        | Types used on both sides of the bridge                                                                        | Nothing from Node.js or Electron   |
+| `remote/web`        | The Remote View page, a separate Vite build served by the listener to a browser on another device             | React and `src/core` only          |
 
 ESLint enforces the import rules. Tests sit next to the code they test, as `*.test.ts` or `*.test.tsx`. Renderer and Remote View page component tests use Testing Library in jsdom; source and main-process tests use Node.js.
 
