@@ -53,8 +53,12 @@ describe('Remote View settings', () => {
       'Recent messages only while Share recent messages is on: the latest 20 prompts and replies'
     )
     expect(leaves.textContent).toContain('Never sent: full conversation history, files')
+    expect(leaves.textContent).toContain('input or output, link targets, session IDs')
     expect(leaves.textContent).toContain(
-      'With Share recent messages off, no message or reply text is sent.'
+      'A file path leaves only as text written in a shared message'
+    )
+    expect(leaves.textContent).toContain(
+      'with Share recent messages off, no message or reply text is sent.'
     )
     const messages = within(f.section()).getByRole('switch', { name: 'Share recent messages' })
     expect(messages.getAttribute('aria-checked')).toBe('false')
@@ -285,7 +289,9 @@ describe('Remote View settings', () => {
     const hint = document.getElementById(messages.getAttribute('aria-describedby')!)!
     expect(hint.textContent).toContain('While this is on, conversation text leaves this Mac')
     expect(hint.textContent).toContain('latest 20 prompts and replies (up to 64 KB of text)')
-    expect(hint.textContent).toContain('Never full history, files, tool input or output, or paths.')
+    expect(hint.textContent).toContain(
+      'Never full history, files, tool input or output, or link targets; a path written in a message itself is sent as written.'
+    )
     expect(hint.textContent).toContain(
       'Turns off when you quit AgentPeek, turn Remote View off or change the connection settings.'
     )

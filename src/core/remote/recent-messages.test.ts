@@ -12,6 +12,9 @@ import { cleanMessageText, projectRecentMessages } from './recent-messages'
 
 // Protocol v2 budget and cleaning vectors (TASK-032). Synthetic text only.
 
+/** `RAW_TEXT_LIMIT` in recent-messages.ts: text is cut to this many characters before cleaning. */
+const RAW_LIMIT = 65_536 + 32_768
+
 const reply = (text: string, at = 1): SessionMessage => ({ kind: 'reply', text, at })
 const prompt = (text: string, at = 1): SessionMessage => ({ kind: 'prompt', text, at })
 
@@ -186,10 +189,7 @@ describe('recent-messages content', () => {
     ).toBe('Use $demo-skill now')
     expect(cleanMessageText('> [$a:b](</Users/sentinel/my skills/SKILL.md>)')).toBe('> $a:b')
     expect(cleanMessageText('`[$x](/Users/sentinel/SKILL.md)`')).toBe('`$x`')
-    // Ordinary links and plain text stay as written; Markdown is untrusted on the viewer.
-    expect(cleanMessageText('[docs](https://example.com) and $plain')).toBe(
-      '[docs](https://example.com) and $plain'
-    )
+    expect(cleanMessageText('```\n[$x](/Users/sentinel/SKILL.md)\n```')).toBe('```\n$x\n```')
   })
 
   it('drops the path of every other form of link to a SKILL.md (TASK-034 F1)', () => {
@@ -208,15 +208,164 @@ describe('recent-messages content', () => {
     for (const [text, expected] of cases) expect(cleanMessageText(text), text).toBe(expected)
   })
 
-  it('leaves links that do not lead to a SKILL.md, even with one later on the line', () => {
+  it('drops every link target outside code (TASK-035 S2)', () => {
+    const cases: [string, string][] = [
+      ['see [file](/Users/sentinel/a.ts:42) here', 'see file here'],
+      ['[docs](https://example.com) and $plain', 'docs and $plain'],
+      ['[docs](https://example.com/README.md) then SKILL.md', 'docs then SKILL.md'],
+      ['[a](x) [b](y)\nSKILL.md', 'a b\nSKILL.md'],
+      ['[a [b] c](/Users/sentinel/x)', 'a [b] c'],
+      ['[a\n b](/Users/sentinel/x)', 'a\n b'],
+      ['[a](\n/Users/sentinel/x)', 'a'],
+      ['[a](/Users/sentinel/x "t(") tail', 'a tail'],
+      ['![shot](/Users/sentinel/a.png)', '![shot]()'],
+      ['[x]: /Users/sentinel/a.md "title"', '[x]: <>'],
+      ['  [x]:\n/Users/sentinel/a.md', '  [x]:\n<>'],
+      [
+        '<a href="/Users/sentinel/a">t</a> <img src=/Users/sentinel/b>',
+        '<a href="">t</a> <img src="">'
+      ]
+    ]
+    for (const [text, expected] of cases) expect(cleanMessageText(text), text).toBe(expected)
+  })
+
+  it('drops targets that a misread fence, a list or a long URL would keep (TASK-035 N2-N6)', () => {
     for (const text of [
-      '[docs](https://example.com/README.md) then SKILL.md',
-      '[a](x) [b](y)\nSKILL.md',
+      '- ```js\n  code\n  ```\n[a](/Users/sentinel/x)',
+      '1. item\n    ```\n    code\n   ```\n[a](/Users/sentinel/x)',
+      '\t```\ncode\n\t```\n[a](/Users/sentinel/x)',
+      '```\nnever closed\n[a](/Users/sentinel/x)',
+      '- [d]: /Users/sentinel/d/SKILL.md',
+      '1. [d]: /Users/sentinel/x',
+      `[a](https://example.com/Users/sentinel?${'s'.repeat(5_000)})`,
+      '```\n[d]: /Users/sentinel/d/SKILL.md\n```',
+      '<img srcset="/Users/sentinel/a 2x"> <use xlink:href="/Users/sentinel/b">',
+      `<a href="/Users/sentinel/${'h'.repeat(5_000)}">x</a>`,
+      `<img src=/Users/sentinel/${'u'.repeat(5_000)}>`,
+      '<a title="t"href="/Users/sentinel/x">x</a>',
+      'see `[d]: /Users/sentinel/d/SKILL.md` here'
+    ]) {
+      expect(cleanMessageText(text), text).not.toContain('/Users/sentinel')
+    }
+  })
+
+  it('drops link targets in code too, as the owner chose (TASK-035 R3-1)', () => {
+    const cases: [string, string][] = [
+      ['`fns[key](arg)` and `[a](/Users/sentinel/b)`', '`fnskey` and `a`'],
+      ['```js\nhandlers[name](event)\n```', '```js\nhandlersname\n```'],
+      ['~~~\n[a](/Users/sentinel/b)\n~~~', '~~~\na\n~~~'],
+      ['```markdown\n    ```\n[a](/Users/sentinel/b)\n```', '```markdown\n    ```\na\n```']
+    ]
+    for (const [text, expected] of cases) expect(cleanMessageText(text), text).toBe(expected)
+  })
+
+  it('keeps text, footnotes, ordinary autolinks and code without links as written', () => {
+    for (const text of [
       'Write a SKILL.md file',
-      '[$x] is not a link (SKILL.md is a file name)'
+      '[$x] is not a link (SKILL.md is a file name)',
+      'see [1] (the first) and arr[0]',
+      '[^1]: a footnote',
+      '<https://example.com>',
+      'a path typed as text: /Users/sentinel/a.ts',
+      '```js\nconst a = b[0] + c(1)\n```'
     ]) {
       expect(cleanMessageText(text), text).toBe(text)
     }
+  })
+
+  it('drops the path of rarer links to a SKILL.md (TASK-035 S3)', () => {
+    for (const text of [
+      '[d]: /Users/sentinel/d/SKILL.md',
+      '<file:///Users/sentinel/d/SKILL.md>',
+      '<a href="/Users/sentinel/d/SKILL.md">d</a>',
+      '[$d](\n/Users/sentinel/d/SKILL.md)',
+      '[a [b]](/Users/sentinel/d/SKILL.md)',
+      `[${'x'.repeat(300)}](/Users/sentinel/d/SKILL.md)`,
+      `[$d](/Users/sentinel/${'d/'.repeat(600)}SKILL.md)`,
+      '[$d](/Users/sentinel/d/SKILL%2Emd)',
+      '[$d](/Users/sentinel/d/SKILL&#46;md)',
+      '[$d] (/Users/sentinel/d/SK\u200bILL.md)',
+      '`[$d] (/Users/sentinel/d/SKILL\\.md)`',
+      '[a\\]b](/Users/sentinel/d/SKILL.md)'
+    ]) {
+      expect(cleanMessageText(text), text).not.toContain('/Users/sentinel')
+    }
+  })
+
+  it('stays fast on crafted text (TASK-035 S1)', () => {
+    const size = 2 * 1024 * 1024
+    for (const piece of [
+      '[a](skill.mdZ',
+      '[a](',
+      '[a] (SKILL.md(',
+      '](',
+      '[',
+      '`'.repeat(7) + 'x',
+      '<a',
+      ' href="',
+      '[x]:\n',
+      '((((',
+      '`[a](skill.md(`'
+    ]) {
+      const text = piece.repeat(Math.ceil(size / piece.length))
+      const started = performance.now()
+      cleanMessageText(text)
+      projectRecentMessages(read(Array.from({ length: 20 }, () => reply(text))))
+      expect(performance.now() - started, piece).toBeLessThan(2_000)
+    }
+  })
+
+  it('cuts a long reply before cleaning, and only ever sends the newest one cut', () => {
+    const long = 'x'.repeat(3 * 1024 * 1024)
+    const result = projectRecentMessages(read([reply(long, 1), reply('short', 2)]))
+    expect(entries(result)).toEqual([{ kind: 'reply', text: 'short', at: 2, cut: false }])
+    expect(older(result)).toBe(true)
+    const newest = entries(projectRecentMessages(read([reply('short', 1), reply(long, 2)])))
+    expect(newest).toHaveLength(1)
+    expect(newest[0]).toMatchObject({ cut: true, at: 2 })
+    expect(textBytes(newest)).toBe(REMOTE_LIMITS.maxMessageTextBytes)
+    // Cleaning that shrinks a long reply below the budget still marks it cut.
+    const links = '[a](/Users/sentinel/x) '.repeat(10_000)
+    const shrunk = entries(projectRecentMessages(read([reply(links)])))
+    expect(shrunk[0]).toMatchObject({ cut: true })
+    expect(JSON.stringify(shrunk)).not.toContain('/Users/sentinel')
+  })
+
+  it('never sends part of a long or grouped link target that the cut split (TASK-035 R3-2)', () => {
+    for (const target of [
+      `/Users/sentinel/${'d/'.repeat(3_000)}file.ts`,
+      '/Users/sentinel/app/(group)/settings/(nested)/page.tsx'
+    ]) {
+      const link = `[a](${target})`
+      for (let offset = 1; offset <= link.length; offset += Math.max(1, link.length >> 6)) {
+        // Cleaning removes the bidi filler, so the cut link lands inside the 64 KiB budget.
+        const head = '\u202e'.repeat(RAW_LIMIT - 50_000 - offset) + 'x'.repeat(50_000)
+        const kept = entries(projectRecentMessages(read([reply(head + link + ' more')])))
+        expect(kept[0], `offset ${offset}`).toMatchObject({ cut: true })
+        expect(JSON.stringify(kept), `offset ${offset}`).not.toMatch(/\/Users|sentinel|settings/)
+      }
+    }
+  })
+
+  it('never sends part of a link target that the cut split (TASK-035 N1)', () => {
+    const link = '[a](/Users/sentinel/project/file.ts "title")'
+    for (let offset = 1; offset <= link.length; offset += 1) {
+      for (const filler of ['\u202e', 'b']) {
+        // Cleaning removes the bidi filler, so the kept text is far shorter than the cut.
+        const head = filler.repeat(RAW_LIMIT - 50_000 - offset) + 'x'.repeat(50_000)
+        const kept = entries(projectRecentMessages(read([reply(head + link + ' more')])))
+        expect(kept[0], `offset ${offset}`).toMatchObject({ cut: true })
+        expect(JSON.stringify(kept), `offset ${offset}`).not.toMatch(/\/Users|sentinel/)
+      }
+    }
+  })
+
+  it('sends a time a Date cannot hold as 0', () => {
+    expect(
+      entries(projectRecentMessages(read([reply('A', 8_640_000_000_000_001)])))[0]
+    ).toMatchObject({
+      at: 0
+    })
   })
 
   it('stays fast on link starts crowded around SKILL.md', () => {

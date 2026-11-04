@@ -344,6 +344,14 @@ describe('recent-messages policy changes during the read', () => {
     expect([reply.status, error(reply.body)]).toEqual([409, 'policy-changed'])
   })
 
+  it('sleep and wake during the read still gives policy-changed (TASK-035 C1)', async () => {
+    const reply = await racing((h) => {
+      h.listener.suspend()
+      h.listener.resume()
+    })
+    expect([reply.status, error(reply.body)]).toEqual([409, 'policy-changed'])
+  })
+
   it('a new snapshot that keeps the session and generation still answers', async () => {
     const gate = gatedReader()
     const h = await start(gate.reader)

@@ -541,8 +541,9 @@ export function RemoteViewSettings({
             <p id={`${id}-messages-hint`} className="settings-source-status">
               While this is on, conversation text leaves this Mac: a viewer page can show the latest
               20 prompts and replies (up to 64 KB of text) of a session in a shared project. Never
-              full history, files, tool input or output, or paths. Turns off when you quit
-              AgentPeek, turn Remote View off or change the connection settings.
+              full history, files, tool input or output, or link targets; a path written in a
+              message itself is sent as written. Turns off when you quit AgentPeek, turn Remote View
+              off or change the connection settings.
               {!listening && ' Turn on Remote View to use it.'}
             </p>
           </div>
@@ -579,9 +580,10 @@ export function RemoteViewSettings({
           <li>Whether each tool is connected, and when AgentPeek last read its files.</li>
         </ul>
         <p className="settings-source-status">
-          Never sent: full conversation history, files, tool names, input or output, file paths,
-          session IDs, tool versions, or sessions in folders you don&rsquo;t share. With Share
-          recent messages off, no message or reply text is sent.
+          Never sent: full conversation history, files, tool names, input or output, link targets,
+          session IDs, tool versions, or sessions in folders you don&rsquo;t share. A file path
+          leaves only as text written in a shared message; with Share recent messages off, no
+          message or reply text is sent.
         </p>
       </div>
 

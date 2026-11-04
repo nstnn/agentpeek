@@ -9,6 +9,7 @@ import {
   errorBody,
   isTailnetHostName,
   macNow,
+  MAX_TIME,
   reconnectDelayMs,
   REMOTE_ERROR_STATUS,
   REMOTE_LIMITS,
@@ -172,6 +173,31 @@ describe('recent messages (protocol v2)', () => {
       expect(decoded.ok ? 'ok' : decoded.error).toBe(vector.expected)
     })
   }
+
+  it('refuses a time a Date cannot hold, in messages and status (TASK-035 C3)', () => {
+    const entry = { kind: 'reply', text: 'Synthetic', at: MAX_TIME, cut: false }
+    const result = { state: 'messages', entries: [entry], older: false }
+    const message = (at: number) =>
+      decodeMessages(
+        JSON.stringify({
+          ...VALID_MESSAGES_RESPONSE,
+          result: { ...result, entries: [{ ...entry, at }] }
+        })
+      ).ok
+    expect(message(MAX_TIME)).toBe(true)
+    expect(message(MAX_TIME + 1)).toBe(false)
+    expect(message(Number.MAX_SAFE_INTEGER)).toBe(false)
+    const status = (observedAt: number) =>
+      decodeFrame(
+        'status',
+        JSON.stringify({
+          ...VALID_STATUS_FRAME,
+          status: { ...VALID_STATUS_FRAME.status, observedAt }
+        })
+      ).ok
+    expect(status(MAX_TIME)).toBe(true)
+    expect(status(MAX_TIME + 1)).toBe(false)
+  })
 
   it('names the route by the opaque ID', () => {
     expect(REMOTE_ROUTES.messages(VALID_MESSAGES_RESPONSE.session)).toBe(

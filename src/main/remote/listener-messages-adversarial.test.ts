@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   decodeMessages,
+  MAX_TIME,
   REMOTE_LIMITS,
   REMOTE_ROUTES,
   serializedTextBytes,
@@ -524,7 +525,7 @@ describe('truncation is measurable', () => {
         type: 'messages',
         session: mint(A),
         generation: Number.MAX_SAFE_INTEGER,
-        sentAt: Number.MAX_SAFE_INTEGER,
+        sentAt: MAX_TIME,
         result
       }
       const serialized = JSON.stringify(response)
