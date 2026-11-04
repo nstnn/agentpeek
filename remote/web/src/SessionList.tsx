@@ -12,9 +12,10 @@ import {
   type Row
 } from './status-view'
 
-// The read-only session list (TASK-018). Rows are text, not links or buttons: nothing here acts on
-// a session, and the filters are page state only, so viewing, filtering and switching projects
-// send nothing to the Mac. Row keys are the Mac's opaque session IDs.
+// The read-only session list (TASK-018). Rows are text: nothing here acts on a session, and the
+// filters are page state only, so viewing, filtering and switching projects send nothing to the
+// Mac. Row keys are the Mac's opaque session IDs. Only while the Mac shares recent messages
+// (TASK-033) is a row a button, and it only opens that session's recent messages on this page.
 
 export interface SessionListProps {
   data: ViewerData
@@ -24,6 +25,10 @@ export interface SessionListProps {
   checkedAt: number
   /** Data kept from before a drop; the header says "showing data from <time>". */
   dimmed?: boolean
+  /** Set while the Mac shares recent messages: rows become buttons that open them. */
+  onOpen?: (session: string) => void
+  /** The session whose recent messages are open. */
+  selected?: string | null
 }
 
 export function SessionList({
@@ -31,8 +36,11 @@ export function SessionList({
   filters,
   onFilters,
   checkedAt,
-  dimmed = false
+  dimmed = false,
+  onOpen,
+  selected = null
 }: SessionListProps) {
+  const rowProps = { checkedAt, onOpen, selected }
   const { status } = data.frame
   const view = statusView(status, filters)
   const filtered = view.filters.project !== null || view.filters.tool !== null
@@ -57,21 +65,11 @@ export function SessionList({
           <FilterBar view={view} onFilters={onFilters} />
           {!anyAttention && <p className="all-clear">Nothing needs you right now.</p>}
           {view.attention.length > 0 && (
-            <Group
-              title="Needs attention"
-              rows={view.attention}
-              checkedAt={checkedAt}
-              withProject
-            />
+            <Group title="Needs attention" rows={view.attention} {...rowProps} withProject />
           )}
           {view.projects.map((project) =>
             project.rows.length > 0 ? (
-              <Group
-                key={project.label}
-                title={project.label}
-                rows={project.rows}
-                checkedAt={checkedAt}
-              />
+              <Group key={project.label} title={project.label} rows={project.rows} {...rowProps} />
             ) : filtered ? null : (
               <section key={project.label} aria-label={project.label}>
                 <h2>{project.label}</h2>
@@ -153,15 +151,20 @@ function FilterBar({
   )
 }
 
+type RowProps = {
+  checkedAt: number
+  onOpen?: (session: string) => void
+  selected?: string | null
+}
+
 function Group({
   title,
   rows,
-  checkedAt,
-  withProject = false
-}: {
+  withProject = false,
+  ...rowProps
+}: RowProps & {
   title: string
   rows: Row[]
-  checkedAt: number
   withProject?: boolean
 }) {
   const headingId = useId()
@@ -170,12 +173,7 @@ function Group({
       <h2 id={headingId}>{title}</h2>
       <ul className="rows">
         {rows.map((row) => (
-          <SessionRow
-            key={row.session.id}
-            row={row}
-            checkedAt={checkedAt}
-            withProject={withProject}
-          />
+          <SessionRow key={row.session.id} row={row} withProject={withProject} {...rowProps} />
         ))}
       </ul>
     </section>
@@ -188,18 +186,19 @@ const Sep = () => <span className="visually-hidden">, </span>
 function SessionRow({
   row,
   checkedAt,
-  withProject
-}: {
+  withProject,
+  onOpen,
+  selected
+}: RowProps & {
   row: Row
-  checkedAt: number
   withProject: boolean
 }) {
   const time = rowTime(row, checkedAt)
   const meta = withProject
     ? `${toolName(row.session.tool)} · ${row.project}`
     : toolName(row.session.tool)
-  return (
-    <li className="row">
+  const content = (
+    <>
       <span className="row-title">{row.session.title}</span>
       <Sep />
       <span className="row-meta">{meta}</span>
@@ -213,6 +212,21 @@ function SessionRow({
           </time>
         </>
       )}
+    </>
+  )
+  if (!onOpen) return <li className="row">{content}</li>
+  const id = row.session.id
+  return (
+    <li className="row-item">
+      <button
+        type="button"
+        className="row row-button"
+        data-session={id}
+        aria-current={selected === id ? 'true' : undefined}
+        onClick={() => onOpen(id)}
+      >
+        {content}
+      </button>
     </li>
   )
 }

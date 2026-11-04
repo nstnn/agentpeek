@@ -239,3 +239,135 @@ select {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* Rows that open recent messages (TASK-033): the same layout as a text row, as a button. */
+.row-item {
+  list-style: none;
+}
+
+.row-button {
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-button[aria-current='true'] {
+  background: color-mix(in srgb, var(--line) 45%, transparent);
+}
+
+/* Under 960 px the detail takes the list's place; Back returns to it. */
+.split-list {
+  display: none;
+}
+
+.detail {
+  min-width: 0;
+  padding-bottom: 16px;
+}
+
+.detail h2:focus {
+  outline: none;
+}
+
+.back {
+  padding: 0 12px;
+}
+
+.messages {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.entry-meta,
+.entry-tools {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.entry-who {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.markdown {
+  min-width: 0;
+}
+
+.markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 8px;
+  background: color-mix(in srgb, var(--line) 35%, transparent);
+  border-radius: 4px;
+}
+
+.markdown code {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.875em;
+}
+
+.markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.markdown th,
+.markdown td {
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+}
+
+.markdown blockquote {
+  margin: 4px 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+}
+
+.md-heading {
+  font-weight: 600;
+}
+
+/* From 960 px the list stays on the left and the detail sits beside it. */
+@media (min-width: 960px) {
+  main.split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+
+  .split-list {
+    display: block;
+  }
+
+  .detail {
+    position: sticky;
+    top: 64px;
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
+  }
+
+  /* Beside the list the rows have half the width: back to the wrapped layout. */
+  main.split .row {
+    display: flex;
+    flex-wrap: wrap;
+  }
+}

@@ -379,7 +379,7 @@ function isEventStream(response: Response): boolean {
 }
 
 /** The typed code of an AgentPeek error reply, or null for anything else (such as Serve's 502). */
-async function errorCode(response: Response): Promise<RemoteErrorCode | null> {
+export async function errorCode(response: Response): Promise<RemoteErrorCode | null> {
   if (!(response.headers.get('content-type') ?? '').startsWith('application/json')) {
     void response.body?.cancel().catch(() => undefined)
     return null

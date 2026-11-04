@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium, type BrowserContext } from '@playwright/test'
 import { afterEach, describe, expect, it } from 'vitest'
+import type { RecentMessages } from '../../../src/core/session'
 import { createSnapshot } from '../../../src/core/snapshot'
 import { freePort, HOST, OWNER } from '../../../src/main/remote/http-test-support'
 import { startRemoteListener, type RemoteListener } from '../../../src/main/remote/listener'
@@ -36,7 +37,7 @@ async function filesBelow(folder: string): Promise<string[]> {
   return files.flat()
 }
 
-async function setup(probe = false) {
+async function setup(probe = false, messages?: RecentMessages) {
   const viewer = await loadViewerFiles(join(repo, 'out/remote-web'))
   if (!viewer.page || viewer.assets.size === 0) throw new Error('Build the viewer first.')
   const assets = new Map(viewer.assets)
@@ -72,7 +73,10 @@ async function setup(probe = false) {
       sharedWorkspaces: [workspace, '/Users/synthetic/projects/other-demo'],
       shareTitles: true
     }),
-    generation: () => 0
+    generation: () => 0,
+    ...(messages
+      ? { details: () => true, readMessages: () => Promise.resolve(structuredClone(messages)) }
+      : {})
   })
   if (!result.ok) throw new Error(result.error)
   listener = result.listener
@@ -299,6 +303,112 @@ describe('Remote View privacy in the production browser page', () => {
     expect(
       await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length)
     ).toBe(0)
+  })
+
+  it('shows hostile recent messages inertly: no script, no load, nothing kept after Back', async () => {
+    const MESSAGE = 'SENTINEL-MESSAGE'
+    const hostile = [
+      `${MESSAGE} **bold**`,
+      '<script>window.pwned = 1</script>',
+      '<img src="https://third-party.invalid/a.png" onerror="window.pwned = 2">',
+      '<iframe src="https://third-party.invalid/"></iframe>',
+      '<style>body { display: none }</style>',
+      '[link](https://third-party.invalid/l) [js](javascript:window.pwned=3)',
+      '![pixel](https://third-party.invalid/p.gif) ![local](/v2/status)',
+      '<https://third-party.invalid/auto>',
+      '<svg onload="window.pwned = 4"></svg>'
+    ].join('\n\n')
+    const { origin, profile, context } = await setup(false, {
+      kind: 'messages',
+      messages: [
+        { kind: 'prompt', text: `${MESSAGE} prompt`, at: 1 },
+        { kind: 'reply', text: hostile, at: 2 }
+      ],
+      hasOlder: false
+    })
+    const page = context.pages()[0]!
+    const requests: string[] = []
+    const foreign: string[] = []
+    const output: string[] = []
+    await context.route('**/*', (route) => {
+      requests.push(route.request().url())
+      if (new URL(route.request().url()).origin !== origin) {
+        foreign.push(route.request().url())
+        return route.abort()
+      }
+      return route.continue()
+    })
+    page.on('console', (message) => output.push(message.text()))
+    page.on('pageerror', (error) => output.push(error.message))
+    await page.addInitScript(() => {
+      const state = window as typeof window & { violations: string[] }
+      state.violations = []
+      document.addEventListener('securitypolicyviolation', (event) => {
+        state.violations.push(event.effectiveDirective)
+      })
+    })
+    await page.goto(origin)
+    await expect.poll(() => page.getByRole('status').textContent()).toBe('Live')
+    await page.getByRole('button', { name: new RegExp(TITLE.slice(0, 14)) }).click()
+    const detail = page.getByTestId('detail')
+    await expect.poll(() => detail.textContent()).toContain(`${MESSAGE} bold`)
+    expect(await detail.textContent()).toContain('<script>window.pwned = 1</script>')
+    expect(await detail.locator('a, img, script, iframe, style, svg, object, embed').count()).toBe(
+      0
+    )
+    expect(await page.evaluate(() => (window as { pwned?: number }).pwned)).toBeUndefined()
+    // Nothing tried to load: no request beyond the page, its assets, the status and one read.
+    expect(foreign).toEqual([])
+    expect(
+      await page.evaluate(() => (window as unknown as { violations: string[] }).violations)
+    ).toEqual([])
+    expect(
+      requests.every((url) => {
+        const path = new URL(url).pathname
+        return (
+          path === '/' ||
+          path === '/v2/status' ||
+          /^\/v2\/sessions\/[\w-]{22}\/messages$/.test(path) ||
+          /^\/assets\/[\w-]+\.(js|css)$/.test(path)
+        )
+      })
+    ).toBe(true)
+    expect(requests.filter((url) => url.endsWith('/messages'))).toHaveLength(1)
+
+    // Layout: under 960 px the detail replaces the list with no horizontal scroll; from 960 px
+    // the list stays beside it.
+    const layout = () =>
+      page.evaluate(() => ({
+        overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        listShown: getComputedStyle(document.querySelector('.split-list')!).display !== 'none'
+      }))
+    await page.setViewportSize({ width: 320, height: 640 })
+    expect(await layout()).toEqual({ overflow: false, listShown: false })
+    await page.screenshot({ path: join(repo, 'test-results/remote-detail-320.png') })
+    await page.setViewportSize({ width: 1024, height: 768 })
+    expect(await layout()).toEqual({ overflow: false, listShown: true })
+    await page.screenshot({ path: join(repo, 'test-results/remote-detail-1024.png') })
+
+    // Back returns to the list (the phone gesture), and the text leaves the page.
+    await page.goBack()
+    await expect.poll(() => detail.count()).toBe(0)
+    expect(await page.locator('body').innerText()).not.toContain(MESSAGE)
+    expect(new URL(page.url()).pathname + new URL(page.url()).search).toBe('/')
+    const kept = await page.evaluate(() => ({
+      local: localStorage.length,
+      session: sessionStorage.length,
+      history: JSON.stringify(history.state)
+    }))
+    expect(kept).toEqual({ local: 0, session: 0, history: 'null' })
+    expect(output.join('\n')).not.toContain(MESSAGE)
+    await context.close()
+    for (const file of await filesBelow(profile)) {
+      const bytes = await readFile(file)
+      expect(bytes.includes(Buffer.from(MESSAGE)), `message text on disk: ${file}`).toBe(false)
+      expect(bytes.includes(Buffer.from(MESSAGE, 'utf16le')), `message text on disk: ${file}`).toBe(
+        false
+      )
+    }
   })
 
   it('ships only the static production page and hashed assets without debug transport or build inputs', async () => {

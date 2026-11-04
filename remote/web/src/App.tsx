@@ -1,13 +1,22 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { macNow } from '../../../src/core/remote/protocol'
+import { macNow, type StatusFrame } from '../../../src/core/remote/protocol'
 import { createConnection, type Connection, type ViewerData, type ViewerState } from './connection'
+import { createDetails, type Details, type DetailState } from './details'
+import { SessionDetail } from './SessionDetail'
 import { SessionList } from './SessionList'
 import { NO_FILTERS, statusView, summaryText, type Filters } from './status-view'
 
 // The Remote View page that a browser on the owner's tailnet opens. TASK-017 owns the connection
 // entry: connecting, live, reconnecting, connection lost, too many pages, off, and the final
 // not-allowed, wrong-address and update-needed states, with the TASK-002 copy. TASK-018 owns the
-// read-only session list under it and the header summary.
+// read-only session list under it and the header summary. TASK-033 adds one session's recent
+// messages while the Mac shares them: beside the list from 960 px, in its place below that.
+//
+// Back: opening a detail adds one history entry whose state is a fixed marker (never a session ID
+// or text), so the phone's Back gesture returns to the list; Back from the list leaves the page.
+
+/** The only history state the page writes. */
+const DETAIL_MARKER = { agentpeek: 'detail' } as const
 
 export interface AppProps {
   /** Tests pass their own; the page uses the browser's. */
@@ -26,14 +35,25 @@ export function App({ fetch: fetchImpl, random, now = defaultNow, tickMs = TICK_
   const [state, setState] = useState<ViewerState>({ kind: 'connecting' })
   const [filters, setFilters] = useState<Filters>(NO_FILTERS)
   const connection = useRef<Connection | null>(null)
+  const [detail, setDetail] = useState<DetailState | null>(null)
+  const details = useRef<Details | null>(null)
+  /** Whether the open detail added a history entry that Back should consume. */
+  const pushed = useRef(false)
 
   useEffect(() => {
+    const createdDetails = createDetails({
+      fetch: fetchImpl ?? window.fetch.bind(window),
+      now,
+      onChange: setDetail
+    })
+    details.current = createdDetails
     const created = createConnection({
       fetch: fetchImpl ?? window.fetch.bind(window),
       random,
       now,
       onChange: (next) => {
         setState(next)
+        followConnection(createdDetails, next)
         // Project labels are session data too: when access ends and the data goes, so do the filters.
         if (!('data' in next) || next.data === null) setFilters(NO_FILTERS)
         // A filter on a project the Mac no longer shares goes too, so it cannot come back unasked.
@@ -58,9 +78,17 @@ export function App({ fetch: fetchImpl, random, now = defaultNow, tickMs = TICK_
     document.addEventListener('resume', visibility)
     window.addEventListener('pagehide', hide)
     window.addEventListener('pageshow', visibility)
+    // The phone's Back gesture, or the in-page Back after it called history.back().
+    const popped = () => {
+      pushed.current = false
+      createdDetails.close()
+    }
+    window.addEventListener('popstate', popped)
     if (document.hidden) created.suspend()
     else created.start()
     return () => {
+      window.removeEventListener('popstate', popped)
+      createdDetails.close()
       document.removeEventListener('visibilitychange', visibility)
       document.removeEventListener('freeze', hide)
       document.removeEventListener('resume', visibility)
@@ -80,12 +108,55 @@ export function App({ fetch: fetchImpl, random, now = defaultNow, tickMs = TICK_
 
   const data = 'data' in state ? state.data : null
 
+  // The detail closed itself (access ended): the entry it added goes too. Focus goes back to
+  // the row that opened it, when it is still there.
+  const openSession = detail?.session ?? null
+  const lastOpen = useRef<string | null>(null)
+  useEffect(() => {
+    if (openSession !== null) {
+      lastOpen.current = openSession
+      return
+    }
+    if (pushed.current) {
+      pushed.current = false
+      window.history.back()
+    }
+    const previous = lastOpen.current
+    lastOpen.current = null
+    if (previous !== null) {
+      document.querySelector<HTMLElement>(`button[data-session="${previous}"]`)?.focus()
+    }
+  }, [openSession])
+
+  const open = (session: string) => {
+    if (!pushed.current) {
+      window.history.pushState(DETAIL_MARKER, '')
+      pushed.current = true
+    }
+    details.current?.open(session)
+  }
+  const back = () => {
+    // popstate then closes the detail, so Back and the gesture behave the same.
+    if (pushed.current) window.history.back()
+    else details.current?.close()
+  }
+  const retryDetail = () => details.current?.retry()
+  const shown =
+    detail && data ? { ...findSession(data.frame, detail.session), view: detail.view } : null
+
   const retry = () => connection.current?.retryNow()
   // Ages use the Mac's clock: while live, the last frame's time plus the local time since it came
   // (protocol v1, time authority); kept data stays at its "showing data from" time.
   const checkedAt =
     data === null ? 0 : live ? macNow(data.lastSentAt, data.receivedAt, localNow) : data.lastSentAt
-  const list = { filters, onFilters: setFilters, checkedAt }
+  const list = {
+    filters,
+    onFilters: setFilters,
+    checkedAt,
+    // Rows open recent messages only while the Mac shares them and the stream is live.
+    onOpen: live && data?.frame.details ? open : undefined,
+    selected: detail?.session ?? null
+  }
   return (
     <>
       <header>
@@ -93,8 +164,17 @@ export function App({ fetch: fetchImpl, random, now = defaultNow, tickMs = TICK_
         <Pill state={state} />
         {data && <Summary data={data} dimmed={state.kind !== 'live'} />}
       </header>
-      <main>
-        <Body state={state} onRetry={retry} list={list} />
+      <main className={shown ? 'split' : undefined}>
+        {shown ? (
+          <>
+            <div className="split-list">
+              <Body state={state} onRetry={retry} list={list} />
+            </div>
+            <SessionDetail {...shown} onBack={back} onRetry={retryDetail} />
+          </>
+        ) : (
+          <Body state={state} onRetry={retry} list={list} />
+        )}
       </main>
     </>
   )
@@ -256,6 +336,29 @@ function Skeleton() {
       <div />
     </div>
   )
+}
+
+/** The detail follows the stream: live statuses rebind it, a drop pauses it, access end closes it. */
+function followConnection(details: Details, state: ViewerState): void {
+  switch (state.kind) {
+    case 'live':
+      return details.status(state.data.frame)
+    case 'reconnecting':
+    case 'lost':
+    case 'busy':
+      return details.pause()
+    default:
+      // connecting (after access-changed), off and every final state.
+      return details.close()
+  }
+}
+
+function findSession(frame: StatusFrame, id: string) {
+  for (const project of frame.status.projects) {
+    const session = project.sessions.find((row) => row.id === id)
+    if (session) return { session, project: project.label }
+  }
+  return { session: null, project: null }
 }
 
 function defaultNow(): number {
