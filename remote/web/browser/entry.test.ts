@@ -307,6 +307,26 @@ describe('Remote View connection entry in a browser', () => {
     expect(await kept(page)).toEqual(NOTHING_KEPT)
   })
 
+  it('keeps the sticky header above dimmed rows when a scrolled list loses its connection', async () => {
+    await startListener([SHARED], sessions(Array<string>(40).fill(SHARED)))
+    const page = await openPage({ width: 375, height: 500 })
+    await page.getByRole('heading', { level: 2, name: 'shared-demo' }).waitFor()
+    await page.mouse.wheel(0, 900)
+    await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(300)
+    await stopListener('shutdown')
+    await expect.poll(() => pill(page).textContent()).toBe('Connection lost')
+    // What is painted on top at points across the header must belong to the header, not a row.
+    const covered = await page.evaluate(() => {
+      const header = document.querySelector('header')!.getBoundingClientRect()
+      const y = header.top + header.height / 2
+      return [header.left + 4, header.left + header.width / 2, header.right - 4]
+        .map((x) => document.elementFromPoint(x, y))
+        .filter((hit) => !hit?.closest('header')).length
+    })
+    expect(covered).toBe(0)
+    await page.screenshot({ path: join(repo, 'test-results/remote-lost-scrolled-375.png') })
+  })
+
   it('Remote View turned off clears the list and reconnects when it is on again', async () => {
     await startListener()
     const page = await openPage()

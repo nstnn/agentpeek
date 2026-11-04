@@ -32,6 +32,8 @@ body {
 header {
   position: sticky;
   top: 0;
+  /* Dimmed rows (opacity) form their own layers; without this they paint over the header. */
+  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
