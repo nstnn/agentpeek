@@ -86,8 +86,9 @@ and only the projects you pick. It is not a public release.
 (running, waiting, new reply, failed) and age, grouped under "Needs attention" and then by
 project folder name. Session titles appear only when you turn on **Share session titles**;
 otherwise rows are named `Session 1`, `Session 2`, … and the Mac's session detail shows the
-matching "Remote: Session N" line. The page never shows message text, folder paths, your login
-or the Mac address, and it cannot control the tools, pin, or mark anything read.
+matching "Remote: Session N" line. Message text appears only while you turn on **Share recent
+messages** (see [Recent messages](#recent-messages-not-yet-accepted)). The page never shows folder
+paths, your login or the Mac address, and it cannot control the tools, pin, or mark anything read.
 
 **What it does not do.** AgentPeek makes no outbound requests and never runs, installs or
 configures Tailscale. It listens only on `127.0.0.1` and answers only requests that carry your
@@ -122,6 +123,31 @@ Do these steps yourself; Settings > Remote View > **Set up Tailscale** shows the
 While Remote View is on, the sidebar shows **Remote View on**, and Settings shows how many viewer
 pages are open.
 
+### Recent messages (not yet accepted)
+
+**Share recent messages** in Settings > Remote View lets a viewer page open one session and read
+its latest prompts and replies. It is off when AgentPeek opens, every time, and it can be on only
+while Remote View is on. It turns itself off when you quit, turn Remote View off or save a new
+connection. While it is on, conversation text leaves the Mac, and the sidebar shows **Remote View
+on / Messages shared**.
+
+- **What a page gets:** for the session it opens, at most the latest 20 prompts and replies and
+  at most 64 KB of text. Older entries are dropped first ("Only the latest messages are shown.")
+  and a long entry is cut ("Shortened to fit."). Tool calls show as a count only.
+- **What it never gets:** full history, files, tool input or output, skill content, or link
+  targets. A link shows as its text only. A path written in a message itself is sent as written.
+- **On the page:** with the switch on, session rows become buttons. Text is shown as plain,
+  inert formatting: nothing in it loads, runs or links anywhere. **Back to sessions** and the
+  browser or phone Back both return to the list. The page keeps the text in memory only, never
+  in storage, the address or history.
+- **When it stops:** turning the switch off, turning Remote View off, removing the project,
+  turning the source off, changing the allowed login, closing the page and quitting AgentPeek
+  each remove the text from open pages at once. Nothing takes back text a device already showed.
+
+This part is checked only with synthetic data on the Mac (built app and Chrome through a
+simulated Serve). It is not yet accepted for real use: the device checks listed under
+[Known limits](#known-limits) must pass on your own devices first.
+
 ### Browsers
 
 Checked: Safari on iPhone and Safari on macOS through Tailscale Serve, and headless Chrome against
@@ -151,7 +177,10 @@ or login through the real path; `tailscale serve reset` and device removal on th
 VoiceOver; and the packaged app. Two reports await a recheck: titles staying visible on an open
 iPhone Safari page after Share session titles was turned off, and helper processes taking more
 than 5 seconds to exit after Quit. Any other process on the Mac can reach the loopback port and
-send the same headers that Serve adds.
+send the same headers that Serve adds. Recent messages stay not accepted, and not for real use,
+until the device checks above (allowed-login change, `tailscale serve reset`, quit and reopen with
+the phone page open, phone lock/unlock and network loss, Mac sleep/wake, and the titles recheck)
+pass on your own devices; they have also not been tried on a phone or in Safari.
 
 ## Requirements
 
