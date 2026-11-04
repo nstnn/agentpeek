@@ -27,7 +27,7 @@ function firstStatus(port) {
       {
         host: '127.0.0.1',
         port,
-        path: '/v1/status',
+        path: '/v2/status',
         headers: { Host: HOST, 'Tailscale-User-Login': OWNER }
       },
       (res) => {

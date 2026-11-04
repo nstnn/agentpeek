@@ -125,10 +125,10 @@ describe('Remote View response privacy', () => {
       { headers: { ...OWNER_HEADERS, Origin: 'https://sentinel-origin.invalid' }, status: 403 },
       { method: 'POST', status: 405 },
       { headers: { ...OWNER_HEADERS, 'Content-Length': '1' }, status: 400 },
-      { path: '/v2/status', status: 404 },
+      { path: '/v3/status', status: 404 },
       { path: '/sentinel-target', status: 404 },
       { path: '/assets/missing-AbC12345.js', status: 404 },
-      { path: '/v1/status', status: 503 }
+      { path: '/v2/status', status: 503 }
     ]
     for (const options of cases) {
       const reply = await send(listener.port, options)

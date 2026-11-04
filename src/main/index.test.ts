@@ -316,14 +316,28 @@ describe('main process lifecycle', () => {
         folder: string
         viewerFolder: string
         snapshot: () => unknown
+        recentMessages: (key: unknown, limit: number) => Promise<unknown>
         onChange: (status: unknown) => void
       }
     ]
-    // The snapshot is all it gets: never the controller, the service's actions or system actions.
-    expect(Object.keys(options).sort()).toEqual(['folder', 'onChange', 'snapshot', 'viewerFolder'])
+    // The snapshot and the bounded message reader are all it gets: never the controller, the
+    // service's other actions or system actions.
+    expect(Object.keys(options).sort()).toEqual([
+      'folder',
+      'onChange',
+      'recentMessages',
+      'snapshot',
+      'viewerFolder'
+    ])
     expect(options.folder).toBe('/synthetic/state')
     expect(options.viewerFolder).toMatch(/remote-web$/)
     expect(options.snapshot()).toBe(s.service.snapshot())
+    const key = { tool: 'codex', id: 'synthetic' }
+    await options.recentMessages(key, 20)
+    expect(s.service.recentMessages).toHaveBeenCalledExactlyOnceWith(key, 20)
+    for (const action of ['markRead', 'setPinned', 'getSkill'] as const) {
+      expect(s.service[action], action).not.toHaveBeenCalled()
+    }
     expect(s.remoteView.open).toHaveBeenCalledOnce()
     // Each announced status reaches the window on its one fixed channel (TASK-042).
     await vi.waitFor(() => expect(s.ipcMain.handle).toHaveBeenCalled())

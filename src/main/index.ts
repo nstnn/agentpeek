@@ -166,6 +166,9 @@ if (!app.requestSingleInstanceLock()) {
         folder: paths.stateFolder,
         viewerFolder: join(__dirname, '../remote-web'),
         snapshot: () => service.snapshot(),
+        // Recent messages come only from the service's bounded reader, never the controller, so
+        // remote reading cannot select, mark read or pin anything.
+        recentMessages: (key, limit) => service.recentMessages(key, limit),
         // The sidebar label and Settings follow every change, viewer page counts included.
         onChange: (status) => send(IPC.remoteStatus, status)
       })

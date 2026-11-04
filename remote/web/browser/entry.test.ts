@@ -91,7 +91,7 @@ async function startServe(listenerPort: () => number): Promise<Serve> {
         outgoing.writeHead(reply.statusCode ?? 502, reply.headers)
         let buffer = ''
         reply.on('data', (chunk: Buffer) => {
-          if (incoming.url === '/v1/status') {
+          if (incoming.url === '/v2/status') {
             buffer += chunk.toString()
             let end: number
             while ((end = buffer.indexOf('\n\n')) >= 0) {
@@ -167,7 +167,7 @@ async function openPage(viewport?: { width: number; height: number }): Promise<P
 const loadedHistory = new WeakMap<Page, number>()
 
 const pill = (page: Page) => page.getByRole('status')
-const statusRequests = () => serve.requests.filter((path) => path === '/v1/status').length
+const statusRequests = () => serve.requests.filter((path) => path === '/v2/status').length
 
 /** Everything a browser could keep after the page: storage, cookies, caches, history. */
 async function kept(page: Page) {
@@ -426,7 +426,7 @@ describe('Remote View session list in a browser', () => {
     expect(await page.evaluate(() => location.pathname + location.search + location.hash)).toBe('/')
     expect(await kept(page)).toEqual(NOTHING_KEPT)
     const paths = serve.requests.map((path) => (path.startsWith('/assets/') ? '/assets/' : path))
-    expect([...new Set(paths)].sort()).toEqual(['/', '/assets/', '/v1/status'])
+    expect([...new Set(paths)].sort()).toEqual(['/', '/assets/', '/v2/status'])
     expect(statusRequests()).toBe(1)
   })
 })

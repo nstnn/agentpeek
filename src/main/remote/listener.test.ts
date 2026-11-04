@@ -153,11 +153,11 @@ describe('remote listener request checks', () => {
       [{ ...OWNER_HEADERS }, 'method-not-allowed', 405, 'HEAD'],
       [{ ...OWNER_HEADERS }, 'method-not-allowed', 405, 'OPTIONS']
     ]
-    for (const path of ['/v1/status', '/assets/index-AbC123.js']) {
+    for (const path of ['/v2/status', '/assets/index-AbC123.js']) {
       for (const [headers, error, status, method] of refusals) {
         const reply = await send(port, { path, headers, method })
         expect(reply.status, `${path} ${error}`).toBe(status)
-        if (method !== 'HEAD') expect(JSON.parse(reply.body)).toEqual({ v: 1, error })
+        if (method !== 'HEAD') expect(JSON.parse(reply.body)).toEqual({ v: 2, error })
         expect(reply.headers['content-type']).toBe('application/json')
         expect(reply.headers['cache-control']).toBe('no-store')
         expect(reply.headers.server).toBeUndefined()
@@ -203,10 +203,10 @@ describe('remote listener request checks', () => {
       ['/assets/missing-AbC123.js', 'not-found'],
       ['/assets/../index.html', 'not-found'],
       ['/?x=1', 'not-found'],
-      ['/v2/status', 'unsupported-version'],
+      ['/v3/status', 'unsupported-version'],
       ['/events', 'not-found']
     ] as const) {
-      expect(JSON.parse((await send(port, { path })).body)).toEqual({ v: 1, error })
+      expect(JSON.parse((await send(port, { path })).body)).toEqual({ v: 2, error })
     }
   })
 })
@@ -219,7 +219,7 @@ describe('remote listener status stream', () => {
     expect(viewer.response()!.headers['content-type']).toBe('text/event-stream; charset=utf-8')
     expect(viewer.response()!.headers['cache-control']).toBe('no-store')
     const [frame] = statuses(viewer.frames)
-    expect(frame).toMatchObject({ v: 1, generation: 0, observedAt: 1, sentAt: 1_000 })
+    expect(frame).toMatchObject({ v: 2, generation: 0, observedAt: 1, sentAt: 1_000 })
     expect(frame!.status.projects).toHaveLength(1)
     const [row] = frame!.status.projects[0]!.sessions
     expect(Object.keys(row!)).toEqual([...REMOTE_SESSION_FIELDS])
@@ -335,7 +335,7 @@ describe('remote listener status stream', () => {
     await expect.poll(() => viewer.frames.length).toBe(2)
     const [status, heartbeat] = viewer.frames as [StatusFrame, RemoteFrame]
     expect(heartbeat).toEqual({
-      v: 1,
+      v: 2,
       type: 'heartbeat',
       snapshotId: status.snapshotId,
       generation: 0,
@@ -348,10 +348,10 @@ describe('remote listener status stream', () => {
     const { port } = listener
     const open = Array.from({ length: REMOTE_LIMITS.maxStreams }, () => subscribe(port))
     await expect.poll(() => open.every((viewer) => viewer.frames.length === 1)).toBe(true)
-    const extra = await send(port, { path: '/v1/status' })
+    const extra = await send(port, { path: '/v2/status' })
     expect(extra.status).toBe(503)
     expect(extra.headers['retry-after']).toBe('5')
-    expect(JSON.parse(extra.body)).toEqual({ v: 1, error: 'busy' })
+    expect(JSON.parse(extra.body)).toEqual({ v: 2, error: 'busy' })
     open[0]!.disconnect()
     await expect.poll(() => listener.streamCount()).toBe(REMOTE_LIMITS.maxStreams - 1)
     const next = subscribe(port)
@@ -448,7 +448,7 @@ describe('remote listener close', () => {
     expect(Date.now() - started).toBeLessThan(500)
     await viewer.ended
     expect(viewer.frames.map((frame) => frame.type)).toEqual(['status', 'end'])
-    expect(viewer.frames[1]).toEqual({ v: 1, type: 'end', reason: 'remote-off' })
+    expect(viewer.frames[1]).toEqual({ v: 2, type: 'end', reason: 'remote-off' })
     expect(await accepts(listener.port)).toBe(false)
     expect(timers().length).toBe(before)
     await new Promise((done) => setTimeout(done, REMOTE_LIMITS.minStatusIntervalMs + 100))

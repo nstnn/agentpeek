@@ -102,7 +102,7 @@ const timers = () => process.getActiveResourcesInfo().filter((name) => name === 
 /** A typed refusal written by the listener, never Node's own text or an exception. */
 function expectTypedReply(reply: string, status: number, error: string) {
   expect(reply).toMatch(new RegExp(`^HTTP/1\\.1 ${status} `))
-  expect(reply).toContain(`{"v":1,"error":"${error}"}`)
+  expect(reply).toContain(`{"v":2,"error":"${error}"}`)
   expect(reply.toLowerCase()).toContain('cache-control: no-store')
   expect(reply.toLowerCase()).toContain('connection: close')
   expect(reply).not.toMatch(/HPE_|ERR_|Error|event:/)
@@ -127,11 +127,11 @@ describe('remote listener rate limit', () => {
     // The burst is spent: the owner, a stranger and the page all get `rate-limited`, not `busy`
     // or `not-allowed`, and nothing is built for them.
     for (const headers of [{ ...OWNER_HEADERS }, { Host: HOST }]) {
-      const reply = await send(port, { path: '/v1/status', headers })
+      const reply = await send(port, { path: '/v2/status', headers })
       expect(reply.status).toBe(429)
       expect(reply.headers['retry-after']).toBe(String(REMOTE_LIMITS.retryAfterSeconds))
       expect(reply.headers['cache-control']).toBe('no-store')
-      expect(JSON.parse(reply.body)).toEqual({ v: 1, error: 'rate-limited' })
+      expect(JSON.parse(reply.body)).toEqual({ v: 2, error: 'rate-limited' })
     }
     const page = await send(port)
     expect(page.status).toBe(429)
@@ -182,9 +182,9 @@ describe('remote listener checks under load', () => {
       [{ ...OWNER_HEADERS }, 'busy', 503]
     ]
     for (const [headers, error, status, method] of refusals) {
-      const reply = await send(port, { path: '/v1/status', headers, method })
+      const reply = await send(port, { path: '/v2/status', headers, method })
       expect(reply.status, error).toBe(status)
-      expect(JSON.parse(reply.body)).toEqual({ v: 1, error })
+      expect(JSON.parse(reply.body)).toEqual({ v: 2, error })
       expect(reply.body).not.toContain('event:')
     }
     expect(builds()).toBe(built)
@@ -225,7 +225,7 @@ describe('remote listener request size and time', () => {
     const pad = (bytes: number) => `X-Pad: ${'a'.repeat(bytes)}`
     const oversize = await exchange(
       port,
-      rawHead(['GET /v1/status HTTP/1.1', ...OWNER_LINES, pad(17 * 1024)])
+      rawHead(['GET /v2/status HTTP/1.1', ...OWNER_LINES, pad(17 * 1024)])
     )
     expectTypedReply(oversize.reply, 400, 'bad-request')
     expect(oversize.reply).toContain("Content-Security-Policy: default-src 'none'")
@@ -243,7 +243,7 @@ describe('remote listener request size and time', () => {
     )
     const noHost = await exchange(
       port,
-      rawHead(['GET /v1/status HTTP/1.1', `Tailscale-User-Login: ${OWNER}`])
+      rawHead(['GET /v2/status HTTP/1.1', `Tailscale-User-Login: ${OWNER}`])
     )
     expectTypedReply(noHost.reply, 421, 'bad-host')
     expect(builds()).toBe(0)
@@ -257,7 +257,7 @@ describe('remote listener request size and time', () => {
     socket.on('data', (chunk: string) => (reply += chunk))
     socket.on('error', () => undefined)
     const closed = new Promise((done) => socket.on('close', done))
-    socket.write(rawHead(['GET /v1/status HTTP/1.1', ...OWNER_LINES]))
+    socket.write(rawHead(['GET /v2/status HTTP/1.1', ...OWNER_LINES]))
     await expect.poll(() => reply).toContain('event: status')
     socket.write('BLAH /\r\n\r\n')
     await closed
@@ -273,20 +273,20 @@ describe('remote listener request size and time', () => {
     // Most of the declared body never comes; the reply and the close do not wait for it.
     const post = await exchange(
       port,
-      rawHead(['POST /v1/status HTTP/1.1', ...OWNER_LINES, declared]) + 'x'.repeat(1024)
+      rawHead(['POST /v2/status HTTP/1.1', ...OWNER_LINES, declared]) + 'x'.repeat(1024)
     )
     expectTypedReply(post.reply, 405, 'method-not-allowed')
     expect(post.reply).toContain('Allow: GET')
     expect(post.ms).toBeLessThan(1_000)
     const expecting = await exchange(
       port,
-      rawHead(['POST /v1/status HTTP/1.1', ...OWNER_LINES, declared, 'Expect: 100-continue'])
+      rawHead(['POST /v2/status HTTP/1.1', ...OWNER_LINES, declared, 'Expect: 100-continue'])
     )
     expect(expecting.reply).not.toContain('100 Continue')
     expectTypedReply(expecting.reply, 405, 'method-not-allowed')
     const body = await exchange(
       port,
-      rawHead(['GET /v1/status HTTP/1.1', ...OWNER_LINES, 'Content-Length: 5']) + 'hello'
+      rawHead(['GET /v2/status HTTP/1.1', ...OWNER_LINES, 'Content-Length: 5']) + 'hello'
     )
     expectTypedReply(body.reply, 400, 'bad-request')
     expect(builds()).toBe(0)
@@ -297,13 +297,13 @@ describe('remote listener request size and time', () => {
     const { port, builds } = await start({ now: () => clock })
     const unknown = 'Expect: synthetic-expectation'
     const stranger = rawHead([
-      'GET /v1/status HTTP/1.1',
+      'GET /v2/status HTTP/1.1',
       `Host: ${HOST}`,
       unknown,
       'Connection: close'
     ])
     expectTypedReply((await exchange(port, stranger)).reply, 403, 'not-allowed')
-    const post = rawHead(['POST /v1/status HTTP/1.1', ...OWNER_LINES, unknown, 'Connection: close'])
+    const post = rawHead(['POST /v2/status HTTP/1.1', ...OWNER_LINES, unknown, 'Connection: close'])
     expectTypedReply((await exchange(port, post)).reply, 405, 'method-not-allowed')
     // The owner's page is served as without the header, not refused with Node's bare 417.
     const page = rawHead(['GET / HTTP/1.1', ...OWNER_LINES, unknown, 'Connection: close'])
@@ -320,7 +320,7 @@ describe('remote listener request size and time', () => {
     const { port } = await start({ now: stepping(100), requestTimeoutMs: 300 })
     const [silent, partial] = await Promise.all([
       exchange(port, ''),
-      exchange(port, `GET /v1/status HTTP/1.1\r\nHost: ${HOST}\r\n`)
+      exchange(port, `GET /v2/status HTTP/1.1\r\nHost: ${HOST}\r\n`)
     ])
     for (const { reply, ms } of [silent, partial]) {
       expectTypedReply(reply, 400, 'bad-request')
@@ -377,7 +377,7 @@ describe('remote listener stream budget', () => {
     await expect.poll(() => fast.every((stream) => stream.frames.length === 1)).toBe(true)
     const stuck = connect({ host: '127.0.0.1', port })
     stuck.on('error', () => undefined)
-    stuck.write(rawHead(['GET /v1/status HTTP/1.1', ...OWNER_LINES]))
+    stuck.write(rawHead(['GET /v2/status HTTP/1.1', ...OWNER_LINES]))
     stuck.pause()
     await expect.poll(() => listener.streamCount()).toBe(5)
 

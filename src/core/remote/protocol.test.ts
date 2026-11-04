@@ -1,20 +1,27 @@
 import { describe, expect, it } from 'vitest'
 import {
+  bindMessages,
   checkRemoteRequest,
   decodeFrame,
+  decodeMessages,
+  detailsAllowed,
   encodeFrame,
   errorBody,
   isTailnetHostName,
   macNow,
   reconnectDelayMs,
+  REMOTE_ERROR_STATUS,
   REMOTE_LIMITS,
+  REMOTE_ROUTES,
   type StatusFrame
 } from './protocol'
 import {
   DECODE_VECTORS,
+  MESSAGES_DECODE_VECTORS,
   NARROWED_STATUS_FRAME,
   OWNER_HEADERS,
   REQUEST_VECTORS,
+  VALID_MESSAGES_RESPONSE,
   VALID_STATUS_FRAME,
   VECTOR_CONFIG
 } from './protocol-vectors'
@@ -56,7 +63,7 @@ describe('checkRemoteRequest vectors', () => {
   })
 
   it('writes error bodies with the code only', () => {
-    expect(JSON.parse(errorBody('not-allowed'))).toEqual({ v: 1, error: 'not-allowed' })
+    expect(JSON.parse(errorBody('not-allowed'))).toEqual({ v: 2, error: 'not-allowed' })
   })
 })
 
@@ -131,10 +138,10 @@ describe('encodeFrame budget', () => {
   })
 
   it('writes heartbeat and end frames as single events', () => {
-    const end = encodeFrame({ v: 1, type: 'end', reason: 'shutdown' })
+    const end = encodeFrame({ v: 2, type: 'end', reason: 'shutdown' })
     expect(end).toMatchObject({
       ok: true,
-      event: 'event: end\ndata: {"v":1,"type":"end","reason":"shutdown"}\n\n'
+      event: 'event: end\ndata: {"v":2,"type":"end","reason":"shutdown"}\n\n'
     })
   })
 })
@@ -155,5 +162,73 @@ describe('viewer timing', () => {
 
   it('needs three missed heartbeats before the stream counts as lost', () => {
     expect(REMOTE_LIMITS.silenceLimitMs).toBe(3 * REMOTE_LIMITS.heartbeatIntervalMs)
+  })
+})
+
+describe('recent messages (protocol v2)', () => {
+  for (const vector of MESSAGES_DECODE_VECTORS) {
+    it(`decodes: ${vector.name}`, () => {
+      const decoded = decodeMessages(vector.data)
+      expect(decoded.ok ? 'ok' : decoded.error).toBe(vector.expected)
+    })
+  }
+
+  it('names the route by the opaque ID', () => {
+    expect(REMOTE_ROUTES.messages(VALID_MESSAGES_RESPONSE.session)).toBe(
+      `/v2/sessions/${VALID_MESSAGES_RESPONSE.session}/messages`
+    )
+  })
+
+  it('writes the new error codes with the HTTP statuses of the contract', () => {
+    expect(REMOTE_ERROR_STATUS['details-off']).toBe(403)
+    expect(REMOTE_ERROR_STATUS['policy-changed']).toBe(409)
+    expect(REMOTE_ERROR_STATUS['not-found']).toBe(404)
+    expect(REMOTE_ERROR_STATUS.busy).toBe(503)
+    expect(JSON.parse(errorBody('details-off'))).toEqual({ v: 2, error: 'details-off' })
+  })
+
+  describe('binding', () => {
+    const shared: StatusFrame = { ...VALID_STATUS_FRAME, details: true }
+    const open = VALID_MESSAGES_RESPONSE.session
+
+    it('accepts a response for the open session under the current generation', () => {
+      expect(bindMessages(VALID_MESSAGES_RESPONSE, { openSession: open, lastStatus: shared })).toBe(
+        true
+      )
+      const newer = { ...VALID_MESSAGES_RESPONSE, generation: shared.generation + 1 }
+      expect(bindMessages(newer, { openSession: open, lastStatus: shared })).toBe(true)
+    })
+
+    it('discards a response for another session', () => {
+      const other = { ...VALID_MESSAGES_RESPONSE, session: 'BBBBBBBBBBBBBBBBBBBBBB' }
+      expect(bindMessages(other, { openSession: open, lastStatus: shared })).toBe(false)
+      expect(bindMessages(VALID_MESSAGES_RESPONSE, { openSession: null, lastStatus: shared })).toBe(
+        false
+      )
+    })
+
+    it('discards a response with a lower generation', () => {
+      const older = { ...VALID_MESSAGES_RESPONSE, generation: shared.generation - 1 }
+      expect(bindMessages(older, { openSession: open, lastStatus: shared })).toBe(false)
+    })
+
+    it('discards a response once the status stops sharing details or listing the session', () => {
+      expect(
+        bindMessages(VALID_MESSAGES_RESPONSE, { openSession: open, lastStatus: VALID_STATUS_FRAME })
+      ).toBe(false)
+      const removed = { ...NARROWED_STATUS_FRAME, details: true, generation: shared.generation }
+      expect(
+        bindMessages(VALID_MESSAGES_RESPONSE, { openSession: open, lastStatus: removed })
+      ).toBe(false)
+      expect(bindMessages(VALID_MESSAGES_RESPONSE, { openSession: open, lastStatus: null })).toBe(
+        false
+      )
+    })
+
+    it('clears an open detail on a status with details: false or without the session', () => {
+      expect(detailsAllowed(shared, open)).toBe(true)
+      expect(detailsAllowed(VALID_STATUS_FRAME, open)).toBe(false)
+      expect(detailsAllowed({ ...NARROWED_STATUS_FRAME, details: true }, open)).toBe(false)
+    })
   })
 })
