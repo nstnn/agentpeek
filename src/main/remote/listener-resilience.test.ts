@@ -124,7 +124,7 @@ describe('Remote View stream resilience', () => {
     expect(typeof expire).toBe('function')
     if (typeof expire === 'function') expire()
     await slow.ended
-    expect(slow.frames.at(-1)).toEqual({ v: 1, type: 'end', reason: 'slow-consumer' })
+    expect(slow.frames.at(-1)).toEqual({ v: 2, type: 'end', reason: 'slow-consumer' })
     expect(delay.response().writableEnded).toBe(true)
     h.publish(30)
     await expect.poll(() => fast.frames.length).toBe(2)
@@ -142,7 +142,7 @@ describe('Remote View stream resilience', () => {
     })
     h.publish(1, '😀'.repeat(160))
     await slow.ended
-    expect(slow.frames.at(-1)).toEqual({ v: 1, type: 'end', reason: 'slow-consumer' })
+    expect(slow.frames.at(-1)).toEqual({ v: 2, type: 'end', reason: 'slow-consumer' })
     expect(delay.writes()).toBe(1)
   })
 
@@ -156,7 +156,7 @@ describe('Remote View stream resilience', () => {
     await slow.ended
     delay.drain()
     expect(slow.frames.map((frame) => frame.type)).toEqual(['status', 'end'])
-    expect(slow.frames.at(-1)).toEqual({ v: 1, type: 'end', reason: 'access-changed' })
+    expect(slow.frames.at(-1)).toEqual({ v: 2, type: 'end', reason: 'access-changed' })
   })
 
   it('ends streams for sleep, rejects streams until wake, then starts with an unchanged full snapshot', async () => {
@@ -165,8 +165,8 @@ describe('Remote View stream resilience', () => {
     await expect.poll(() => old.frames.length).toBe(1)
     h.listener.suspend()
     await old.ended
-    expect(old.frames.at(-1)).toEqual({ v: 1, type: 'end', reason: 'shutdown' })
-    expect((await send(h.listener.port, { path: '/v1/status' })).status).toBe(503)
+    expect(old.frames.at(-1)).toEqual({ v: 2, type: 'end', reason: 'shutdown' })
+    expect((await send(h.listener.port, { path: '/v2/status' })).status).toBe(503)
     h.listener.resume()
     const fresh = subscribe(h.listener.port)
     await expect.poll(() => fresh.frames.length).toBe(1)

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { REMOTE_LIMITS, type RemoteFrame, type StatusFrame } from '../../core/remote/protocol'
-import type { Session } from '../../core/session'
+import type { RecentMessages, Session } from '../../core/session'
 import type { RemoteListener, RemoteListenerStart } from './listener'
 import { createSnapshot, type SessionsSnapshot } from '../../core/snapshot'
 import { testSession } from '../test-support'
@@ -29,7 +29,8 @@ const views: RemoteView[] = []
 async function setup(
   saved?: object,
   current: () => SessionsSnapshot = () => snapshot,
-  onChange?: RemoteViewOptions['onChange']
+  onChange?: RemoteViewOptions['onChange'],
+  extra: Partial<RemoteViewOptions> = {}
 ) {
   const folder = await mkdtemp(join(tmpdir(), 'agentpeek-remote-view-'))
   folders.push(folder)
@@ -51,7 +52,8 @@ async function setup(
     folder,
     viewerFolder: join(folder, 'no-viewer-build'),
     snapshot: current,
-    onChange
+    onChange,
+    ...extra
   })
   views.push(view)
   await view.open()
@@ -177,7 +179,7 @@ describe('Remote View turning off and access changes', () => {
     expect(view.status()).toMatchObject({ state: 'on', streams: 1 })
     expect(await view.disable()).toEqual({ ok: true })
     await viewer.ended
-    expect(viewer.frames.at(-1)).toEqual({ v: 1, type: 'end', reason: 'remote-off' })
+    expect(viewer.frames.at(-1)).toEqual({ v: 2, type: 'end', reason: 'remote-off' })
     expect(await accepts(port)).toBe(false)
     expect(await savedFile(folder)).toMatchObject({ enabled: false })
     expect(view.status()).toMatchObject({ state: 'off', startError: null })
@@ -190,7 +192,7 @@ describe('Remote View turning off and access changes', () => {
     await chmod(folder, 0o500)
     expect(await view.disable()).toEqual({ ok: false, error: 'save-failed' })
     await viewer.ended
-    expect(viewer.frames.at(-1)).toEqual({ v: 1, type: 'end', reason: 'remote-off' })
+    expect(viewer.frames.at(-1)).toEqual({ v: 2, type: 'end', reason: 'remote-off' })
     expect(await accepts(port)).toBe(false)
     expect(view.status()).toMatchObject({ state: 'off' })
     expect(await savedFile(folder)).toMatchObject({ enabled: true })
@@ -205,8 +207,8 @@ describe('Remote View turning off and access changes', () => {
       ok: true
     })
     await first.ended
-    expect(first.frames.at(-1)).toEqual({ v: 1, type: 'end', reason: 'access-changed' })
-    expect((await send(port, { path: '/v1/status' })).status).toBe(403)
+    expect(first.frames.at(-1)).toEqual({ v: 2, type: 'end', reason: 'access-changed' })
+    expect((await send(port, { path: '/v2/status' })).status).toBe(403)
     const second = subscribe(port, { ...OWNER_HEADERS, 'Tailscale-User-Login': newLogin })
     await expect.poll(() => second.frames.length).toBe(1)
     const id = (frame: unknown) => (frame as StatusFrame).status.projects[0]!.sessions[0]!.id
@@ -231,7 +233,7 @@ describe('Remote View quit', () => {
     await expect.poll(() => viewer.frames.length).toBe(1)
     await view.close()
     await viewer.ended
-    expect(viewer.frames.at(-1)).toEqual({ v: 1, type: 'end', reason: 'shutdown' })
+    expect(viewer.frames.at(-1)).toEqual({ v: 2, type: 'end', reason: 'shutdown' })
     expect(await accepts(port)).toBe(false)
     expect(await view.enable()).toEqual({ ok: false, error: 'cancelled' })
 
@@ -496,7 +498,7 @@ describe('Remote View access changes during a pending send', () => {
     await viewer.ended
     await wait(REMOTE_LIMITS.minStatusIntervalMs + 100)
     expect(viewer.frames.map((frame) => frame.type)).toEqual(['status', 'end'])
-    expect(viewer.frames[1]).toEqual({ v: 1, type: 'end', reason: 'remote-off' })
+    expect(viewer.frames[1]).toEqual({ v: 2, type: 'end', reason: 'remote-off' })
     expect(await accepts(port)).toBe(false)
   })
 
@@ -520,9 +522,9 @@ describe('Remote View access changes during a pending send', () => {
     await viewer.ended
     await wait(REMOTE_LIMITS.minStatusIntervalMs + 100)
     expect(viewer.frames.map((frame) => frame.type)).toEqual(['status', 'end'])
-    expect(viewer.frames[1]).toEqual({ v: 1, type: 'end', reason: 'access-changed' })
+    expect(viewer.frames[1]).toEqual({ v: 2, type: 'end', reason: 'access-changed' })
     expect(await savedFile(folder)).toMatchObject({ ownerLogin: NEW_LOGIN })
-    expect((await send(port, { path: '/v1/status' })).status).toBe(403)
+    expect((await send(port, { path: '/v2/status' })).status).toBe(403)
     expect(view.status()).toMatchObject({ state: 'on', settings: { ownerLogin: NEW_LOGIN } })
   })
 
@@ -550,11 +552,11 @@ describe('Remote View access changes during a pending send', () => {
       error: 'save-failed'
     })
     await viewer.ended
-    expect(viewer.frames.at(-1)).toEqual({ v: 1, type: 'end', reason: 'access-changed' })
+    expect(viewer.frames.at(-1)).toEqual({ v: 2, type: 'end', reason: 'access-changed' })
     expect(view.status()).toMatchObject({ state: 'on', settings: { ownerLogin: OWNER } })
     expect(await savedFile(folder)).toMatchObject({ ownerLogin: OWNER })
     const refused = await send(port, {
-      path: '/v1/status',
+      path: '/v2/status',
       headers: { ...OWNER_HEADERS, 'Tailscale-User-Login': NEW_LOGIN }
     })
     expect(refused.status).toBe(403)
@@ -570,13 +572,13 @@ it('retains sleep state across enabling and requires a new full status after wak
   const { view, port } = await setup({ enabled: false })
   view.suspend()
   expect(await view.enable()).toEqual({ ok: true })
-  expect((await send(port, { path: '/v1/status' })).status).toBe(503)
+  expect((await send(port, { path: '/v2/status' })).status).toBe(503)
   view.resume()
   const first = subscribe(port)
   await expect.poll(() => first.frames.length).toBe(1)
   view.suspend()
   await first.ended
-  expect(first.frames.at(-1)).toEqual({ v: 1, type: 'end', reason: 'shutdown' })
+  expect(first.frames.at(-1)).toEqual({ v: 2, type: 'end', reason: 'shutdown' })
   view.resume()
   const second = subscribe(port)
   await expect.poll(() => second.frames.length).toBe(1)
@@ -841,3 +843,102 @@ describe('Remote View desktop status', () => {
     expect(view.aliasFor(key)).toBeNull()
   })
 })
+
+describe('Remote View recent-messages policy (TASK-032)', () => {
+  const MESSAGES: RecentMessages = {
+    kind: 'messages',
+    messages: [{ kind: 'reply', text: 'Synthetic reply', at: 3 }],
+    hasOlder: false
+  }
+  const opaqueId = (frame: RemoteFrame) =>
+    (frame as StatusFrame).status.projects[0]!.sessions[0]!.id
+
+  async function on() {
+    const recentMessages = vi.fn(() => Promise.resolve(MESSAGES))
+    const h = await setup({ enabled: true }, undefined, undefined, { recentMessages })
+    return { ...h, recentMessages }
+  }
+
+  it('starts off at every launch, even when Remote View resumes', async () => {
+    const { port, view, recentMessages } = await on()
+    expect(view.status()).toMatchObject({ state: 'on', resumed: true })
+    expect(view.sharesMessages()).toBe(false)
+    const viewer = subscribe(port)
+    await expect.poll(() => viewer.frames.length).toBe(1)
+    expect(viewer.frames[0]).toMatchObject({ type: 'status', details: false })
+    const reply = await send(port, { path: `/v2/sessions/${opaqueId(viewer.frames[0]!)}/messages` })
+    expect(JSON.parse(reply.body)).toEqual({ v: 2, error: 'details-off' })
+    expect(recentMessages).not.toHaveBeenCalled()
+    viewer.disconnect()
+  })
+
+  it('bumps the generation and sends a full status on each change, and is never saved', async () => {
+    const { folder, port, view, recentMessages } = await on()
+    const before = await readFile(join(folder, REMOTE_SETTINGS_FILE), 'utf8')
+    const viewer = subscribe(port)
+    await expect.poll(() => viewer.frames.length).toBe(1)
+    const first = viewer.frames[0] as StatusFrame
+
+    expect(view.setShareMessages(true)).toEqual({ ok: true })
+    expect(view.sharesMessages()).toBe(true)
+    await expect.poll(() => viewer.frames.length).toBe(2)
+    expect(viewer.frames[1]).toMatchObject({ details: true, generation: first.generation + 1 })
+    const reply = await send(port, { path: `/v2/sessions/${opaqueId(first)}/messages` })
+    expect(JSON.parse(reply.body)).toMatchObject({
+      type: 'messages',
+      generation: first.generation + 1,
+      result: { state: 'messages', entries: [{ kind: 'reply', text: 'Synthetic reply' }] }
+    })
+    expect(recentMessages).toHaveBeenCalledOnce()
+
+    expect(view.setShareMessages(false)).toEqual({ ok: true })
+    await expect.poll(() => viewer.frames.length).toBe(3)
+    expect(viewer.frames[2]).toMatchObject({ details: false, generation: first.generation + 2 })
+    // Neither change touched the settings file.
+    await settle()
+    expect(await readFile(join(folder, REMOTE_SETTINGS_FILE), 'utf8')).toBe(before)
+    expect(before).not.toMatch(/message|details/i)
+    viewer.disconnect()
+  })
+
+  it('can be turned on only while listening, with a boolean', async () => {
+    const { view } = await setup()
+    expect(view.setShareMessages(true)).toEqual({ ok: false, error: 'not-listening' })
+    expect(view.setShareMessages(false)).toEqual({ ok: true })
+    const running = await on()
+    expect(running.view.setShareMessages('yes')).toEqual({ ok: false, error: 'invalid' })
+    expect(running.view.sharesMessages()).toBe(false)
+  })
+
+  it('turns off with Remote View and stays off after turning on again', async () => {
+    const { view } = await on()
+    view.setShareMessages(true)
+    await view.disable()
+    expect(view.sharesMessages()).toBe(false)
+    expect(await view.enable()).toEqual({ ok: true })
+    expect(view.sharesMessages()).toBe(false)
+  })
+
+  it('turns off on a login change, which rotates the opaque IDs', async () => {
+    const { port, view } = await on()
+    view.setShareMessages(true)
+    const result = await view.saveConnection({
+      ...connection(port),
+      ownerLogin: 'other@example.com'
+    })
+    expect(result).toEqual({ ok: true })
+    expect(view.status()).toMatchObject({ state: 'on' })
+    expect(view.sharesMessages()).toBe(false)
+  })
+
+  it('turns off at quit', async () => {
+    const { view } = await on()
+    view.setShareMessages(true)
+    await view.close()
+    expect(view.sharesMessages()).toBe(false)
+    expect(view.setShareMessages(true)).toEqual({ ok: false, error: 'cancelled' })
+  })
+})
+
+/** Lets queued saves run, so a test can see that none was queued. */
+const settle = () => new Promise((done) => setTimeout(done, 20))

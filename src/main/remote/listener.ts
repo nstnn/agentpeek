@@ -10,12 +10,18 @@ import {
   REMOTE_LIMITS,
   type EndReason,
   type RemoteAccessConfig,
+  type MessagesResponse,
+  type MessagesResult,
   type RemoteErrorCode,
   type RemoteFrame
 } from '../../core/remote/protocol'
+import {
+  projectRecentMessages,
+  REMOTE_MESSAGES_READ_LIMIT
+} from '../../core/remote/recent-messages'
 import type { RemoteSharing } from '../../core/remote/share-policy'
 import { projectRemoteStatus, type RemoteStatus } from '../../core/remote/status-projection'
-import type { SessionKey } from '../../core/session'
+import type { RecentMessages, SessionKey } from '../../core/session'
 import type { SessionsSnapshot } from '../../core/snapshot'
 import { createRateLimiter } from './rate-limit'
 import { createSessionIdMinter } from './session-ids'
@@ -30,6 +36,15 @@ import type { ViewerFiles } from './viewer-files'
 // status projected under an older policy never leaves. Resource limits (TASK-022) come before any
 // work for a request: a global rate limit, request size and time, the stream cap, and a byte budget
 // per stream.
+//
+// Recent messages (TASK-032, protocol v2): `/v2/sessions/<id>/messages` answers one session's
+// latest entries while "Share recent messages" is on. The opaque ID is resolved only against this
+// listener's own projection, so an unshared, source-off, guessed or rotated ID is `not-found`. The
+// text comes from the existing bounded service reader (`readMessages`), never from the desktop
+// controller, and nothing is marked read. After the read, and just before writing, the switch, the
+// session's membership, the source and the generation are checked again; the login and Mac address
+// are fixed for the life of a listener, and a change to them closes it, which answers every read in
+// flight with an error. Any change drops the text unsent.
 
 const LOOPBACK = '127.0.0.1'
 
@@ -65,6 +80,10 @@ export interface RemoteListenerOptions {
   sharing: () => RemoteSharing
   /** The sharing-policy generation; it only grows. */
   generation: () => number
+  /** "Share recent messages": the status `details` field and the recent-messages route. */
+  details?: () => boolean
+  /** The existing bounded service reader. Called only for a session in the projected status. */
+  readMessages?: (key: SessionKey, limit: number) => Promise<RecentMessages>
   /** The Mac clock: frame times, status coalescing and the request rate limit. */
   now?: () => number
   /** Tests shorten it; otherwise `REMOTE_REQUEST_TIMEOUT_MS`. */
@@ -151,7 +170,10 @@ const ERROR_PAGE_TEXT: Record<RemoteErrorCode, string> = {
   'unsupported-version': 'AgentPeek on the Mac was updated. Reload this page.',
   'method-not-allowed': 'This request is not supported.',
   'bad-request': 'This request is not supported.',
-  'not-found': 'This page does not exist.'
+  'not-found': 'This page does not exist.',
+  // The page route never answers these two; the copy is only here for completeness.
+  'details-off': 'This request is not supported.',
+  'policy-changed': 'This request is not supported.'
 }
 
 const errorPage = (text: string) => `<!doctype html>
@@ -187,10 +209,13 @@ interface Current {
   snapshot: SessionsSnapshot
   sharing: RemoteSharing
   generation: number
+  details: boolean
   /** The generation and the status without `observedAt`: what a viewer can tell apart. */
   visible: string
   snapshotId: string
   status: RemoteStatus
+  /** Opaque ID to session key, for exactly the sessions in `status`. Never sent. */
+  sessions: ReadonlyMap<string, SessionKey>
 }
 
 /**
@@ -212,6 +237,9 @@ export async function startRemoteListener(
     now
   })
   const streams = new Set<Stream>()
+  /** Recent-message responses waiting for their read; `close` answers them without text. */
+  const detailReads = new Set<ServerResponse>()
+  const details = options.details ?? (() => false)
   /** The latest response on each connection, so a parse error never writes into an open one. */
   const responses = new WeakMap<object, ServerResponse>()
   let latest = options.snapshot()
@@ -224,26 +252,53 @@ export async function startRemoteListener(
   function status(): Current {
     const generation = options.generation()
     const sharing = options.sharing()
+    const shared = details()
     if (
       current?.snapshot === latest &&
       current.sharing === sharing &&
-      current.generation === generation
+      current.generation === generation &&
+      current.details === shared
     ) {
       return current
     }
     const projected = projectRemoteStatus(latest, { ...sharing, mintId })
+    const sessions = projectedSessions(projected)
     // Every desktop snapshot has a new time, also one made for activity in a folder that is not
     // shared. A status that differs only in that time is the same status: it keeps its ID and its
     // `observedAt` (the last visible change) and is not sent again, so unshared activity stays
     // invisible.
-    const visible = `${generation}\n${JSON.stringify({ ...projected, observedAt: 0 })}`
+    const visible = `${generation}\n${shared}\n${JSON.stringify({ ...projected, observedAt: 0 })}`
     if (current?.visible === visible) {
-      current = { ...current, snapshot: latest, sharing }
+      current = { ...current, snapshot: latest, sharing, sessions }
       return current
     }
     const snapshotId = createHash('sha256').update(visible).digest('base64url').slice(0, 22)
-    current = { snapshot: latest, sharing, generation, visible, snapshotId, status: projected }
+    current = {
+      snapshot: latest,
+      sharing,
+      generation,
+      details: shared,
+      visible,
+      snapshotId,
+      status: projected,
+      sessions
+    }
     return current
+  }
+
+  /** The keys behind the projected rows, by minting each listed session's ID again. */
+  function projectedSessions(projected: RemoteStatus): Map<string, SessionKey> {
+    const listed = new Set(
+      projected.projects.flatMap((project) => project.sessions.map((s) => s.id))
+    )
+    const keys = new Map<string, SessionKey>()
+    if (listed.size === 0) return keys
+    for (const session of latest.sessions) {
+      const key = { tool: session.key.tool, id: session.key.id }
+      const id = mintId(key)
+      if (listed.has(id)) keys.set(id, key)
+    }
+    return keys
   }
 
   function write(stream: Stream, frame: RemoteFrame): boolean {
@@ -293,7 +348,7 @@ export async function startRemoteListener(
     stream.timer = undefined
     if (closing || suspended) return
     stream.pending = false
-    const { snapshotId, generation, status: body } = status()
+    const { snapshotId, generation, details: shared, status: body } = status()
     if (snapshotId === stream.snapshotId) return
     const sentAt = now()
     const frame: RemoteFrame = {
@@ -303,6 +358,7 @@ export async function startRemoteListener(
       generation,
       observedAt: body.observedAt,
       sentAt,
+      details: shared,
       status: body
     }
     if (!write(stream, frame)) return
@@ -416,6 +472,62 @@ export async function startRemoteListener(
     heartbeat ??= setInterval(beat, REMOTE_LIMITS.heartbeatIntervalMs)
   }
 
+  /** Checks 8 to 12 of protocol v2, after the shared request checks. */
+  async function serveMessages(response: ServerResponse, session: string): Promise<void> {
+    if (suspended || detailReads.size >= REMOTE_LIMITS.maxDetailRequests) {
+      return refuse(response, 'busy', false)
+    }
+    if (!details()) return refuse(response, 'details-off', false)
+    const before = status()
+    const key = before.sessions.get(session)
+    if (key === undefined) return refuse(response, 'not-found', false)
+    detailReads.add(response)
+    let result: MessagesResult | 'not-found'
+    try {
+      result =
+        before.snapshot.health[key.tool].state === 'unsupported'
+          ? { state: 'unavailable', reason: 'unsupported' }
+          : projectRecentMessages(await read(key))
+    } finally {
+      detailReads.delete(response)
+    }
+    // `close` already answered, or the viewer went away: the text is dropped unsent.
+    if (closing || response.headersSent || response.destroyed) return
+    if (suspended) return refuse(response, 'policy-changed', false)
+    if (!details()) return refuse(response, 'details-off', false)
+    const after = status()
+    const still = after.sessions.get(session)
+    if (still?.tool !== key.tool || still.id !== key.id) {
+      return refuse(response, 'not-found', false)
+    }
+    if (after.generation !== before.generation) return refuse(response, 'policy-changed', false)
+    if (result === 'not-found') return refuse(response, 'not-found', false)
+    const body: MessagesResponse = {
+      v: PROTOCOL_VERSION,
+      type: 'messages',
+      session,
+      generation: after.generation,
+      sentAt: now(),
+      result
+    }
+    let text = JSON.stringify(body)
+    // The budgets keep every response well under the cap; this only guards against a future bug.
+    if (Buffer.byteLength(text) > REMOTE_LIMITS.maxDetailBytes) {
+      text = JSON.stringify({ ...body, result: { state: 'unavailable', reason: 'unreadable' } })
+    }
+    serveFile(response, Buffer.from(text), 'application/json', 'no-store')
+  }
+
+  /** A reader that throws is `unreadable`; its error never leaves this function. */
+  async function read(key: SessionKey): Promise<RecentMessages> {
+    if (!options.readMessages) return { kind: 'unreadable' }
+    try {
+      return await options.readMessages(key, REMOTE_MESSAGES_READ_LIMIT)
+    } catch {
+      return { kind: 'unreadable' }
+    }
+  }
+
   // Deliberately no request/error logging: the allowlist is empty. Headers, targets, exceptions
   // and status payloads can contain private text; only fixed protocol codes leave these handlers.
   function handle(request: IncomingMessage, response: ServerResponse): void {
@@ -432,6 +544,10 @@ export async function startRemoteListener(
     if (!decision.ok) return refuse(response, decision.error, request.url === '/')
     const { route } = decision
     if (route.route === 'status') return openStream(response)
+    if (route.route === 'messages') {
+      void serveMessages(response, route.session).catch(() => response.destroy())
+      return
+    }
     if (route.route === 'page') {
       const page = options.viewer.page
       if (!page) return refuse(response, 'not-found', false)
@@ -537,6 +653,13 @@ export async function startRemoteListener(
           }
         }
         streams.clear()
+        // Reads in flight end without text: access itself ended, or Remote View is off.
+        for (const pending of detailReads) {
+          if (!pending.headersSent && !pending.destroyed) {
+            refuse(pending, reason === 'access-changed' ? 'not-allowed' : 'details-off', false)
+          }
+        }
+        detailReads.clear()
         // A stream that cannot flush its `end` frame must not hold quit.
         const force = setTimeout(() => server.closeAllConnections(), REMOTE_CLOSE_GRACE_MS)
         server.close(() => {

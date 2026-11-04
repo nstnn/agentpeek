@@ -109,15 +109,15 @@ describe('Remote View read-only boundary', () => {
       ['GET', '/assets/../index.html'],
       ['GET', '/assets/..%2F..%2Fsettings.json'],
       ['GET', `/assets/${REMOTE_SETTINGS_FILE}`],
-      ['GET', `/v1/status?workspace=${SHARED}`],
+      ['GET', `/v2/status?workspace=${SHARED}`],
       ['GET', `/${SHARED}`],
       ['GET', `/%2FUsers%2Fsynthetic`],
       ['GET', '//etc/hosts'],
-      ['GET', '/v1/sessions/abc/messages'],
-      ['GET', '/v1/skills/abc'],
-      ['POST', '/v1/read'],
-      ['PUT', '/v1/pin'],
-      ['DELETE', '/v1/status']
+      ['GET', '/v2/sessions/abc/messages'],
+      ['GET', '/v2/skills/abc'],
+      ['POST', '/v2/read'],
+      ['PUT', '/v2/pin'],
+      ['DELETE', '/v2/status']
     ] as const) {
       replies.set(`${method} ${path}`, (await send(port, { method, path })).status)
     }
@@ -131,6 +131,60 @@ describe('Remote View read-only boundary', () => {
     }
     for (const [name, action] of Object.entries(service)) {
       if (name !== 'snapshot') expect(action, name).not.toHaveBeenCalled()
+    }
+    for (const [name, value] of Object.entries(fs)) {
+      if (vi.isMockFunction(value)) expect(value, name).not.toHaveBeenCalled()
+    }
+    expect(service.snapshot()).toEqual(before)
+  })
+  it('reads recent messages only through the bounded service reader, changing nothing', async () => {
+    const folder = await fs.mkdtemp(join(tmpdir(), 'agentpeek-remote-read-only-'))
+    folders.push(folder)
+    const port = await freePort()
+    await fs.writeFile(
+      join(folder, REMOTE_SETTINGS_FILE),
+      JSON.stringify({
+        version: 1,
+        enabled: true,
+        ownerLogin: OWNER,
+        hostName: HOST,
+        port,
+        sharedWorkspaces: [SHARED]
+      })
+    )
+    const session = testSession({ summary: { ...testSession().summary, workspacePath: SHARED } })
+    const service = testService([session])
+    service.recentMessages.mockResolvedValue({
+      kind: 'messages',
+      messages: [{ kind: 'reply', text: 'Synthetic reply', at: 2 }],
+      hasOlder: false
+    })
+    const before = structuredClone(service.snapshot())
+    // As `src/main/index.ts` wires it: the snapshot and the bounded reader.
+    const view = createRemoteView({
+      folder,
+      viewerFolder: join(folder, 'no-viewer'),
+      snapshot: () => service.snapshot(),
+      recentMessages: (key, limit) => service.recentMessages(key, limit)
+    })
+    views.push(view)
+    await view.open()
+    expect(view.setShareMessages(true)).toEqual({ ok: true })
+    const stream = subscribe(port)
+    await expect.poll(() => stream.frames.length).toBe(1)
+    const frame = stream.frames[0]!
+    if (frame.type !== 'status') throw new Error('No status')
+    const id = frame.status.projects[0]!.sessions[0]!.id
+    vi.clearAllMocks()
+
+    const reply = await send(port, { path: `/v2/sessions/${id}/messages` })
+    stream.disconnect()
+    expect(reply.status).toBe(200)
+    expect(service.recentMessages).toHaveBeenCalledExactlyOnceWith(session.key, 20)
+    for (const [name, action] of Object.entries(service)) {
+      if (name !== 'snapshot' && name !== 'recentMessages') {
+        expect(action, name).not.toHaveBeenCalled()
+      }
     }
     for (const [name, value] of Object.entries(fs)) {
       if (vi.isMockFunction(value)) expect(value, name).not.toHaveBeenCalled()

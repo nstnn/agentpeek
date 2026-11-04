@@ -4,6 +4,7 @@ import {
   type RemoteErrorCode,
   type RemoteRequest,
   type DecodeError,
+  type MessagesResponse,
   type StatusFrame
 } from './protocol'
 
@@ -26,7 +27,7 @@ export const OWNER_HEADERS = {
 
 function request(
   headers: Record<string, string | readonly string[] | undefined>,
-  target = '/v1/status',
+  target = '/v2/status',
   method = 'GET'
 ): RemoteRequest {
   return { method, target, headers: { ...OWNER_HEADERS, ...headers } }
@@ -36,7 +37,7 @@ export interface RequestVector {
   name: string
   request: RemoteRequest
   /** The route on success, or the error code. */
-  expected: 'page' | 'status' | 'asset' | RemoteErrorCode
+  expected: 'page' | 'status' | 'asset' | 'messages' | RemoteErrorCode
 }
 
 export const REQUEST_VECTORS: readonly RequestVector[] = [
@@ -118,7 +119,7 @@ export const REQUEST_VECTORS: readonly RequestVector[] = [
     expected: 'bad-origin'
   },
   { name: 'opaque Origin', request: request({ origin: 'null' }), expected: 'bad-origin' },
-  { name: 'POST', request: request({}, '/v1/status', 'POST'), expected: 'method-not-allowed' },
+  { name: 'POST', request: request({}, '/v2/status', 'POST'), expected: 'method-not-allowed' },
   { name: 'HEAD', request: request({}, '/', 'HEAD'), expected: 'method-not-allowed' },
   {
     name: 'GET with a body',
@@ -137,18 +138,54 @@ export const REQUEST_VECTORS: readonly RequestVector[] = [
   },
   {
     name: 'absolute-form target',
-    request: request({}, `https://${VECTOR_CONFIG.hostName}/v1/status`),
+    request: request({}, `https://${VECTOR_CONFIG.hostName}/v2/status`),
     expected: 'bad-request'
   },
   {
     name: 'unknown protocol version',
-    request: request({}, '/v2/status'),
+    request: request({}, '/v3/status'),
     expected: 'unsupported-version'
   },
-  { name: 'query string', request: request({}, '/v1/status?resume=1'), expected: 'not-found' },
+  { name: 'query string', request: request({}, '/v2/status?resume=1'), expected: 'not-found' },
   { name: 'path traversal', request: request({}, '/assets/../main.js'), expected: 'not-found' },
-  { name: 'desktop action name', request: request({}, '/v1/markRead'), expected: 'not-found' },
-  { name: 'old preview stream path', request: request({}, '/events'), expected: 'not-found' }
+  { name: 'desktop action name', request: request({}, '/v2/markRead'), expected: 'not-found' },
+  { name: 'old preview stream path', request: request({}, '/events'), expected: 'not-found' },
+  // Protocol v2 retired v1 in the same build: an open v1 page is told to reload.
+  {
+    name: 'v1 status stream',
+    request: request({}, '/v1/status'),
+    expected: 'unsupported-version'
+  },
+  {
+    name: 'v1 recent messages',
+    request: request({}, `/v1/sessions/${'A'.repeat(22)}/messages`),
+    expected: 'unsupported-version'
+  },
+  {
+    name: 'recent messages of an opaque session',
+    request: request({}, `/v2/sessions/${'A'.repeat(22)}/messages`),
+    expected: 'messages'
+  },
+  {
+    name: 'recent messages with a short ID',
+    request: request({}, '/v2/sessions/abc/messages'),
+    expected: 'not-found'
+  },
+  {
+    name: 'recent messages with a query string',
+    request: request({}, `/v2/sessions/${'A'.repeat(22)}/messages?limit=500`),
+    expected: 'not-found'
+  },
+  {
+    name: 'recent messages by a raw path',
+    request: request({}, '/v2/sessions/%2FUsers%2Fsynthetic/messages'),
+    expected: 'not-found'
+  },
+  {
+    name: 'POST recent messages',
+    request: request({}, `/v2/sessions/${'A'.repeat(22)}/messages`, 'POST'),
+    expected: 'method-not-allowed'
+  }
 ]
 
 /** A complete, valid status frame: one project, one waiting session. */
@@ -159,6 +196,7 @@ export const VALID_STATUS_FRAME: StatusFrame = {
   generation: 3,
   observedAt: 1_800_000_000_000,
   sentAt: 1_800_000_004_000,
+  details: false,
   status: {
     observedAt: 1_800_000_000_000,
     sources: {
@@ -246,10 +284,34 @@ export const DECODE_VECTORS: readonly DecodeVector[] = [
     expected: 'ok'
   },
   {
+    name: 'retired v1 frame',
+    event: 'status',
+    data: statusWith((frame) => (frame.v = 1)),
+    expected: 'unsupported-version'
+  },
+  {
     name: 'unknown version',
     event: 'status',
-    data: statusWith((frame) => (frame.v = 2)),
+    data: statusWith((frame) => (frame.v = 3)),
     expected: 'unsupported-version'
+  },
+  {
+    name: 'status with recent messages shared',
+    event: 'status',
+    data: statusWith((frame) => (frame.details = true)),
+    expected: 'ok'
+  },
+  {
+    name: 'status without details (a v1 shape under v2)',
+    event: 'status',
+    data: statusWith((frame) => delete frame.details),
+    expected: 'malformed'
+  },
+  {
+    name: 'details as text',
+    event: 'status',
+    data: statusWith((frame) => (frame.details = 'true')),
+    expected: 'malformed'
   },
   {
     name: 'version as text',
@@ -257,7 +319,7 @@ export const DECODE_VECTORS: readonly DecodeVector[] = [
     data: statusWith((frame) => (frame.v = '1')),
     expected: 'malformed'
   },
-  { name: 'not JSON', event: 'status', data: '{"v":1,', expected: 'malformed' },
+  { name: 'not JSON', event: 'status', data: '{"v":2,', expected: 'malformed' },
   { name: 'array', event: 'status', data: '[1]', expected: 'malformed' },
   {
     name: 'event name does not match type',
@@ -268,7 +330,7 @@ export const DECODE_VECTORS: readonly DecodeVector[] = [
   {
     name: 'unknown event',
     event: 'command',
-    data: '{"v":1,"type":"command"}',
+    data: '{"v":2,"type":"command"}',
     expected: 'malformed'
   },
   {
@@ -369,4 +431,129 @@ export const DECODE_VECTORS: readonly DecodeVector[] = [
     data: JSON.stringify({ v: PROTOCOL_VERSION, type: 'end', reason: 'reboot' }),
     expected: 'malformed'
   }
+]
+
+// Protocol v2 recent-messages vectors (TASK-032). Synthetic text only.
+
+const DETAIL_SESSION = row.id
+
+/** A valid response for the session in `VALID_STATUS_FRAME`, under its generation. */
+export const VALID_MESSAGES_RESPONSE: MessagesResponse = {
+  v: PROTOCOL_VERSION,
+  type: 'messages',
+  session: DETAIL_SESSION,
+  generation: VALID_STATUS_FRAME.generation,
+  sentAt: 1_800_000_005_000,
+  result: {
+    state: 'messages',
+    entries: [
+      { kind: 'prompt', text: 'Synthetic prompt', at: 1_799_999_870_000, cut: false },
+      { kind: 'tool-calls', count: 3, at: 1_799_999_875_000 },
+      { kind: 'reply', text: 'Synthetic **reply**', at: 1_799_999_880_000, cut: false }
+    ],
+    older: false
+  }
+}
+
+function messagesWith(change: (response: Record<string, unknown>) => void): string {
+  const response = structuredClone(VALID_MESSAGES_RESPONSE) as unknown as Record<string, unknown>
+  change(response)
+  return JSON.stringify(response)
+}
+
+function entriesWith(change: (entries: Record<string, unknown>[]) => void): string {
+  return messagesWith((response) => {
+    change((response.result as { entries: Record<string, unknown>[] }).entries)
+  })
+}
+
+const reply = (text: string) => ({ kind: 'reply', text, at: 1, cut: false })
+
+export interface MessagesDecodeVector {
+  name: string
+  data: string
+  expected: 'ok' | DecodeError
+}
+
+export const MESSAGES_DECODE_VECTORS: readonly MessagesDecodeVector[] = [
+  { name: 'valid messages', data: JSON.stringify(VALID_MESSAGES_RESPONSE), expected: 'ok' },
+  ...(['unreadable', 'unsupported', 'empty'] as const).map((reason) => ({
+    name: `unavailable: ${reason}`,
+    data: messagesWith((response) => (response.result = { state: 'unavailable', reason })),
+    expected: 'ok' as const
+  })),
+  {
+    name: 'unavailable with an unknown reason',
+    data: messagesWith((r) => (r.result = { state: 'unavailable', reason: 'not-found' })),
+    expected: 'malformed'
+  },
+  { name: 'extra key', data: messagesWith((r) => (r.path = '/x')), expected: 'malformed' },
+  {
+    name: 'extra key on an entry',
+    data: entriesWith((entries) => (entries[0]!.names = ['Bash'])),
+    expected: 'malformed'
+  },
+  {
+    name: 'extra key on the result',
+    data: messagesWith((r) => ((r.result as Record<string, unknown>).error = 'x')),
+    expected: 'malformed'
+  },
+  {
+    name: 'unknown kind',
+    data: entriesWith((entries) => (entries[0]!.kind = 'attachment')),
+    expected: 'malformed'
+  },
+  {
+    name: 'tool-call count 0',
+    data: entriesWith((entries) => (entries[1]!.count = 0)),
+    expected: 'malformed'
+  },
+  {
+    name: 'tool-call count over 10,000',
+    data: entriesWith((entries) => (entries[1]!.count = 10_001)),
+    expected: 'malformed'
+  },
+  {
+    name: 'empty text',
+    data: entriesWith((entries) => (entries[0]!.text = '')),
+    expected: 'malformed'
+  },
+  {
+    name: 'cut missing',
+    data: entriesWith((entries) => delete entries[0]!.cut),
+    expected: 'malformed'
+  },
+  {
+    name: 'text over the limit',
+    data: entriesWith((entries) => entries.splice(0, entries.length, reply('x'.repeat(65_535)))),
+    expected: 'oversize'
+  },
+  {
+    name: 'total over the limit',
+    data: entriesWith((entries) =>
+      entries.splice(0, entries.length, reply('x'.repeat(40_000)), reply('y'.repeat(40_000)))
+    ),
+    expected: 'oversize'
+  },
+  {
+    name: '21 entries',
+    data: entriesWith((entries) =>
+      entries.splice(0, entries.length, ...Array.from({ length: 21 }, () => reply('x')))
+    ),
+    expected: 'oversize'
+  },
+  {
+    name: 'response over 72 KiB',
+    data: messagesWith((r) => (r.padding = 'x'.repeat(72 * 1024))),
+    expected: 'oversize'
+  },
+  { name: 'v: 1', data: messagesWith((r) => (r.v = 1)), expected: 'unsupported-version' },
+  { name: 'v as text', data: messagesWith((r) => (r.v = '2')), expected: 'malformed' },
+  { name: 'status type', data: messagesWith((r) => (r.type = 'status')), expected: 'malformed' },
+  {
+    name: 'raw session ID',
+    data: messagesWith((r) => (r.session = 'SENTINEL-RAW-ID')),
+    expected: 'malformed'
+  },
+  { name: 'not JSON', data: '{"v":2,', expected: 'malformed' }
 ]

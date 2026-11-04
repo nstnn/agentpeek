@@ -56,7 +56,7 @@ export function subscribe(port: number, headers: Record<string, string> = { ...O
   let response: IncomingMessage | undefined
   let buffer = ''
   const ended = new Promise<void>((done) => {
-    const req = request({ host: '127.0.0.1', port, path: '/v1/status', headers }, (res) => {
+    const req = request({ host: '127.0.0.1', port, path: '/v2/status', headers }, (res) => {
       response = res
       res.setEncoding('utf8')
       res.on('data', (chunk: string) => {

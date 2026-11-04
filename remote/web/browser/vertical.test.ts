@@ -263,9 +263,9 @@ it('proves the local vertical journey with real fixture readers and two viewer p
       { method: 'POST', headers: { ...OWNER_HEADERS }, status: 405, error: 'method-not-allowed' }
     ]
     for (const guard of guards) {
-      const reply = await send(port, { ...guard, path: '/v1/status' })
+      const reply = await send(port, { ...guard, path: '/v2/status' })
       expect(reply.status).toBe(guard.status)
-      expect(JSON.parse(reply.body)).toEqual({ v: 1, error: guard.error })
+      expect(JSON.parse(reply.body)).toEqual({ v: 2, error: guard.error })
       expect(reply.headers['cache-control']).toBe('no-store')
     }
     checks.push(
@@ -278,7 +278,7 @@ it('proves the local vertical journey with real fixture readers and two viewer p
       streams.push(stream)
       await expect.poll(() => stream.frames.length).toBeGreaterThan(0)
     }
-    expect((await send(port, { path: '/v1/status' })).status).toBe(503)
+    expect((await send(port, { path: '/v2/status' })).status).toBe(503)
     for (const stream of streams.splice(0)) stream.disconnect()
     await expect
       .poll(() => {
@@ -328,7 +328,7 @@ it('proves the local vertical journey with real fixture readers and two viewer p
         )
       )
       .toBe(true)
-    expect((await send(port, { path: '/v1/status' })).status).toBe(403)
+    expect((await send(port, { path: '/v2/status' })).status).toBe(403)
     const next = subscribe(port, { ...OWNER_HEADERS, 'Tailscale-User-Login': newLogin })
     streams.push(next)
     await expect.poll(() => next.frames.length).toBe(1)
@@ -405,7 +405,7 @@ it('proves the local vertical journey with real fixture readers and two viewer p
       requests.every(
         (path) =>
           path === '/' ||
-          path === '/v1/status' ||
+          path === '/v2/status' ||
           path === '/favicon.ico' ||
           path.startsWith('/assets/')
       )

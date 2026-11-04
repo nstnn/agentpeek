@@ -153,11 +153,11 @@ describe('Remote View privacy in the production browser page', () => {
       path: '/'
     })
     expect(requests.every((url) => new URL(url).origin === origin)).toBe(true)
-    expect(requests.filter((url) => new URL(url).pathname === '/v1/status')).toHaveLength(1)
+    expect(requests.filter((url) => new URL(url).pathname === '/v2/status')).toHaveLength(1)
     expect(
       requests.every((url) => {
         const path = new URL(url).pathname
-        return path === '/' || path === '/v1/status' || /^\/assets\/[\w-]+\.(js|css)$/.test(path)
+        return path === '/' || path === '/v2/status' || /^\/assets\/[\w-]+\.(js|css)$/.test(path)
       })
     ).toBe(true)
 

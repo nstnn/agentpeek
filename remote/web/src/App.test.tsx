@@ -26,7 +26,7 @@ function stream(text: string): typeof fetch {
 function refuse(error: string, status: number): typeof fetch {
   return () =>
     Promise.resolve(
-      new Response(JSON.stringify({ v: 1, error }), {
+      new Response(JSON.stringify({ v: 2, error }), {
         status,
         headers: { 'Content-Type': 'application/json' }
       })
@@ -230,7 +230,7 @@ it('filters by project and tool as page state only, sending nothing to the Mac',
   )
   expect(rowTexts()).toEqual(['Session d, Codex, Running, 2 min ago'])
 
-  expect(mac.requests).toEqual(['GET /v1/status'])
+  expect(mac.requests).toEqual(['GET /v2/status'])
   expect(window.history.length).toBe(history)
   expect(window.location.href).toBe(location)
 })
@@ -281,7 +281,7 @@ it('keeps the list on a heartbeat and moves only the checked time', async () => 
   const first = frame('s1', [{ label: 'alpha', sessions: [row('a')] }])
   await mac.send(first)
   await mac.send({
-    v: 1,
+    v: 2,
     type: 'heartbeat',
     snapshotId: 's1',
     generation: first.generation,
@@ -295,7 +295,7 @@ it('clears the list and asks for a reload when a frame has another version', asy
   render(<App fetch={mac.fetch} />)
   await settle()
   await mac.send(frame('s1', [{ label: 'alpha', sessions: [row('a')] }]))
-  await mac.send({ ...frame('s2', []), v: 2 })
+  await mac.send({ ...frame('s2', []), v: 3 })
   expect(screen.getByRole('status').textContent).toBe('Update needed')
   expect(screen.queryByTestId('status')).toBeNull()
   expect(screen.queryByText(/Session a/)).toBeNull()
@@ -322,10 +322,10 @@ it('clears the list when access changes and the next request is not allowed', as
     () =>
       openStream(
         event(frame('s1', [{ label: 'alpha', sessions: [row('a')] }])) +
-          event({ v: 1, type: 'end', reason: 'access-changed' })
+          event({ v: 2, type: 'end', reason: 'access-changed' })
       ),
     () =>
-      new Response(JSON.stringify({ v: 1, error: 'not-allowed' }), {
+      new Response(JSON.stringify({ v: 2, error: 'not-allowed' }), {
         status: 403,
         headers: { 'Content-Type': 'application/json' }
       })

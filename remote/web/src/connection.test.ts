@@ -101,7 +101,7 @@ const streamOf = (...texts: string[]): Reply => ({
 const errorReply = (error: string, status = 403): Reply => ({
   kind: 'error',
   status,
-  body: JSON.stringify({ v: 1, error })
+  body: JSON.stringify({ v: 2, error })
 })
 
 describe('Remote View connection', () => {
@@ -111,7 +111,7 @@ describe('Remote View connection', () => {
     expect(h.states[0]).toBeUndefined()
     await settle()
     expect(h.requests).toHaveLength(1)
-    expect(h.requests[0]!.url).toBe('/v1/status')
+    expect(h.requests[0]!.url).toBe('/v2/status')
     expect(h.requests[0]!.init).toMatchObject({
       method: 'GET',
       cache: 'no-store',
@@ -142,7 +142,7 @@ describe('Remote View connection', () => {
     await settle()
     expect(h.last()?.kind).toBe('live')
     const heartbeat = {
-      v: 1,
+      v: 2,
       type: 'heartbeat',
       snapshotId: VALID_STATUS_FRAME.snapshotId,
       generation: VALID_STATUS_FRAME.generation,
@@ -209,7 +209,7 @@ describe('Remote View connection', () => {
   it('reconnects with full jitter capped at 30 s and resets on a full status', async () => {
     const failures = 9
     const h = harness([
-      streamOf(sse(VALID_STATUS_FRAME), sse({ v: 1, type: 'end', reason: 'shutdown' })),
+      streamOf(sse(VALID_STATUS_FRAME), sse({ v: 2, type: 'end', reason: 'shutdown' })),
       ...Array.from({ length: failures }, (): Reply => ({ kind: 'network' })),
       streamOf(sse(NARROWED_STATUS_FRAME))
     ])
@@ -257,7 +257,7 @@ describe('Remote View connection', () => {
 
   it('clears the data on remote-off and keeps retrying slowly until it is on again', async () => {
     const h = harness([
-      streamOf(sse(VALID_STATUS_FRAME), sse({ v: 1, type: 'end', reason: 'remote-off' })),
+      streamOf(sse(VALID_STATUS_FRAME), sse({ v: 2, type: 'end', reason: 'remote-off' })),
       { kind: 'error', status: 502, body: '', type: 'text/plain' },
       streamOf(sse(NARROWED_STATUS_FRAME))
     ])
@@ -273,7 +273,7 @@ describe('Remote View connection', () => {
 
   it('clears the data on access-changed and asks once; a refusal then ends it', async () => {
     const h = harness([
-      streamOf(sse(VALID_STATUS_FRAME), sse({ v: 1, type: 'end', reason: 'access-changed' })),
+      streamOf(sse(VALID_STATUS_FRAME), sse({ v: 2, type: 'end', reason: 'access-changed' })),
       errorReply('not-allowed')
     ])
     h.connection.start()
@@ -285,7 +285,7 @@ describe('Remote View connection', () => {
   })
 
   it('stops on a frame of another protocol version and reconnects after a malformed one', async () => {
-    const newer = harness([streamOf(sse({ ...VALID_STATUS_FRAME, v: 2 }))])
+    const newer = harness([streamOf(sse({ ...VALID_STATUS_FRAME, v: 3 }))])
     newer.connection.start()
     await settle()
     expect(newer.last()).toEqual({ kind: 'update-needed' })
@@ -346,7 +346,7 @@ describe('Remote View silence and resume', () => {
       h.advance(15_000)
       open.push(
         sse({
-          v: 1,
+          v: 2,
           type: 'heartbeat',
           snapshotId: VALID_STATUS_FRAME.snapshotId,
           generation: VALID_STATUS_FRAME.generation,
@@ -423,7 +423,7 @@ describe('Remote View silence and resume', () => {
 
   it('requires a status before any heartbeat and resyncs on a mismatched heartbeat', async () => {
     const heartbeat = {
-      v: 1,
+      v: 2,
       type: 'heartbeat',
       snapshotId: 'unknown',
       generation: VALID_STATUS_FRAME.generation,
