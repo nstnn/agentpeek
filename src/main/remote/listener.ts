@@ -247,6 +247,8 @@ export async function startRemoteListener(
   let heartbeat: ReturnType<typeof setInterval> | undefined
   let closing: Promise<void> | null = null
   let suspended = false
+  /** Counts every sleep, so a read that spans sleep and wake still sees that one happened. */
+  let sleeps = 0
 
   /** The projection of the latest snapshot under the current policy, made once per change. */
   function status(): Current {
@@ -481,6 +483,7 @@ export async function startRemoteListener(
     const before = status()
     const key = before.sessions.get(session)
     if (key === undefined) return refuse(response, 'not-found', false)
+    const sleepsBefore = sleeps
     detailReads.add(response)
     let result: MessagesResult | 'not-found'
     try {
@@ -493,7 +496,7 @@ export async function startRemoteListener(
     }
     // `close` already answered, or the viewer went away: the text is dropped unsent.
     if (closing || response.headersSent || response.destroyed) return
-    if (suspended) return refuse(response, 'policy-changed', false)
+    if (suspended || sleeps !== sleepsBefore) return refuse(response, 'policy-changed', false)
     if (!details()) return refuse(response, 'details-off', false)
     const after = status()
     const still = after.sessions.get(session)
@@ -631,6 +634,7 @@ export async function startRemoteListener(
     },
     suspend() {
       suspended = true
+      sleeps += 1
       for (const stream of streams) endStream(stream, 'shutdown')
     },
     resume() {

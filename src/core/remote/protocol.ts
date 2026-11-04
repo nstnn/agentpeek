@@ -511,11 +511,16 @@ function hasKeys(value: Json, keys: readonly string[]): boolean {
   return own.length === keys.length && keys.every((key) => Object.hasOwn(value, key))
 }
 
+/** The latest time a JavaScript `Date` can hold; a later one cannot be shown. */
+export const MAX_TIME = 8_640_000_000_000_000
+
 function isTime(value: unknown): boolean {
-  return Number.isSafeInteger(value) && (value as number) >= 0
+  return isCount(value) && (value as number) <= MAX_TIME
 }
 
-const isCount = isTime
+function isCount(value: unknown): boolean {
+  return Number.isSafeInteger(value) && (value as number) >= 0
+}
 
 function isSnapshotId(value: unknown): boolean {
   return typeof value === 'string' && SNAPSHOT_ID.test(value)
