@@ -7,7 +7,7 @@ import { toolHome, toolName, VIEW_NAMES } from './session-display'
 import { NavigationIcon } from './NavigationIcon'
 import { SessionIcon } from './SessionIcon'
 import { SettingsIcon } from './SettingsDialog'
-import { statusLine } from './remote-status'
+import { sidebarLabel, statusLine } from './remote-status'
 import type { RemoteStatusView } from '../../shared/remote-settings'
 
 export function Sidebar({
@@ -139,12 +139,12 @@ export function Sidebar({
           <button
             type="button"
             className="sidebar-remote"
-            aria-label={`Remote View on. ${statusLine(remoteStatus, null).text}`}
+            aria-label={`${sidebarLabel(remoteStatus)}. ${statusLine(remoteStatus, null).text}`}
             title={statusLine(remoteStatus, null).text}
             onClick={onSettings}
           >
             <span className="health-dot connected" aria-hidden="true" />
-            {!collapsed && <span aria-hidden="true">Remote View on</span>}
+            {!collapsed && <span aria-hidden="true">{sidebarLabel(remoteStatus)}</span>}
           </button>
         )}
         <button

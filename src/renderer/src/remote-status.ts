@@ -7,7 +7,8 @@ import type { RemoteStatusView } from '../../shared/remote-settings'
 // runs, and the session detail shows the alias the viewer uses while titles are hidden. The main
 // process decides both; the renderer only follows its status and asks for one alias at a time.
 
-export type Busy = 'enabling' | 'disabling' | 'saving' | 'sharing' | 'titles' | 'retrying'
+export type Busy =
+  'enabling' | 'disabling' | 'saving' | 'sharing' | 'titles' | 'messages' | 'retrying'
 export interface Notice {
   tone: 'info' | 'warning' | 'error'
   text: string
@@ -86,6 +87,11 @@ export function useRemoteStatus(api: AgentPeekApi): RemoteStatusView | null {
     }
   }, [api])
   return status
+}
+
+/** The sidebar label while Remote View is on (TASK-043 adds whether messages are shared). */
+export function sidebarLabel(status: RemoteStatusView & { state: 'on' }): string {
+  return status.shareMessages ? 'Remote View on · messages shared' : 'Remote View on'
 }
 
 /** Whether the viewer could show an alias at all: on, with titles hidden. */

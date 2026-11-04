@@ -36,6 +36,8 @@ const requests: [string, unknown[]][] = [
   [IPC.setRemoteWorkspaceShared, ['/synthetic/projects/demo', true]],
   [IPC.setRemoteWorkspaceShared, ['/synthetic/projects/demo', false]],
   [IPC.setRemoteShareTitles, [true]],
+  [IPC.setRemoteShareMessages, [true]],
+  [IPC.setRemoteShareMessages, [false]],
   [IPC.copyRemoteText, ['serve-command']],
   [IPC.copyRemoteText, ['viewer-address']]
 ]
@@ -60,7 +62,9 @@ function testRemote() {
     saveConnection: ok(),
     shareWorkspace: ok(),
     unshareWorkspace: ok(),
-    setShareTitles: ok()
+    setShareTitles: ok(),
+    // Synchronous in the main process: the value lives in memory only.
+    setShareMessages: vi.fn().mockReturnValue({ ok: true })
   }
 }
 
@@ -375,6 +379,13 @@ describe('IPC trust boundary', () => {
     expect(s.remote.shareWorkspace.mock.calls).toEqual([['/synthetic/a']])
     expect(s.remote.unshareWorkspace.mock.calls).toEqual([['/synthetic/b']])
     expect(s.remote.setShareTitles.mock.calls).toEqual([[false]])
+    s.remote.setShareMessages.mockReturnValueOnce({ ok: false, error: 'not-listening' })
+    await expect(s.invoke(IPC.setRemoteShareMessages, [true])).resolves.toEqual({
+      ok: false,
+      error: 'not-listening'
+    })
+    await expect(s.invoke(IPC.setRemoteShareMessages, [false])).resolves.toEqual({ ok: true })
+    expect(s.remote.setShareMessages.mock.calls).toEqual([[true], [false]])
   })
   it('copies only text built from the saved settings', async () => {
     const s = setup()
@@ -408,6 +419,10 @@ describe('IPC trust boundary', () => {
     [IPC.setRemoteEnabled, ['true']],
     [IPC.setRemoteEnabled, []],
     [IPC.setRemoteShareTitles, [1]],
+    [IPC.setRemoteShareMessages, ['true']],
+    [IPC.setRemoteShareMessages, [1]],
+    [IPC.setRemoteShareMessages, []],
+    [IPC.setRemoteShareMessages, [true, true]],
     [IPC.saveRemoteConnection, [null]],
     [IPC.saveRemoteConnection, [{ ownerLogin: 'a@b', hostName: 'h.t.ts.net' }]],
     [IPC.saveRemoteConnection, [{ ownerLogin: 'a@b', hostName: 'h.t.ts.net', port: '47613' }]],
@@ -442,6 +457,7 @@ describe('IPC trust boundary', () => {
         IPC.saveRemoteConnection,
         IPC.setRemoteWorkspaceShared,
         IPC.setRemoteShareTitles,
+        IPC.setRemoteShareMessages,
         IPC.copyRemoteText
       ].sort()
     )

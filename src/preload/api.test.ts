@@ -40,6 +40,7 @@ describe('preload API', () => {
         'saveRemoteConnection',
         'setRemoteWorkspaceShared',
         'setRemoteShareTitles',
+        'setRemoteShareMessages',
         'copyRemoteText'
       ].sort()
     )
@@ -74,6 +75,7 @@ describe('preload API', () => {
     await api.saveRemoteConnection({ ...connection, enabled: true } as typeof connection)
     await api.setRemoteWorkspaceShared('/synthetic/demo', false)
     await api.setRemoteShareTitles(true)
+    await api.setRemoteShareMessages(true)
     await api.copyRemoteText('serve-command')
     expect(transport.invoke.mock.calls).toEqual([
       [IPC.getSnapshot],
@@ -99,6 +101,7 @@ describe('preload API', () => {
       [IPC.saveRemoteConnection, connection],
       [IPC.setRemoteWorkspaceShared, '/synthetic/demo', false],
       [IPC.setRemoteShareTitles, true],
+      [IPC.setRemoteShareMessages, true],
       [IPC.copyRemoteText, 'serve-command']
     ])
   })

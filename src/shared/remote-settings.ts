@@ -38,6 +38,8 @@ export type RemoteStatusView =
       readonly resumed: boolean
       /** Open viewer pages, a count only. */
       readonly streams: number
+      /** "Share recent messages": held in the main process for this run only, never saved. */
+      readonly shareMessages: boolean
     })
 
 export type RemoteActionError =
@@ -48,8 +50,10 @@ export type RemoteActionError =
   | 'cancelled'
   | 'unknown-workspace'
   | 'too-many-workspaces'
+  /** "Share recent messages" can be turned on only while Remote View is on. */
+  | 'not-listening'
 
-export type RemoteField = 'ownerLogin' | 'hostName' | 'port' | 'shareTitles'
+export type RemoteField = 'ownerLogin' | 'hostName' | 'port' | 'shareTitles' | 'shareMessages'
 
 export type RemoteActionResult =
   | { readonly ok: true }

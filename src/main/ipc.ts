@@ -108,6 +108,7 @@ export type RemoteSettingsControl = Pick<
   | 'shareWorkspace'
   | 'unshareWorkspace'
   | 'setShareTitles'
+  | 'setShareMessages'
 >
 
 /** No generic channels, Electron events, file-open capabilities or raw errors reach the renderer. */
@@ -239,6 +240,12 @@ export function registerSessionIpc(options: {
   )
   register(IPC.setRemoteShareTitles, flag, (shareTitles: boolean): Promise<RemoteActionResult> =>
     remote.setShareTitles(shareTitles)
+  )
+  register(
+    IPC.setRemoteShareMessages,
+    flag,
+    (shareMessages: boolean): Promise<RemoteActionResult> =>
+      Promise.resolve(remote.setShareMessages(shareMessages))
   )
   register(
     IPC.copyRemoteText,

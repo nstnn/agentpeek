@@ -25,6 +25,7 @@ export const IPC = {
   saveRemoteConnection: 'agentpeek:save-remote-connection',
   setRemoteWorkspaceShared: 'agentpeek:set-remote-workspace-shared',
   setRemoteShareTitles: 'agentpeek:set-remote-share-titles',
+  setRemoteShareMessages: 'agentpeek:set-remote-share-messages',
   copyRemoteText: 'agentpeek:copy-remote-text'
 } as const
 

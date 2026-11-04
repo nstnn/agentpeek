@@ -64,6 +64,11 @@ export interface AgentPeekApi {
   /** `workspace` must be the exact folder of a listed session; the main process checks it. */
   setRemoteWorkspaceShared(workspace: string, shared: boolean): Promise<RemoteActionResult>
   setRemoteShareTitles(shareTitles: boolean): Promise<RemoteActionResult>
+  /**
+   * "Share recent messages" for this run only (TASK-043). It is never saved, and it can be on
+   * only while Remote View is on: otherwise `not-listening`.
+   */
+  setRemoteShareMessages(shareMessages: boolean): Promise<RemoteActionResult>
   /** Copies text built from the saved settings; false when that setting is not saved yet. */
   copyRemoteText(target: RemoteCopyTarget): Promise<boolean>
 }

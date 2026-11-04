@@ -20,8 +20,14 @@ const FRESH: RemoteSettingsView = {
 const CONFIGURED: RemoteSettingsView = { ...FRESH, ownerLogin: LOGIN, hostName: HOST }
 const off = (settings: RemoteSettingsView, startError: 'port-in-use' | null = null) =>
   ({ state: 'off', settings, startError }) as const
-const on = (settings: RemoteSettingsView, streams = 0, resumed = false) =>
-  ({ state: 'on', settings: { ...settings, enabled: true }, streams, resumed }) as const
+const on = (settings: RemoteSettingsView, streams = 0, resumed = false, shareMessages = false) =>
+  ({
+    state: 'on',
+    settings: { ...settings, enabled: true },
+    streams,
+    resumed,
+    shareMessages
+  }) as const
 
 function mount(status: RemoteStatusView = off(FRESH), sessions = [session('a')]) {
   const fake = fakeApi(snapshot(sessions))
@@ -43,7 +49,16 @@ describe('Remote View settings', () => {
     const leaves = within(f.section()).getByRole('group', { name: 'What leaves this Mac' })
     expect(leaves.textContent).toContain('folder name of each shared project, never its path')
     expect(leaves.textContent).toContain('Session titles only when Share session titles is on')
-    expect(leaves.textContent).toContain('Never sent: messages')
+    expect(leaves.textContent).toContain(
+      'Recent messages only while Share recent messages is on: the latest 20 prompts and replies'
+    )
+    expect(leaves.textContent).toContain('Never sent: full conversation history, files')
+    expect(leaves.textContent).toContain(
+      'With Share recent messages off, no message or reply text is sent.'
+    )
+    const messages = within(f.section()).getByRole('switch', { name: 'Share recent messages' })
+    expect(messages.getAttribute('aria-checked')).toBe('false')
+    expect((messages as HTMLButtonElement).disabled).toBe(true)
     const setup = f.section().querySelector('details')!
     expect(setup.textContent).toContain('Tailnet Lock')
     expect(setup.textContent).toContain('neutral machine name')
@@ -252,6 +267,68 @@ describe('Remote View settings', () => {
     expect((await screen.findByRole('alert')).textContent).toBe(
       "Couldn't update title sharing. Try again."
     )
+  })
+
+  it('shares recent messages only while on, with copy saying text leaves the Mac', async () => {
+    const f = mount(off(CONFIGURED))
+    const messages = await screen.findByRole('switch', { name: 'Share recent messages' })
+    // Off while Remote View is off, whatever was chosen before; never a saved setting.
+    expect(messages.getAttribute('aria-checked')).toBe('false')
+    expect((messages as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(/Turn on Remote View to use it\./)).toBeTruthy()
+    expect(CONFIGURED).not.toHaveProperty('shareMessages')
+
+    f.api.getRemoteStatus.mockResolvedValue(on(CONFIGURED))
+    f.remote(on(CONFIGURED))
+    await waitFor(() => expect((messages as HTMLButtonElement).disabled).toBe(false))
+    expect(messages.getAttribute('aria-checked')).toBe('false')
+    const hint = document.getElementById(messages.getAttribute('aria-describedby')!)!
+    expect(hint.textContent).toContain('While this is on, conversation text leaves this Mac')
+    expect(hint.textContent).toContain('latest 20 prompts and replies (up to 64 KB of text)')
+    expect(hint.textContent).toContain('Never full history, files, tool input or output, or paths.')
+    expect(hint.textContent).toContain(
+      'Turns off when you quit AgentPeek, turn Remote View off or change the connection settings.'
+    )
+
+    // Keyboard: focus the switch and press Space.
+    f.api.getRemoteStatus.mockResolvedValue(on(CONFIGURED, 0, false, true))
+    messages.focus()
+    await userEvent.keyboard(' ')
+    expect(f.api.setRemoteShareMessages).toHaveBeenCalledWith(true)
+    await screen.findByText(
+      'Recent messages are shared until you turn this off, turn Remote View off or quit AgentPeek.'
+    )
+    expect(messages.getAttribute('aria-checked')).toBe('true')
+    expect(document.activeElement).toBe(messages)
+
+    f.api.getRemoteStatus.mockResolvedValue(on(CONFIGURED))
+    await userEvent.keyboard('{Enter}')
+    expect(f.api.setRemoteShareMessages).toHaveBeenLastCalledWith(false)
+    await screen.findByText('Recent messages are no longer shared.')
+    expect(messages.getAttribute('aria-checked')).toBe('false')
+
+    // Remote View turning off (here announced by the main process) shows it off and disabled.
+    f.api.getRemoteStatus.mockResolvedValue(off(CONFIGURED))
+    f.remote(off(CONFIGURED))
+    await waitFor(() => expect((messages as HTMLButtonElement).disabled).toBe(true))
+    expect(messages.getAttribute('aria-checked')).toBe('false')
+  })
+
+  it('reports a refused or failed message sharing change', async () => {
+    const f = mount(on(CONFIGURED))
+    const messages = await screen.findByRole('switch', { name: 'Share recent messages' })
+    await waitFor(() => expect((messages as HTMLButtonElement).disabled).toBe(false))
+    f.api.setRemoteShareMessages.mockResolvedValueOnce({ ok: false, error: 'not-listening' })
+    await userEvent.click(messages)
+    expect((await screen.findByRole('alert')).textContent).toBe('Turn on Remote View first.')
+    f.api.setRemoteShareMessages.mockRejectedValueOnce(new Error('synthetic'))
+    await userEvent.click(messages)
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toBe(
+        "Couldn't update message sharing. Try again."
+      )
+    )
+    expect(messages.getAttribute('aria-checked')).toBe('false')
   })
 
   it('copies the command and address through fixed targets only', async () => {

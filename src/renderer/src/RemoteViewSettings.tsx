@@ -57,6 +57,7 @@ export function RemoteViewSettings({
   const [connectionNotice, setConnectionNotice] = useState<Notice | null>(null)
   const [sharingNotice, setSharingNotice] = useState<Notice | null>(null)
   const [titlesNotice, setTitlesNotice] = useState<Notice | null>(null)
+  const [messagesNotice, setMessagesNotice] = useState<Notice | null>(null)
   const [picking, setPicking] = useState(false)
   const [copied, setCopied] = useState<{ target: RemoteCopyTarget; ok: boolean } | null>(null)
   const running = useRef(false)
@@ -252,6 +253,23 @@ export function RemoteViewSettings({
       setTitlesNotice({ tone: 'error', text: "Couldn't update title sharing. Try again." })
   }
 
+  async function setMessages(shareMessages: boolean) {
+    setMessagesNotice(null)
+    const result = await run('messages', () => api.setRemoteShareMessages(shareMessages))
+    if (!mounted.current) return
+    if (result?.ok)
+      setMessagesNotice({
+        tone: shareMessages ? 'warning' : 'info',
+        text: shareMessages
+          ? 'Recent messages are shared until you turn this off, turn Remote View off or quit AgentPeek.'
+          : 'Recent messages are no longer shared.'
+      })
+    else if (result?.error === 'not-listening')
+      setMessagesNotice({ tone: 'error', text: 'Turn on Remote View first.' })
+    else if (result?.error !== 'cancelled')
+      setMessagesNotice({ tone: 'error', text: "Couldn't update message sharing. Try again." })
+  }
+
   async function retrySaving() {
     if (!settings) return
     const result = await run('retrying', () => api.setRemoteShareTitles(settings.shareTitles))
@@ -276,6 +294,8 @@ export function RemoteViewSettings({
   }
 
   const line = statusLine(status, busy)
+  const listening = status?.state === 'on'
+  const sharesMessages = status?.state === 'on' && status.shareMessages
   const shared = settings?.sharedWorkspaces ?? []
   const candidates = picking ? candidateFolders(snapshot, shared) : []
   const field = (name: 'ownerLogin' | 'hostName' | 'port') => ({
@@ -514,6 +534,35 @@ export function RemoteViewSettings({
         {notice(titlesNotice)}
       </div>
 
+      <div className="remote-group">
+        <div className="settings-source">
+          <div>
+            <label htmlFor={`${id}-messages`}>Share recent messages</label>
+            <p id={`${id}-messages-hint`} className="settings-source-status">
+              While this is on, conversation text leaves this Mac: a viewer page can show the latest
+              20 prompts and replies (up to 64 KB of text) of a session in a shared project. Never
+              full history, files, tool input or output, or paths. Turns off when you quit
+              AgentPeek, turn Remote View off or change the connection settings.
+              {!listening && ' Turn on Remote View to use it.'}
+            </p>
+          </div>
+          <button
+            id={`${id}-messages`}
+            type="button"
+            role="switch"
+            className="source-switch"
+            aria-checked={sharesMessages}
+            aria-describedby={`${id}-messages-hint`}
+            disabled={!listening}
+            aria-disabled={busy !== null}
+            onClick={() => void setMessages(!sharesMessages)}
+          >
+            <span aria-hidden="true" />
+          </button>
+        </div>
+        {notice(messagesNotice)}
+      </div>
+
       <div className="remote-group" role="group" aria-labelledby={`${id}-leaves`}>
         <h3 id={`${id}-leaves`}>What leaves this Mac</h3>
         <ul className="remote-list">
@@ -523,11 +572,16 @@ export function RemoteViewSettings({
             has been in that state or when it was last active.
           </li>
           <li>Session titles only when Share session titles is on.</li>
+          <li>
+            Recent messages only while Share recent messages is on: the latest 20 prompts and
+            replies of a session in a shared project, with the number of tool calls in each reply.
+          </li>
           <li>Whether each tool is connected, and when AgentPeek last read its files.</li>
         </ul>
         <p className="settings-source-status">
-          Never sent: messages, replies, file paths, session IDs, tool versions, or sessions in
-          folders you don&rsquo;t share.
+          Never sent: full conversation history, files, tool names, input or output, file paths,
+          session IDs, tool versions, or sessions in folders you don&rsquo;t share. With Share
+          recent messages off, no message or reply text is sent.
         </p>
       </div>
 

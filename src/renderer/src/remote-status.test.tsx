@@ -20,7 +20,8 @@ const on = (change: Partial<RemoteSettingsView> = {}, streams = 0): RemoteStatus
   state: 'on',
   settings: { ...SETTINGS, ...change },
   resumed: false,
-  streams
+  streams,
+  shareMessages: false
 })
 const off: RemoteStatusView = {
   state: 'off',
@@ -58,6 +59,22 @@ describe('Remote View sidebar label', () => {
     expect(label()).toBeNull()
     // A pending enable is not on yet.
     f.announce({ ...off, pending: true, requestedEnabled: true })
+    expect(label()).toBeNull()
+  })
+
+  it('says when recent messages are shared, and stops saying it at once', async () => {
+    const f = mount(on())
+    await waitFor(() => expect(label()).not.toBeNull())
+    expect(label()!.textContent).toBe('Remote View on')
+    f.announce({ ...on(), shareMessages: true } as RemoteStatusView)
+    expect(label()!.textContent).toBe('Remote View on · messages shared')
+    expect(label()!.getAttribute('aria-label')).toBe(
+      'Remote View on · messages shared. On, port 47613. Sharing 1 project.'
+    )
+    f.announce(on())
+    expect(label()!.textContent).toBe('Remote View on')
+    f.announce({ ...on(), shareMessages: true } as RemoteStatusView)
+    f.announce(off)
     expect(label()).toBeNull()
   })
 

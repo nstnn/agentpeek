@@ -54,6 +54,7 @@ export function createPreloadApi(transport: PreloadTransport): AgentPeekApi {
     setRemoteWorkspaceShared: (workspace, shared) =>
       invoke(IPC.setRemoteWorkspaceShared, workspace, shared),
     setRemoteShareTitles: (shareTitles) => invoke(IPC.setRemoteShareTitles, shareTitles),
+    setRemoteShareMessages: (shareMessages) => invoke(IPC.setRemoteShareMessages, shareMessages),
     copyRemoteText: (target) => invoke(IPC.copyRemoteText, target)
   }
   return Object.freeze(api)

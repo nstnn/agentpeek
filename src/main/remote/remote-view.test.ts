@@ -906,7 +906,11 @@ describe('Remote View recent-messages policy (TASK-032)', () => {
     expect(view.setShareMessages(true)).toEqual({ ok: false, error: 'not-listening' })
     expect(view.setShareMessages(false)).toEqual({ ok: true })
     const running = await on()
-    expect(running.view.setShareMessages('yes')).toEqual({ ok: false, error: 'invalid' })
+    expect(running.view.setShareMessages('yes')).toEqual({
+      ok: false,
+      error: 'invalid',
+      invalid: ['shareMessages']
+    })
     expect(running.view.sharesMessages()).toBe(false)
   })
 
@@ -928,6 +932,29 @@ describe('Remote View recent-messages policy (TASK-032)', () => {
     })
     expect(result).toEqual({ ok: true })
     expect(view.status()).toMatchObject({ state: 'on' })
+    expect(view.sharesMessages()).toBe(false)
+  })
+
+  it('is part of the on status, and is off after quit and reopen with it on (A16)', async () => {
+    const { folder, port, view } = await on()
+    expect(view.status()).toMatchObject({ state: 'on', shareMessages: false })
+    view.setShareMessages(true)
+    expect(view.status()).toMatchObject({ state: 'on', shareMessages: true })
+    await view.close()
+    const restarted = createRemoteView({ folder, viewerFolder: folder, snapshot: () => snapshot })
+    views.push(restarted)
+    await restarted.open()
+    expect(restarted.status()).toMatchObject({ state: 'on', resumed: true, shareMessages: false })
+    const viewer = subscribe(port)
+    await expect.poll(() => viewer.frames.length).toBe(1)
+    expect(viewer.frames[0]).toMatchObject({ type: 'status', details: false })
+    viewer.disconnect()
+  })
+
+  it('stays off when the saved settings cannot be read (A16)', async () => {
+    const { view } = await setup({ enabled: true, port: 80 })
+    expect(view.status()).toEqual({ state: 'load-failed' })
+    expect(view.setShareMessages(true)).toEqual({ ok: false, error: 'not-listening' })
     expect(view.sharesMessages()).toBe(false)
   })
 

@@ -36,7 +36,7 @@ import { loadViewerFiles } from './viewer-files'
 // "Share recent messages" (TASK-032, recent messages decision 2 and 8) is held here in memory only:
 // never saved, off at every launch, and turned off whenever the listener stops (Remote View off, a
 // connection change, a failed start, quit). Each change bumps the generation like any policy
-// change. TASK-043 adds its switch to Settings.
+// change. Its Settings switch (TASK-043) reads it from the status and sets it through the typed IPC.
 
 export type RemoteViewError =
   /** Settings are still loading or could not be read; Remote View stays off. */
@@ -51,15 +51,13 @@ export type RemoteViewError =
   | 'unknown-workspace'
   /** Already sharing `MAX_SHARED_WORKSPACES` folders. */
   | 'too-many-workspaces'
+  /** Recent messages can be shared only while Remote View is on. */
+  | 'not-listening'
 
 export type RemoteViewResult =
   | { ok: true }
   | { ok: false; error: RemoteViewError; connectionSaved?: boolean }
-  | { ok: false; error: 'invalid'; invalid: (ConnectionField | 'shareTitles')[] }
-
-/** `not-listening`: recent messages can be shared only while Remote View is on. */
-export type ShareMessagesResult =
-  { ok: true } | { ok: false; error: 'cancelled' | 'invalid' | 'not-listening' }
+  | { ok: false; error: 'invalid'; invalid: (ConnectionField | 'shareTitles' | 'shareMessages')[] }
 
 export type RemoteViewStatus =
   | { state: 'loading' }
@@ -69,7 +67,14 @@ export type RemoteViewStatus =
       settings: RemoteSettings
       startError: RemoteStartError | null
     } & RecoveryStatus)
-  | ({ state: 'on'; settings: RemoteSettings; resumed: boolean; streams: number } & RecoveryStatus)
+  | ({
+      state: 'on'
+      settings: RemoteSettings
+      resumed: boolean
+      streams: number
+      /** "Share recent messages" for this run; never saved. */
+      shareMessages: boolean
+    } & RecoveryStatus)
 
 interface RecoveryStatus {
   unsavedChanges?: true
@@ -134,6 +139,7 @@ export function createRemoteView(options: RemoteViewOptions) {
           settings: { ...settings },
           resumed,
           streams: listener.streamCount(),
+          shareMessages,
           ...recovery()
         }
       : { state: 'off', settings: { ...settings }, startError, ...recovery() }
@@ -480,9 +486,10 @@ export function createRemoteView(options: RemoteViewOptions) {
      * Turns "Share recent messages" on or off for this run. It can be on only while the listener
      * runs; either change bumps the generation and gives every stream a full status at once.
      */
-    setShareMessages(value: unknown): ShareMessagesResult {
+    setShareMessages(value: unknown): RemoteViewResult {
       if (closing) return { ok: false, error: 'cancelled' }
-      if (typeof value !== 'boolean') return { ok: false, error: 'invalid' }
+      if (typeof value !== 'boolean')
+        return { ok: false, error: 'invalid', invalid: ['shareMessages'] }
       if (value && listener === null) return { ok: false, error: 'not-listening' }
       if (value === shareMessages) return { ok: true }
       shareMessages = value

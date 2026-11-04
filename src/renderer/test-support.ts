@@ -105,6 +105,9 @@ export function fakeApi(initial = snapshot()) {
     setRemoteShareTitles: vi
       .fn<AgentPeekApi['setRemoteShareTitles']>()
       .mockResolvedValue({ ok: true }),
+    setRemoteShareMessages: vi
+      .fn<AgentPeekApi['setRemoteShareMessages']>()
+      .mockResolvedValue({ ok: true }),
     copyRemoteText: vi.fn<AgentPeekApi['copyRemoteText']>().mockResolvedValue(true)
   } satisfies AgentPeekApi
   return {
