@@ -36,7 +36,7 @@ node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs launch --label <featu
 What it does:
 
 1. Runs `npm run build` (typecheck + electron-vite build into `out/`). A failed build stops the launch. Pass `--no-build` only when `out/` is known to match the checkout (`doctor` tells you).
-2. Creates the run's evidence folder `test-results/verify-agentpeek/<run-id>/` and its scratch folder `<tmp>/agentpeek-verify/<run-id>/` holding `user-data/` (a fresh Chromium profile) and `home/` (empty, or a copy of `--fixture <dir>` preserving file timestamps so age-based scenarios remain intact).
+2. Creates the run's evidence folder `test-results/verify-agentpeek/<run-id>/` and its scratch folder `<tmp>/agentpeek-verify/<run-id>/` holding `user-data/` (a fresh Chromium profile, or a copy of `--state <dir>`, for example a synthetic `remote-view.json` that turns Remote View on at launch) and `home/` (empty, or a copy of `--fixture <dir>` preserving file timestamps so age-based scenarios remain intact). `--state` takes synthetic app state only; never copy the user's real AgentPeek profile.
 3. Starts `node_modules/electron`'s binary on the repository with `--user-data-dir=<scratch>/user-data`, `--remote-debugging-port=0`, and `--inspect=0`, detached, with stdout and stderr in `app.log`. It removes `ELECTRON_RUN_AS_NODE` and `ELECTRON_RENDERER_URL` from the environment and sets `AGENTPEEK_HOME=<scratch>/home` and `AGENTPEEK_USER_DATA=<scratch>/user-data`.
 4. Waits until the instance is usable: both debug ports are announced in `app.log`, the page `out/renderer/index.html` has finished loading, React has rendered into `#root`, and the main process reports a visible window. This takes 1 to 3 seconds after the build.
 
@@ -46,6 +46,7 @@ Isolation facts, observed on this Mac:
 
 - The own profile gives each run its own single-instance lock, so a verification run can sit beside the user's AgentPeek and beside other runs. Check the isolated paths with `doctor` and inspect `stop`'s default-profile mtime comparison (see Cleanup).
 - The helper launches the unpackaged app: macOS names the process and the first menu `Electron`, the View menu has Toggle Developer Tools, and the page can reload itself. The local package now exists and disables the main-process inspector. Follow [`features/local-package.md`](features/local-package.md) for its separate native checks; never attach this helper or Playwright to it.
+- **Remote View can open one more loopback port.** A `--state` with Remote View on, a Settings change that turns it on, or `AGENTPEEK_REMOTE_PREVIEW=1` in the launch environment makes the instance listen on `127.0.0.1` at the saved or announced port. `doctor`, `wait-exit` and `stop` check only the two debug ports, so prove that port with `lsof` as [`features/remote-listener.md`](features/remote-listener.md) and [`features/localhost-preview.md`](features/localhost-preview.md) describe. Each run's Remote View settings live in its own profile and are deleted by `stop`.
 - **Fixture isolation is active.** The app requires both absolute overrides, uses the isolated profile before its single-instance lock, and reads only the synthetic home. `doctor` requires the snapshot's fixture flag and home plus the visible "Fixture data" banner. Never trust a run whose fixture check fails.
 
 ## Doctor
