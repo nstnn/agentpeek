@@ -672,3 +672,117 @@ describe('Remote View resilience budgets in a browser', () => {
     expect(statusRequests()).toBe(2)
   })
 })
+
+describe('Share session titles on an open page in a browser', () => {
+  // TASK-027 open finding: titles reported still visible on an open phone page after the option
+  // was turned off. These cases cover the page side; a physical Safari recheck is still needed.
+  const TITLE = 'Synthetic shared title'
+  let shareTitles = true
+  let generation = 0
+  const titled = () =>
+    [SHARED, SHARED, SHARED].map((workspacePath, index) =>
+      testSession({
+        key: { tool: 'codex', id: `synthetic-title-${index}` },
+        summary: {
+          title: `${TITLE} ${index}`,
+          workspacePath,
+          lastActivityAt: 5 + index,
+          toolVersion: '0.0.0'
+        },
+        activity: { state: 'running' }
+      })
+    )
+
+  async function startTitled(): Promise<void> {
+    const result = await startRemoteListener({
+      port: listenerPort,
+      access: { ownerLogin: OWNER, hostName: HOST },
+      secret: new Uint8Array(32).fill(7),
+      viewer,
+      snapshot: () => snapshotOf([SHARED], titled()),
+      // A changed policy is a new object, as the desktop settings hand it over.
+      sharing: () => ({ sharedWorkspaces: [SHARED], shareTitles }),
+      generation: () => generation
+    })
+    if (!result.ok) throw new Error(result.error)
+    listener = result.listener
+  }
+
+  /** What the desktop does when the option is saved: a new policy, then a resync. */
+  function setTitles(next: boolean): void {
+    shareTitles = next
+    generation += 1
+    listener!.resync()
+  }
+
+  const rowTitles = (page: Page) => page.locator('.row-title').allTextContents()
+  const showsTitles = async (page: Page) => (await rowTitles(page)).some((t) => t.includes(TITLE))
+  const allAliases = async (page: Page) => {
+    const titles = await rowTitles(page)
+    return titles.length === 3 && titles.every((t) => /^Session \d+$/.test(t))
+  }
+
+  beforeAll(async () => {
+    listenerPort = await freePort()
+    serve = await startServe(() => listenerPort)
+  })
+  afterEach(async () => {
+    for (const context of browser.contexts()) await context.close()
+    await stopListener('shutdown')
+    shareTitles = true
+    generation = 0
+    serve.requests.length = 0
+  })
+  afterAll(async () => {
+    await new Promise<void>((done) => serve.server.close(() => done()))
+  })
+
+  it('replaces titles with aliases on a visible page, and back', async () => {
+    await startTitled()
+    const page = await openPage({ width: 375, height: 812 })
+    await expect.poll(() => showsTitles(page)).toBe(true)
+    setTitles(false)
+    await expect.poll(() => allAliases(page), { timeout: 2_000 }).toBe(true)
+    expect(await page.content()).not.toContain(TITLE)
+    setTitles(true)
+    await expect.poll(() => showsTitles(page), { timeout: 2_000 }).toBe(true)
+  })
+
+  // Headless Chrome's CDP freeze fires no page events, so these dispatch what Safari sends when a
+  // tab goes to the background (`visibilitychange` with `hidden`) or into the back/forward cache.
+  const lifecycles = {
+    hidden: {
+      leave: () => {
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => true })
+        document.dispatchEvent(new Event('visibilitychange'))
+      },
+      back: () => {
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => false })
+        document.dispatchEvent(new Event('visibilitychange'))
+      }
+    },
+    'back/forward cache': {
+      leave: () => {
+        window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }))
+      },
+      back: () => {
+        window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+      }
+    }
+  }
+
+  for (const [name, { leave, back }] of Object.entries(lifecycles)) {
+    it(`shows no title after the option is turned off while the page is ${name}`, async () => {
+      await startTitled()
+      const page = await openPage({ width: 375, height: 812 })
+      await expect.poll(() => showsTitles(page)).toBe(true)
+      await page.evaluate(leave)
+      await expect.poll(() => listener!.streamCount()).toBe(0)
+      setTitles(false)
+      await page.evaluate(back)
+      await expect.poll(() => pill(page).textContent()).toBe('Live')
+      await expect.poll(() => allAliases(page), { timeout: 2_000 }).toBe(true)
+      expect(await page.content()).not.toContain(TITLE)
+    })
+  }
+})
