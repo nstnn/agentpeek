@@ -14,7 +14,7 @@ Wide selection shows the session header and recent exchange. Both panes are repl
 - `detail-markdown`: GFM, literal HTML, image alt text and safe web-link dispatch.
 - `detail-title`: single-pane two-line initial title with the full accessible heading and width-aware Show Full Title / Show Less Title.
 - `detail-long-message`: reversible 6,000-character preview and expansion up to 200,000, truthful cap notices, stable focus and reachable scroll controls.
-- `detail-actions`: Open, Mark Read, Pin/Unpin and Copy Session ID.
+- `detail-actions`: Open Codex or Open Claude, Mark Read, Pin/Unpin and Copy Session ID.
 - `detail-read`: only the active visible successfully loaded detail, after successful current target synchronization and native focus, can acknowledge a matching reply cursor; viewing never clears waiting.
 - `detail-navigation`: narrow click/Return, Back, Escape and Session > Back restore row/focus.
 - `detail-live`: refresh preserves focus/scroll and discards stale requests.

@@ -1,10 +1,10 @@
 # Source monitoring
 
-Connected tools appear directly above Settings as a dot and name, or initials in the collapsed rail. A thin divider separates the tools from Settings in both layouts. Settings contains independent Monitor Codex and Monitor Claude Code switches with actual source health. OFF stops monitoring and hides sessions/counts while retaining pins/read markers; an open selection shows Monitoring off. Choices survive restarting AgentPeek.
+Connected tools appear directly above Settings as a dot and name, or a one-letter mark in the collapsed rail (C for Codex, A for Claude Code). A thin divider separates the tools from Settings in both layouts. Settings contains independent Monitor Codex and Monitor Claude Code switches with actual source health. OFF stops monitoring and hides sessions/counts while retaining pins/read markers; an open selection shows Monitoring off. Choices survive restarting AgentPeek.
 
 ## Sub-features
 
-- `sources-footer`: only connected tools, bottom placement, simple names/rail initials, a divider above Settings and Settings entry.
+- `sources-footer`: only connected tools, bottom placement, simple names/rail letters C and A, a divider above Settings and Settings entry.
 - `sources-switches`: independent accessible switches, default ON, actual health separate from ON/OFF.
 - `sources-off`: disabled-source lists/counts and reading placeholder; both-off Settings recovery.
 - `sources-persistence`: saved choice restored before monitoring starts, pins/read markers retained.

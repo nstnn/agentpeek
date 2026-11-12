@@ -4,7 +4,7 @@ AgentPeek has five native menus: AgentPeek, Edit, View, Session, and Window. Vie
 
 ## Sub-features
 
-- `menu-structure` lists About, Settings… (Command-comma), Quit (Command-Q), Copy (Command-C), Select All (Command-A), Active/Inbox/Pinned/All Sessions (Command-1/2/3/4), Reload Sessions (Command-R), the Session actions, and the existing Window items. Developer tools (Option-Command-I) appear only in development. Settings entry and modal behavior follow settings.md.
+- `menu-structure` lists About, Settings… (Command-comma), Quit (Command-Q), Copy (Command-C), Select All (Command-A), Active/Inbox/Pinned/All Sessions (Command-1/2/3/4), Reload Sessions (Command-R), Zoom In (Command-Plus), Zoom Out (Command-Minus), Actual Size (Command-0) and the disabled `Zoom: N%` label; Session: Open to the Right (or Open in Left Pane / Open in Right Pane in split), Open Codex or Open Claude (Command-O), Mark Read (Shift-Command-U), Pin or Unpin (Shift-Command-P), Copy Session ID (Option-Command-C), Close Right Pane and Back (Command-[); Window: Minimize (Command-M), Zoom, Close Window (Command-W) and Bring All to Front. Developer tools (Option-Command-I) appear only in development. Settings entry and modal behavior follow settings.md.
 - `menu-reload` refreshes sessions through the enabled Reload Sessions item.
 - `menu-session-unselected` disables source actions and placement actions without an active visible source target.
 - `menu-secondary` sends explicit-key placement and close events; Close depends on split presence independently of source availability.
@@ -41,6 +41,8 @@ Preconditions:
 
 - The menu bar draws the first menu as `Electron` in unpackaged builds, because macOS names it after the app bundle. `menu` and `menu-click` use the menu's own label, `AgentPeek`.
 - `key Meta+R` or `key Meta+W` never reaches the native menu. The `menu` listing proves accelerator registration and `menu-click` proves the action's wiring. Actual shortcut dispatch needs native keyboard input; report it separately.
+- `menu` lists a second, hidden Zoom In with Command-= (`#zoom-in-equals`). It is the same command on another key, not a duplicate to report.
+- Mark Read is enabled only when the active session has a new reply or an error, not for every selection.
 - `menu-click` refuses to act unless the window is focused, as a real menu choice needs AgentPeek active. `focus` takes focus from the user's app.
 - The About panel takes focus from the window. Run `focus` before the next `menu-click`.
 - Toggle Developer Tools can take focus too. Run `focus` before choosing it again to close the tools.
