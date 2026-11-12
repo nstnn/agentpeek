@@ -63,27 +63,6 @@ export const complete = (turn, at, error) =>
       ? { error: { message: 'Synthetic failure.', codex_error_info: 'server_overloaded' } }
       : {})
   })
-// Synthetic usage-limit figures in the codex-cli 0.145 `token_count` shape. `resets_at` is in
-// epoch seconds.
-export const tokenCount = (at, primary, secondary, reached = null) =>
-  codexEvent('token_count', at, {
-    info: null,
-    rate_limits: {
-      limit_id: 'codex',
-      primary: {
-        used_percent: primary,
-        window_minutes: 300,
-        resets_at: Math.floor((at + 3 * 3600000) / 1000)
-      },
-      secondary: {
-        used_percent: secondary,
-        window_minutes: 10080,
-        resets_at: Math.floor((at + 4 * 86400000) / 1000)
-      },
-      plan_type: 'plus',
-      rate_limit_reached_type: reached
-    }
-  })
 export const codexMessage = (text, at, role = 'AgentMessage') =>
   codexEvent('item_completed', at, {
     item: { type: role, id: id(at), phase: 'final_answer', content: [{ type: 'text', text }] }

@@ -7,7 +7,6 @@ import { toolHome, toolName, VIEW_NAMES } from './session-display'
 import { NavigationIcon } from './NavigationIcon'
 import { SessionIcon } from './SessionIcon'
 import { SettingsIcon } from './SettingsDialog'
-import { usageDisplay, type UsageDisplay } from './usage-display'
 
 export function Sidebar({
   snapshot,
@@ -16,8 +15,7 @@ export function Sidebar({
   collapsed = false,
   onToggle,
   controls,
-  onSettings,
-  now
+  onSettings
 }: {
   snapshot: AppSnapshot | null
   view: ViewId
@@ -26,8 +24,6 @@ export function Sidebar({
   onToggle: () => void
   controls: string
   onSettings: () => void
-  /** The clock for the usage footer's "Updated" and reset times. */
-  now: number
 }): JSX.Element {
   const views = ['active', 'inbox', 'pinned', 'all'] as const
   return (
@@ -117,34 +113,25 @@ export function Sidebar({
       <div className="sidebar-footer">
         <div className="connected-sources" aria-label="Connected sources">
           {AGENT_TOOLS.filter((tool) => snapshot?.health[tool].state === 'connected').map(
-            (tool) => {
-              const limits = snapshot?.usageLimits?.[tool] ?? null
-              const usage = limits === null ? null : usageDisplay(limits, now)
-              return (
-                <button
-                  key={tool}
-                  type="button"
-                  className={`connected-source${usage ? ' has-usage' : ''}`}
-                  aria-label={`${toolName(tool)} source: Connected`}
-                  // The name stays fixed; the figures, which change with time, are its description.
-                  aria-description={usage?.summary}
-                  title={`${toolName(tool)} connected${usage ? `\n${usage.summary}` : ''}\nManage in Settings`}
-                  onClick={onSettings}
-                >
-                  <span className="connected-source-name">
-                    <span className="health-dot connected" aria-hidden="true" />
-                    {collapsed ? (
-                      <span className="source-monogram" aria-hidden="true">
-                        {tool === 'codex' ? 'C' : 'A'}
-                      </span>
-                    ) : (
-                      <span>{toolName(tool)}</span>
-                    )}
+            (tool) => (
+              <button
+                key={tool}
+                type="button"
+                className="connected-source"
+                aria-label={`${toolName(tool)} source: Connected`}
+                title={`${toolName(tool)} connected · Manage in Settings`}
+                onClick={onSettings}
+              >
+                <span className="health-dot connected" aria-hidden="true" />
+                {collapsed ? (
+                  <span className="source-monogram" aria-hidden="true">
+                    {tool === 'codex' ? 'C' : 'A'}
                   </span>
-                  {usage && <UsageMeters usage={usage} compact={collapsed} />}
-                </button>
-              )
-            }
+                ) : (
+                  <span>{toolName(tool)}</span>
+                )}
+              </button>
+            )
           )}
           {!AGENT_TOOLS.some((tool) => snapshot?.health[tool].state === 'connected') && (
             <p className={collapsed ? 'sr-only' : 'sources-empty'}>No sources connected</p>
@@ -165,47 +152,6 @@ export function Sidebar({
         </button>
       </div>
     </aside>
-  )
-}
-
-/** The usage meters under a connected source. The button's description carries the same figures. */
-function UsageMeters({ usage, compact }: { usage: UsageDisplay; compact: boolean }): JSX.Element {
-  if (compact) {
-    // The collapsed sidebar has room for the shortest window's bar only.
-    const meter = usage.meters[0]!
-    return (
-      <span className="usage-meters compact" aria-hidden="true">
-        <UsageBar percent={meter.percent} level={meter.level} />
-      </span>
-    )
-  }
-  return (
-    <span className="usage-meters" aria-hidden="true">
-      {usage.meters.map((meter) => (
-        <span key={meter.label} className="usage-meter">
-          <span className="usage-meter-label">
-            <span>{meter.label}</span>
-            <span className={`usage-value ${meter.level}`}>{meter.value}</span>
-          </span>
-          <UsageBar percent={meter.percent} level={meter.level} />
-        </span>
-      ))}
-      {usage.note !== null && <span className="usage-note">{usage.note}</span>}
-    </span>
-  )
-}
-
-function UsageBar({
-  percent,
-  level
-}: {
-  percent: number | null
-  level: 'normal' | 'high' | 'reached'
-}): JSX.Element {
-  return (
-    <span className="usage-bar">
-      <span className={`usage-fill ${level}`} style={{ width: `${percent ?? 0}%` }} />
-    </span>
   )
 }
 

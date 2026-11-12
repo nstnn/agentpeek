@@ -62,8 +62,6 @@ it retains the selected sessions. A failed save restores the previous zoom and s
 
 Navigation slides over 220 ms with a gentle deceleration; Reduce Motion makes it immediate.
 Connected tools appear as a dot and name directly above Settings; the rail uses their initials.
-Under Codex, the footer also shows the 5-hour and weekly usage limits that Codex last recorded
-in its session files. Claude Code keeps no such record on disk, so it shows none.
 Click a connected source to open Settings, where all tools and their current status are shown.
 With no connected source, the expanded sidebar shows No sources connected. The rail keeps
 Active running counts, Inbox counts and view selection. Choosing a view opens

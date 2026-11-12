@@ -38,8 +38,6 @@ the expected UI result between steps. Fresh fixtures avoid stale state between s
 | `codex-aborted`                  | Codex aborted: Running → Idle, no reply/error attention.                                                                                                       |
 | `codex-reply`                    | Codex complete: a fresh completed turn, new unread cursor.                                                                                                     |
 | `codex-new-turn`                 | Codex complete: starts a newer turn, clearing unseen attention.                                                                                                |
-| `codex-usage-high`               | Codex complete: newer usage figures, 5-hour 86% and weekly 61%; the sidebar meter turns orange.                                                                |
-| `codex-usage-reached`            | Codex complete: the 5-hour limit reached (100%); the meter turns red and the note says when it resets.                                                         |
 | `skill-references`               | Codex retry: append explicit skill cards for recorded, current, missing, long, empty and blocked content. Use the helper's copied home so paths stay isolated. |
 | `skill-local-updated`            | Replace the generated current local skill; Reload Skill shows the updated version.                                                                             |
 | `skill-missing-restored`         | Create the generated missing skill; Try Again recovers its current local content.                                                                              |

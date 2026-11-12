@@ -10,7 +10,6 @@ import {
   sessionKeyToString
 } from '../../core/session'
 import { createSnapshot, type SessionsSnapshot } from '../../core/snapshot'
-import type { ToolUsageLimits } from '../../core/usage'
 import { AGENT_TOOLS, type AgentTool } from '../../core/tools'
 import type { ChangeListener, SessionWatcher } from './file-watcher'
 import type { RecentMessages, SessionSource } from './session-source'
@@ -197,13 +196,9 @@ export function createSessionsService(options: SessionsServiceOptions): Sessions
     const at = now()
     const sessions: Session[] = []
     const health = {} as Record<AgentTool, ToolHealth>
-    const usageLimits = {} as Record<AgentTool, ToolUsageLimits | null>
     for (const [tool, state] of tools) {
       const toolHealth = healthOf(state)
       health[tool] = toolHealth
-      // Only a connected source's figures are current enough to show.
-      usageLimits[tool] =
-        toolHealth.state === 'connected' ? (state.source.usageLimits?.() ?? null) : null
       if (!state.enabled) continue
       // Until a tool has been read once, every reply it finished counts as read.
       const baselineAt = store.baseline(tool) ?? at
@@ -227,7 +222,6 @@ export function createSessionsService(options: SessionsServiceOptions): Sessions
     return createSnapshot({
       sessions,
       health,
-      usageLimits,
       localState: store.status(),
       firstLaunch,
       fixture: options.fixture,

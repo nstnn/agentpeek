@@ -52,7 +52,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 ## Features
 
 - [Navigation visibility](./navigation-visibility.md) covers independent Views rail/list toggles, retained reading state, available-width layout and connected-source entry to Settings.
-- [Source monitoring](./source-monitoring.md) covers the connected-source footer and its Codex usage meters, Settings switches, disabled-source reading, recovery and saved choices.
+- [Source monitoring](./source-monitoring.md) covers the connected-source footer, Settings switches, disabled-source reading, recovery and saved choices.
 - [Settings and appearance](./settings.md) covers sidebar/rail/menu entry, System/Light/Dark selection, modal keyboard and read isolation, saved preferences and recovery.
 - [Main window](./main-window.md) covers the window that opens at launch, its sidebar/list layout, its sizes, and its Light and Dark appearance.
 - [Application menu](./app-menu.md) covers the menu bar's items, shortcuts, and disabled states.

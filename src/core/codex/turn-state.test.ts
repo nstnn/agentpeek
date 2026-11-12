@@ -10,7 +10,6 @@ import {
   T0,
   taskCompleteLine,
   taskStartedLine,
-  tokenCountLine,
   toolCallLine,
   turnAbortedLine,
   unknownLine,
@@ -37,20 +36,14 @@ function fold(lines: readonly string[]): CodexTurnState {
 
 describe('foldCodexRecords', () => {
   it('starts with nothing known', () => {
-    expect(fold([])).toEqual({
-      lastTurnEvent: null,
-      lastReply: null,
-      lastRecordAt: null,
-      usageLimits: null
-    })
+    expect(fold([])).toEqual({ lastTurnEvent: null, lastReply: null, lastRecordAt: null })
   })
 
   it('reports an open turn as started', () => {
     expect(fold([taskStartedLine(A, T0), userMessageLine('Synthetic.', T0 + SECOND)])).toEqual({
       lastTurnEvent: 'started',
       lastReply: null,
-      lastRecordAt: T0 + SECOND,
-      usageLimits: null
+      lastRecordAt: T0 + SECOND
     })
   })
 
@@ -65,8 +58,7 @@ describe('foldCodexRecords', () => {
         errorCode: null,
         newerTurnStarted: false
       },
-      lastRecordAt: T0 + MINUTE,
-      usageLimits: null
+      lastRecordAt: T0 + MINUTE
     })
   })
 
@@ -224,25 +216,5 @@ describe('codexSessionFacts', () => {
 
   it.each(['unreadable', 'unsupported'] as const)('reports an %s file', (fileStatus) => {
     expect(codexSessionFacts({ ...input, fileStatus }).turn).toEqual({ kind: fileStatus })
-  })
-})
-
-describe('usage limits', () => {
-  it('keeps the newest recorded figures', () => {
-    const state = fold([
-      tokenCountLine(T0 + MINUTE),
-      tokenCountLine(T0, { primary: { used_percent: 99, window_minutes: 300 } })
-    ])
-    expect(state.usageLimits).toMatchObject({
-      observedAt: T0 + MINUTE,
-      windows: [{ usedPercent: 16 }, { usedPercent: 43 }],
-      limitReached: false
-    })
-  })
-
-  it('carries figures across later batches that record none', () => {
-    const first = fold([tokenCountLine(T0)])
-    const next = foldCodexRecords(first, records([taskStartedLine(A, T0 + MINUTE)]))
-    expect(next.usageLimits).toEqual(first.usageLimits)
   })
 })
