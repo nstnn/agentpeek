@@ -13,14 +13,11 @@
 // - `item_completed` events with a `UserMessage` or `AgentMessage` item: prompts and replies as the
 //   Codex app shows them. The `response_item` messages are not used for text, because Codex also
 //   puts context it adds itself there (the environment, AGENTS.md) as user messages;
-// - tool-call names; bounded input is included only when the detail explicitly requests it;
-// - the `rate_limits` of `token_count` events: the account's usage-limit windows (observed on
-//   2026-11-11 in codex-cli 0.145.0). They are account figures, not conversation text.
+// - tool-call names; bounded input is included only when the detail explicitly requests it.
 // Tool output is always ignored.
 // Text in these records is conversation data: show it in the window only, never log it.
 
 import type { ToolCallDetail } from '../session'
-import type { UsageWindow } from '../usage'
 import { toolCallDetail } from './tool-details'
 
 /** What a rollout's first line says about its thread. */
@@ -61,8 +58,6 @@ export type CodexRecord =
   | { kind: 'user-message'; at: number; text: string }
   | { kind: 'agent-message'; at: number; text: string }
   | { kind: 'tool-call'; at: number; name: string; detail?: ToolCallDetail }
-  // A `token_count` event with usable `rate_limits`. Windows are shortest first.
-  | { kind: 'usage-limits'; at: number; windows: UsageWindow[]; limitReached: boolean }
   // Any other line with the record envelope. It still counts as activity.
   | { kind: 'other'; at: number }
 
@@ -138,8 +133,6 @@ function eventRecord(payload: JsonObject, at: number): CodexRecord {
       return { kind: 'turn-aborted', at }
     case 'item_completed':
       return itemRecord(payload.item, at)
-    case 'token_count':
-      return usageRecord(payload.rate_limits, at)
     default:
       return { kind: 'other', at }
   }
@@ -166,46 +159,6 @@ function errorCode(error: unknown): string | null {
   // as `{ "http_connection_failed": { … } }`. Not observed yet.
   if (isObject(info)) return Object.keys(info)[0] ?? null
   return null
-}
-
-/**
- * Reads `rate_limits`: `primary` (5 hours) and `secondary` (weekly), each with `used_percent`,
- * `window_minutes`, and `resets_at` in epoch seconds. Older versions wrote `resets_in_seconds`,
- * counted from the record's time. `rate_limits` is null or absent when Codex had no figures.
- */
-function usageRecord(limits: unknown, at: number): CodexRecord {
-  if (!isObject(limits)) return { kind: 'other', at }
-  const windows: UsageWindow[] = []
-  for (const value of [limits.primary, limits.secondary]) {
-    const window = usageWindow(value, at)
-    if (window !== null) windows.push(window)
-  }
-  if (windows.length === 0) return { kind: 'other', at }
-  windows.sort((a, b) => (a.windowMinutes ?? Infinity) - (b.windowMinutes ?? Infinity))
-  const limitReached =
-    stringOrNull(limits.rate_limit_reached_type) !== null ||
-    windows.some((window) => window.usedPercent >= 100)
-  return { kind: 'usage-limits', at, windows, limitReached }
-}
-
-function usageWindow(value: unknown, at: number): UsageWindow | null {
-  if (!isObject(value)) return null
-  const used = value.used_percent
-  if (typeof used !== 'number' || !Number.isFinite(used) || used < 0) return null
-  const minutes = positiveNumber(value.window_minutes)
-  const resetsAtSeconds = positiveNumber(value.resets_at)
-  const resetsIn = value.resets_in_seconds
-  const resetsAt =
-    resetsAtSeconds !== null
-      ? resetsAtSeconds * 1000
-      : typeof resetsIn === 'number' && Number.isFinite(resetsIn) && resetsIn >= 0
-        ? at + resetsIn * 1000
-        : null
-  return { usedPercent: used, windowMinutes: minutes, resetsAt }
-}
-
-function positiveNumber(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
 }
 
 function itemRecord(item: unknown, at: number): CodexRecord {

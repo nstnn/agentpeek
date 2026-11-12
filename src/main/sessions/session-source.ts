@@ -3,7 +3,6 @@ import type { RecentMessages, SessionFacts, SessionKey } from '../../core/sessio
 export type { RecentMessages } from '../../core/session'
 import type { AgentTool } from '../../core/tools'
 import type { SkillContent, SkillRequest } from '../../core/skills'
-import type { ToolUsageLimits } from '../../core/usage'
 
 // The interface each tool's source implements: Codex (codex-source.ts) and Claude Code (TASK-008).
 // A source reads its tool's files through the access gate and reports normalized facts. The
@@ -36,11 +35,6 @@ export interface SessionSource {
   getSkill?(key: SessionKey, request: SkillRequest): Promise<SkillContent>
   /** The tool's health line, as of the last `catalog` or `refresh`. */
   health(): ToolHealth
-  /**
-   * The newest usage limits the tool's listed files recorded, as of the last `catalog` or
-   * `refresh`. A source whose tool records none leaves this out.
-   */
-  usageLimits?(): ToolUsageLimits | null
   /**
    * The files that need their own file watch, because a folder watch misses their changes. The
    * service keeps one watch per path and drops watches for paths no longer listed. After adding a

@@ -182,20 +182,3 @@ export function unknownLine(type: string, at: number): string {
 export function indexLine(id: string, name: string, at: number): string {
   return JSON.stringify({ id, thread_name: name, updated_at: new Date(at).toISOString() })
 }
-
-/** A `token_count` event with synthetic usage figures, in the codex-cli 0.145 shape. */
-export function tokenCountLine(
-  at: number,
-  rateLimits: object | null = {
-    primary: { used_percent: 16, window_minutes: 300, resets_at: (at + 3 * 60 * MINUTE) / 1000 },
-    secondary: {
-      used_percent: 43,
-      window_minutes: 10080,
-      resets_at: (at + 4 * 24 * 60 * MINUTE) / 1000
-    },
-    plan_type: 'plus',
-    rate_limit_reached_type: null
-  }
-): string {
-  return rolloutLine('event_msg', { type: 'token_count', info: null, rate_limits: rateLimits }, at)
-}

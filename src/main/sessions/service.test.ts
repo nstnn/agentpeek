@@ -434,30 +434,6 @@ describe('changes from the watcher', () => {
   })
 })
 
-describe('usage limits', () => {
-  const LIMITS = {
-    observedAt: NOW,
-    windows: [{ usedPercent: 16, windowMinutes: 300, resetsAt: NOW + 60_000 }],
-    limitReached: false
-  }
-
-  it('publishes a connected source’s figures and none for a source that records none', async () => {
-    codex.source.usageLimits = () => LIMITS
-    await started()
-    await settle()
-    expect(latest().usageLimits).toEqual({ codex: LIMITS, claude: null })
-    expect(Object.isFrozen(latest().usageLimits.codex?.windows[0])).toBe(true)
-  })
-
-  it('publishes no figures for a source that is not connected', async () => {
-    codex.source.usageLimits = () => LIMITS
-    codex.readHealth = { state: 'no-access', lastReadAt: null }
-    await started()
-    await settle()
-    expect(latest().usageLimits.codex).toBeNull()
-  })
-})
-
 describe('one tool failing', () => {
   it('keeps the other tool working when a source reports no access', async () => {
     codex.readHealth = { state: 'no-access', lastReadAt: null }

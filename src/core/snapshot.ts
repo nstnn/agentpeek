@@ -3,7 +3,6 @@ import { looksOpen } from './activity'
 import type { ToolHealth } from './health'
 import type { Session } from './session'
 import { AGENT_TOOLS, type AgentTool } from './tools'
-import { frozenUsageLimits, type ToolUsageLimits } from './usage'
 import { inboxGroupOf, type GroupId, sortSessions } from './views'
 
 // The snapshot the sessions service publishes: everything the list and the detail header show,
@@ -30,11 +29,6 @@ export interface SessionsSnapshot {
   readonly groupCounts: Readonly<Record<GroupId, number>>
   /** Each tool's health line. */
   readonly health: Readonly<Record<AgentTool, ToolHealth>>
-  /**
-   * Each tool's newest recorded usage limits, for the connected-source footer. Null when the tool
-   * records none, its source is not connected, or nothing was read yet.
-   */
-  readonly usageLimits: Readonly<Record<AgentTool, ToolUsageLimits | null>>
   /** Whether pins and read markers are saved, for the "Local state unavailable" banner. */
   readonly localState: LocalStateStatus
   /**
@@ -52,8 +46,6 @@ export interface SessionsSnapshot {
 export interface SnapshotInput {
   sessions: readonly Session[]
   health: Record<AgentTool, ToolHealth>
-  /** Left out by callers that have no figures: every tool then reports none. */
-  usageLimits?: Partial<Record<AgentTool, ToolUsageLimits | null>>
   localState: LocalStateStatus
   firstLaunch: boolean
   fixture: boolean
@@ -67,17 +59,12 @@ export interface SnapshotInput {
 export function createSnapshot(input: SnapshotInput): SessionsSnapshot {
   const sessions = sortSessions(input.sessions, false).map(frozenSession)
   const health = {} as Record<AgentTool, ToolHealth>
-  const usageLimits = {} as Record<AgentTool, ToolUsageLimits | null>
-  for (const tool of AGENT_TOOLS) {
-    health[tool] = Object.freeze({ ...input.health[tool] })
-    usageLimits[tool] = frozenUsageLimits(input.usageLimits?.[tool] ?? null)
-  }
+  for (const tool of AGENT_TOOLS) health[tool] = Object.freeze({ ...input.health[tool] })
   return Object.freeze({
     sessions: Object.freeze(sessions),
     needsAttention: countNeedingAttention(sessions),
     groupCounts: Object.freeze(countGroups(sessions)),
     health: Object.freeze(health),
-    usageLimits: Object.freeze(usageLimits),
     localState: Object.freeze({ ...input.localState }),
     firstLaunch: input.firstLaunch,
     fixture: input.fixture,

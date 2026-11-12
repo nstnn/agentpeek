@@ -424,7 +424,6 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
             onToggle={() => setSidebarCollapsed((collapsed) => !collapsed)}
             controls={`${regionId}-sidebar`}
             onSettings={store.openSettings}
-            now={now}
           />
         </div>
         <PaneDivider
