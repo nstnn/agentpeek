@@ -26,6 +26,7 @@ import {
   T0,
   taskCompleteLine,
   taskStartedLine,
+  tokenCountLine,
   toolCallLine,
   turnAbortedLine,
   unknownLine,
@@ -748,5 +749,33 @@ describe('recentMessages', () => {
     expect(await source.recentMessages({ tool: 'codex', id: USER }, 20)).toEqual({
       kind: 'unreadable'
     })
+  })
+})
+
+describe('usage limits', () => {
+  it('reports the newest figures across the listed threads', async () => {
+    const other = syntheticId(3)
+    await writeRollout(USER, [...finishedThread(USER), tokenCountLine(T0 + 5 * SECOND)])
+    await writeRollout(other, [
+      ...finishedThread(other),
+      tokenCountLine(T0 + 6 * SECOND, { primary: { used_percent: 30, window_minutes: 300 } })
+    ])
+    const source = createSource()
+    await source.catalog()
+    expect(source.usageLimits?.()).toEqual({
+      observedAt: T0 + 6 * SECOND,
+      windows: [{ usedPercent: 30, windowMinutes: 300, resetsAt: null }],
+      limitReached: false
+    })
+  })
+
+  it('updates from appended lines and reports none before any figures', async () => {
+    const path = await writeRollout(USER, finishedThread(USER))
+    const source = createSource()
+    await source.catalog()
+    expect(source.usageLimits?.()).toBeNull()
+    await append(path, [tokenCountLine(T0 + 10 * SECOND)])
+    await source.refresh([path])
+    expect(source.usageLimits?.()).toMatchObject({ observedAt: T0 + 10 * SECOND })
   })
 })

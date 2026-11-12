@@ -180,6 +180,71 @@ summary:focus-visible,
 .connected-source:hover {
   background: var(--fill);
 }
+.connected-source.has-usage {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  white-space: normal;
+}
+.connected-source-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.sidebar-collapsed .connected-source-name {
+  justify-content: center;
+  gap: 4px;
+}
+.usage-meters {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--secondary);
+}
+.usage-meters.compact {
+  padding: 0 4px;
+}
+.usage-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.usage-meter-label {
+  display: flex;
+  justify-content: space-between;
+  font-variant-numeric: tabular-nums;
+}
+.usage-value.high {
+  color: var(--orange);
+}
+.usage-value.reached {
+  color: var(--red);
+}
+.usage-bar {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--secondary) 25%, transparent);
+  overflow: hidden;
+}
+.usage-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.usage-fill.high {
+  background: var(--orange);
+}
+.usage-fill.reached {
+  background: var(--red);
+}
+/* Wraps rather than truncates: the reset time at its end is the point of the note. */
+.usage-note {
+  overflow-wrap: anywhere;
+}
 .sidebar-collapsed .connected-source {
   justify-content: center;
   min-height: 36px;

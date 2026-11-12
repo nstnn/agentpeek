@@ -17,6 +17,7 @@ import {
 import type { ToolHealth } from '../../core/health'
 import type { SessionFacts, SessionKey } from '../../core/session'
 import type { SkillContent, SkillRequest } from '../../core/skills'
+import type { ToolUsageLimits } from '../../core/usage'
 import { readRequestedSkill } from './skill-reader'
 import { type AccessGate, createAccessGate } from './access'
 import { isCodexAppRunning } from './codex-app'
@@ -348,6 +349,21 @@ export function createCodexSource(options: CodexSourceOptions): SessionSource {
     )
   }
 
+  /**
+   * The usage limits are the account's, so every rollout records the same figures: the newest
+   * record across the listed threads wins.
+   */
+  function usageLimits(): ToolUsageLimits | null {
+    let newest: ToolUsageLimits | null = null
+    for (const entry of tracked.values()) {
+      const limits = entry.state.usageLimits
+      if (limits !== null && (newest === null || limits.observedAt > newest.observedAt)) {
+        newest = limits
+      }
+    }
+    return newest
+  }
+
   async function recentMessages(key: SessionKey, limit: number): Promise<RecentMessages> {
     const entry =
       key.tool === 'codex'
@@ -411,6 +427,7 @@ export function createCodexSource(options: CodexSourceOptions): SessionSource {
       }
     },
     health: () => health,
+    usageLimits,
     watchedFiles: () => [...tracked.keys(), ...pending]
   }
 }

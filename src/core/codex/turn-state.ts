@@ -1,4 +1,5 @@
 import type { SessionReply } from '../session'
+import type { ToolUsageLimits } from '../usage'
 import type { CodexRecord } from './records'
 
 // What AgentPeek knows about one rollout's turns. It is built from the tail the source reads first,
@@ -14,12 +15,15 @@ export interface CodexTurnState {
   lastReply: SessionReply | null
   /** The time of the newest record read, or null when none was read. */
   lastRecordAt: number | null
+  /** The newest usage limits a `token_count` event recorded, or null when none was read. */
+  usageLimits: ToolUsageLimits | null
 }
 
 export const EMPTY_CODEX_TURN_STATE: CodexTurnState = {
   lastTurnEvent: null,
   lastReply: null,
-  lastRecordAt: null
+  lastRecordAt: null,
+  usageLimits: null
 }
 
 /** Applies records, oldest first, to the state. */
@@ -27,7 +31,7 @@ export function foldCodexRecords(
   state: CodexTurnState,
   records: readonly CodexRecord[]
 ): CodexTurnState {
-  let { lastTurnEvent, lastReply, lastRecordAt } = state
+  let { lastTurnEvent, lastReply, lastRecordAt, usageLimits } = state
   for (const record of records) {
     lastRecordAt = lastRecordAt === null ? record.at : Math.max(lastRecordAt, record.at)
     switch (record.kind) {
@@ -53,7 +57,16 @@ export function foldCodexRecords(
       case 'turn-aborted':
         lastTurnEvent = 'ended'
         break
+      case 'usage-limits':
+        if (usageLimits === null || record.at >= usageLimits.observedAt) {
+          usageLimits = {
+            observedAt: record.at,
+            windows: record.windows,
+            limitReached: record.limitReached
+          }
+        }
+        break
     }
   }
-  return { lastTurnEvent, lastReply, lastRecordAt }
+  return { lastTurnEvent, lastReply, lastRecordAt, usageLimits }
 }
