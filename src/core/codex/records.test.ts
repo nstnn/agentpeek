@@ -12,6 +12,7 @@ import {
   taskCompleteLine,
   taskStartedLine,
   toolCallLine,
+  tokenCountLine,
   toolOutputLine,
   turnAbortedLine,
   unknownLine,
@@ -243,5 +244,66 @@ describe('parseIndexLine', () => {
   it('skips a line without an ID, and a malformed line', () => {
     expect(parseIndexLine(JSON.stringify({ thread_name: 'Synthetic' }))).toBeNull()
     expect(parseIndexLine('{"id":')).toBeNull()
+  })
+})
+
+describe('usage limits', () => {
+  const MIN = 60 * 1000
+
+  it('reads the 5-hour and weekly windows of a token_count event, shortest first', () => {
+    expect(parseRecord(tokenCountLine(T0))).toEqual({
+      kind: 'usage-limits',
+      at: T0,
+      windows: [
+        { usedPercent: 16, windowMinutes: 300, resetsAt: T0 + 180 * MIN },
+        { usedPercent: 43, windowMinutes: 10080, resetsAt: T0 + 4 * 24 * 60 * MIN }
+      ],
+      limitReached: false
+    })
+  })
+
+  it('counts resets_in_seconds from the record time', () => {
+    const line = tokenCountLine(T0, {
+      secondary: { used_percent: 5, window_minutes: 10080, resets_in_seconds: 60 },
+      primary: { used_percent: 2.5, window_minutes: 300, resets_in_seconds: 30 }
+    })
+    expect(parseRecord(line)).toMatchObject({
+      windows: [
+        { usedPercent: 2.5, resetsAt: T0 + 30_000 },
+        { usedPercent: 5, resetsAt: T0 + 60_000 }
+      ]
+    })
+  })
+
+  it('reports a reached limit', () => {
+    const named = tokenCountLine(T0, {
+      primary: { used_percent: 99, window_minutes: 300 },
+      rate_limit_reached_type: 'primary'
+    })
+    const full = tokenCountLine(T0, { primary: { used_percent: 100 } })
+    expect(parseRecord(named)).toMatchObject({ limitReached: true })
+    expect(parseRecord(full)).toMatchObject({
+      limitReached: true,
+      windows: [{ usedPercent: 100, windowMinutes: null, resetsAt: null }]
+    })
+  })
+
+  it.each([
+    ['no rate_limits', null],
+    ['no windows', { plan_type: 'plus' }],
+    ['a window without a number', { primary: { used_percent: '16' } }],
+    ['a negative share', { primary: { used_percent: -1 } }]
+  ])('reads a token_count event with %s as other activity', (_name, limits) => {
+    expect(parseRecord(tokenCountLine(T0, limits))).toEqual({ kind: 'other', at: T0 })
+  })
+
+  it('drops an unusable window and keeps the other', () => {
+    const line = tokenCountLine(T0, {
+      primary: { used_percent: Number.NaN },
+      secondary: { used_percent: 43, window_minutes: 10080, resets_at: 'soon' }
+    })
+    expect(parseRecord(line)).toMatchObject({
+      windows: [{ usedPercent: 43, windowMinutes: 10080, resetsAt: null }]
+    })
   })
 })

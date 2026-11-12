@@ -8,6 +8,7 @@ import {
   complete,
   codexEvent,
   codexMessage,
+  tokenCount,
   prompt,
   assistant,
   claude,
@@ -20,6 +21,8 @@ export const STEPS = Object.freeze([
   'codex-aborted',
   'codex-reply',
   'codex-new-turn',
+  'codex-usage-high',
+  'codex-usage-reached',
   'claude-waiting',
   'claude-denied',
   'claude-stopped',
@@ -156,6 +159,12 @@ export async function simulate(home, step, at = Date.now()) {
         started(id(at), at),
         codexMessage('Synthetic newer prompt.', at + 1, 'UserMessage')
       ])
+      break
+    case 'codex-usage-high':
+      await codex('complete', [tokenCount(at, 86, 61)])
+      break
+    case 'codex-usage-reached':
+      await codex('complete', [tokenCount(at, 100, 72, 'primary')])
       break
     case 'claude-waiting':
       await status('busy', 'waiting')

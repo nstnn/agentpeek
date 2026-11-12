@@ -13,6 +13,7 @@ import {
   started,
   complete,
   codexMessage,
+  tokenCount,
   toolCall,
   toolDetailCalls,
   index,
@@ -90,6 +91,9 @@ async function createCodex(home, now) {
       started(id(1000 + Object.keys(IDS).indexOf(name)), at + 1),
       codexMessage('Synthetic user prompt.', at + 2, 'UserMessage')
     ]
+    // The newest usage figures, 5-hour 16% and weekly 43%; an older thread recorded lower ones.
+    if (name === 'complete') lines.push(tokenCount(at + 3, 16, 43))
+    if (name === 'error') lines.push(tokenCount(at + 2, 9, 40))
     if (['long', 'hostile', 'retry'].includes(name)) {
       if (name === 'long') {
         for (let i = 0; i < 24; i++)
