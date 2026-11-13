@@ -1,7 +1,8 @@
 :root {
   color-scheme: light dark;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
-  font-size: 13px;
+  --font-system-mono: ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--font-system-mono);
+  font-size: 12px;
   line-height: 1.35;
   color: var(--text);
   background: var(--bg);
@@ -104,7 +105,7 @@ summary:focus-visible,
 }
 .sidebar .sidebar-heading-text {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
 }
 .sidebar-collapsed .sidebar-heading {
@@ -151,13 +152,13 @@ summary:focus-visible,
   right: -2px;
   top: -2px;
   padding: 0 4px;
-  font-size: 10px;
+  font-size: 9px;
   background: var(--accent);
   color: var(--bg);
 }
 .source-monogram {
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
 }
 .connected-sources {
   padding-bottom: 8px;
@@ -189,7 +190,7 @@ summary:focus-visible,
 .sources-empty {
   margin: 4px 8px;
   color: var(--secondary);
-  font-size: 11px;
+  font-size: 10px;
 }
 .list-scroll:focus,
 .detail-pane:focus,
@@ -206,7 +207,7 @@ summary:focus-visible,
   margin: 0;
   padding: 6px 14px;
   border-bottom: 1px solid var(--sep);
-  font-size: 12px;
+  font-size: 11px;
   overflow-wrap: anywhere;
   flex: none;
 }
@@ -352,7 +353,7 @@ button[aria-disabled='true'] {
 }
 .settings-header h1 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
 }
 .settings-close {
@@ -365,7 +366,7 @@ button[aria-disabled='true'] {
   border: 0;
   border-radius: 6px;
   background: var(--fill);
-  font-size: 22px;
+  font-size: 21px;
   line-height: 1;
 }
 .settings-body {
@@ -373,7 +374,7 @@ button[aria-disabled='true'] {
 }
 .settings-body h2 {
   margin: 0 0 20px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
 }
 .theme-fieldset {
@@ -479,7 +480,7 @@ button[aria-disabled='true'] {
 .settings-source-status {
   margin: 3px 0 0;
   color: var(--secondary);
-  font-size: 12px;
+  font-size: 11px;
 }
 .source-switch {
   width: 40px;
@@ -521,7 +522,7 @@ button[aria-disabled='true'] {
   min-height: 36px;
   margin: 16px 0 0;
   color: var(--secondary);
-  font-size: 12px;
+  font-size: 11px;
 }
 .settings-error {
   color: var(--red);
@@ -537,7 +538,7 @@ button[aria-disabled='true'] {
 }
 .sidebar h2 {
   color: var(--secondary);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   margin: 6px 8px 4px;
 }
@@ -563,7 +564,7 @@ button[aria-disabled='true'] {
 .count,
 .badge {
   margin-left: auto;
-  font-size: 12px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 .badge {
@@ -594,7 +595,7 @@ button[aria-disabled='true'] {
   flex: none;
 }
 .list-header h1 {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   margin: 0;
 }
@@ -613,7 +614,7 @@ button[aria-disabled='true'] {
   min-width: 0;
 }
 .summary {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--secondary);
   margin: 3px 0 8px;
 }
@@ -629,7 +630,7 @@ button[aria-disabled='true'] {
   border-radius: 5px;
   background: transparent;
   padding: 3px 10px;
-  font-size: 12px;
+  font-size: 11px;
   white-space: nowrap;
 }
 .tool-filter button[aria-checked='true'] {
@@ -644,7 +645,7 @@ button[aria-disabled='true'] {
   margin: 8px 10px 2px;
   padding: 7px 10px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 11px;
   display: flex;
   gap: 8px;
   flex: none;
@@ -673,7 +674,7 @@ button[aria-disabled='true'] {
   gap: 6px;
   margin: 0 0 8px;
   color: var(--secondary);
-  font-size: 12px;
+  font-size: 11px;
 }
 .grouping-options {
   display: inline-flex;
@@ -705,7 +706,7 @@ button[aria-disabled='true'] {
   border-radius: 5px;
   cursor: default;
   user-select: none;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
 }
 .project-heading:hover {
@@ -745,7 +746,7 @@ button[aria-disabled='true'] {
   display: flex;
   flex-wrap: wrap;
   gap: 3px 8px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 400;
 }
 .project-attention {
@@ -798,7 +799,7 @@ button[aria-disabled='true'] {
   justify-content: space-between;
   padding: 9px 16px 3px 28px;
   margin: 0;
-  font-size: 11.5px;
+  font-size: 10.5px;
   font-weight: 600;
   color: var(--secondary);
 }
@@ -842,25 +843,25 @@ button[aria-disabled='true'] {
 .row-time,
 .pin {
   color: var(--secondary);
-  font-size: 11.5px;
+  font-size: 10.5px;
   flex: none;
 }
 .row-time {
   font-variant-numeric: tabular-nums;
 }
 .row-secondary {
-  font-size: 12px;
+  font-size: 11px;
 }
 .row-retained {
   grid-column: 2;
-  font-size: 11.5px;
+  font-size: 10.5px;
   color: var(--secondary);
 }
 .row-meta {
   color: var(--secondary);
 }
 .row-status {
-  font-size: 12px;
+  font-size: 11px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -941,7 +942,7 @@ button[aria-disabled='true'] {
 .empty-list h2,
 .detail-placeholder h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
 }
 .empty-list p,
@@ -949,7 +950,7 @@ button[aria-disabled='true'] {
   margin: 0;
   max-width: 320px;
   color: var(--secondary);
-  font-size: 12.5px;
+  font-size: 11.5px;
 }
 .empty-list button {
   border: 1px solid var(--sep);
@@ -968,7 +969,7 @@ button[aria-disabled='true'] {
   border-top: 1px solid var(--sep);
   padding: 7px 14px;
   color: var(--secondary);
-  font-size: 11.5px;
+  font-size: 10.5px;
 }
 @media (max-width: 999px) {
   .detail-placeholder {
@@ -1000,7 +1001,7 @@ button[aria-disabled='true'] {
   border-radius: 5px;
   background: var(--bg);
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: 11px;
 }
 .pane-selector {
   display: flex;
@@ -1032,7 +1033,7 @@ button[aria-disabled='true'] {
   min-height: 38px;
   padding: 6px 12px;
   border-bottom: 2px solid var(--sep);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
 }
 .detail-pane[data-active='true'] .pane-toolbar {
@@ -1042,7 +1043,7 @@ button[aria-disabled='true'] {
   flex: none;
   margin-right: auto;
   color: var(--accent);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 400;
 }
 .pane-toolbar button {
@@ -1053,7 +1054,7 @@ button[aria-disabled='true'] {
   display: block;
   margin-top: 3px;
   color: var(--secondary);
-  font-size: 11px;
+  font-size: 10px;
 }
 .detail-header {
   background-position: 18px bottom;
@@ -1075,7 +1076,7 @@ button[aria-disabled='true'] {
 }
 .detail-header h2 {
   margin: 0 0 4px;
-  font-size: 17px;
+  font-size: 16px;
   line-height: 1.3;
 }
 .detail-header .title-preview {
@@ -1090,7 +1091,7 @@ button[aria-disabled='true'] {
 .detail-meta,
 .detail-status {
   margin: 4px 0;
-  font-size: 12px;
+  font-size: 11px;
 }
 .detail-meta {
   color: var(--secondary);
@@ -1105,7 +1106,7 @@ button[aria-disabled='true'] {
   padding: 9px 11px;
   border: 1px solid currentColor;
   border-radius: 7px;
-  font-size: 12px;
+  font-size: 11px;
 }
 .detail-callout p {
   margin: 0;
@@ -1125,7 +1126,7 @@ button[aria-disabled='true'] {
   background: var(--bg);
   border-radius: 5px;
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: 11px;
 }
 .detail-pane button:disabled {
   opacity: 0.5;
@@ -1142,7 +1143,7 @@ button[aria-disabled='true'] {
   border-color: transparent;
   background: transparent;
   color: var(--secondary);
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1;
 }
 .pane-close:hover {
@@ -1178,7 +1179,7 @@ button[aria-disabled='true'] {
 }
 .latest-divider {
   color: var(--secondary);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   padding: 12px 0 8px;
   border-top: 1px solid var(--sep);
@@ -1197,12 +1198,12 @@ button[aria-disabled='true'] {
   display: flex;
   gap: 8px;
   align-items: baseline;
-  font-size: 12px;
+  font-size: 11px;
   margin-bottom: 7px;
 }
 .message time {
   color: var(--secondary);
-  font-size: 11px;
+  font-size: 10px;
 }
 .message-controls {
   position: sticky;
@@ -1230,24 +1231,24 @@ button[aria-disabled='true'] {
   margin-bottom: 0;
 }
 .markdown h1 {
-  font-size: 17px;
+  font-size: 16px;
 }
 .markdown h2 {
-  font-size: 15px;
+  font-size: 14px;
 }
 .markdown h3,
 .markdown h4,
 .markdown h5,
 .markdown h6 {
-  font-size: 13px;
+  font-size: 12px;
 }
 .markdown a {
   color: var(--accent);
 }
 .markdown code {
   background: var(--fill);
-  font-family: ui-monospace, SFMono-Regular, monospace;
-  font-size: 12px;
+  font-family: var(--font-system-mono);
+  font-size: 11px;
   padding: 1px 3px;
   border-radius: 3px;
 }
@@ -1289,7 +1290,7 @@ button[aria-disabled='true'] {
 .truncation-notice,
 .transcript-ending {
   color: var(--secondary);
-  font-size: 11.5px;
+  font-size: 10.5px;
   overflow-wrap: anywhere;
 }
 .tool-summary {
@@ -1337,19 +1338,19 @@ button[aria-disabled='true'] {
 }
 .skill-card-trigger {
   margin-left: auto;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--secondary);
 }
 .skill-card-content {
   padding: 0 12px 12px;
 }
 .skill-card-origin {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
 }
 .skill-card-note,
 .skill-file-details {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--secondary);
 }
 .skill-card-description {
@@ -1371,7 +1372,7 @@ button[aria-disabled='true'] {
 .tool-calls {
   container: tool-calls / inline-size;
   margin: 6px 0 12px;
-  font-size: 11.5px;
+  font-size: 10.5px;
   color: var(--secondary);
 }
 .tool-calls summary {
@@ -1404,7 +1405,7 @@ button[aria-disabled='true'] {
 }
 .tool-call > summary::before {
   content: '›';
-  font-size: 15px;
+  font-size: 14px;
   text-align: center;
 }
 .tool-call[open] > summary::before {
@@ -1412,7 +1413,7 @@ button[aria-disabled='true'] {
 }
 .tool-call-number,
 .tool-call time {
-  font-size: 11px;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
 .tool-call time {
@@ -1420,24 +1421,24 @@ button[aria-disabled='true'] {
 }
 .tool-call-name {
   min-width: 0;
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--font-system-mono);
   color: var(--text);
 }
 .tool-call-context {
   display: block;
   margin-top: 2px;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
-  font-size: 11px;
+  font-family: var(--font-system-mono);
+  font-size: 10px;
   color: var(--secondary);
 }
 .tool-call-summary {
   min-width: 0;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text);
   overflow-wrap: anywhere;
 }
 .tool-call-tool {
-  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--font-system-mono);
 }
 .tool-call-status {
   font-weight: 600;
@@ -1456,7 +1457,7 @@ button[aria-disabled='true'] {
 }
 .tool-call-input {
   padding: 0 6px 12px 42px;
-  font-size: 11px;
+  font-size: 10px;
 }
 .tool-call-input pre.tool-call-error {
   margin-bottom: 10px;
@@ -1479,10 +1480,7 @@ button[aria-disabled='true'] {
   border-radius: 5px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font:
-    11.5px/1.6 ui-monospace,
-    SFMono-Regular,
-    monospace;
+  font: 10.5px/1.6 var(--font-system-mono);
 }
 .tool-call-input code {
   font: inherit;
@@ -1504,11 +1502,11 @@ button[aria-disabled='true'] {
 .message-state {
   padding: 24px 0;
   color: var(--secondary);
-  font-size: 12.5px;
+  font-size: 11.5px;
 }
 .message-state h3 {
   color: var(--text);
-  font-size: 15px;
+  font-size: 14px;
 }
 .placeholder-bar {
   height: 10px;
@@ -1521,7 +1519,7 @@ button[aria-disabled='true'] {
 }
 .action-error {
   color: var(--red);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 /* Placement previews exist only during an in-app session drag. */
