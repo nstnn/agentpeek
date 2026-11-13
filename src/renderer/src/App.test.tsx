@@ -122,7 +122,7 @@ describe('sessions interface', () => {
     })
     const fake = mount(snapshot([session('running'), waiting]))
     expect(screen.getByText('Reading sessions…')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /source: Connected/ })).toBeNull()
+    expect(screen.queryByRole('img', { name: /source: Connected/ })).toBeNull()
     await screen.findByRole('option', { name: /Synthetic running/ })
     expect(screen.getAllByRole('group').map((g) => g.getAttribute('aria-labelledby'))).toEqual([
       'group-running'

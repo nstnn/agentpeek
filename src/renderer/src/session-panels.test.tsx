@@ -36,7 +36,7 @@ describe('empty states and health', () => {
       act(() => fake.command('view:pinned'))
       await userEvent.click(await screen.findByRole('radio', { name: 'Codex 0' }))
       expect(screen.getByRole('heading', { name: title })).toBeTruthy()
-      expect(screen.getByRole('button', { name: 'Claude Code source: Connected' })).toBeTruthy()
+      expect(screen.getByRole('img', { name: 'Claude Code source: Connected' })).toBeTruthy()
       expect(screen.queryByRole('button', { name: /Show All|Browse All/ })).toBeNull()
     }
   )
@@ -238,7 +238,7 @@ describe('empty states and health', () => {
     act(() => fake.push(snapshot()))
     expect(screen.queryByText(/won't be saved/)).toBeNull()
     expect(screen.queryByText(/Its sessions show as Unknown/)).toBeNull()
-    expect(screen.getAllByRole('button', { name: /source: Connected/ })).toHaveLength(2)
+    expect(screen.getAllByRole('img', { name: /source: Connected/ })).toHaveLength(2)
   })
 
   it('uses distinct copy for an unreadable local state file', async () => {
