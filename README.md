@@ -62,7 +62,7 @@ it retains the selected sessions. A failed save restores the previous zoom and s
 
 Navigation slides over 220 ms with a gentle deceleration; Reduce Motion makes it immediate.
 Connected tools appear as a dot and name directly above Settings; the rail uses their initials.
-Click a connected source to open Settings, where all tools and their current status are shown.
+These are status indicators only. Use Settings to inspect all tools and their current status.
 With no connected source, the expanded sidebar shows No sources connected. The rail keeps
 Active running counts, Inbox counts and view selection. Choosing a view opens
 its filtered list while retaining the sessions being read.

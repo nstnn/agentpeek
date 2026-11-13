@@ -114,13 +114,12 @@ export function Sidebar({
         <div className="connected-sources" aria-label="Connected sources">
           {AGENT_TOOLS.filter((tool) => snapshot?.health[tool].state === 'connected').map(
             (tool) => (
-              <button
+              <div
                 key={tool}
-                type="button"
                 className="connected-source"
+                role="img"
                 aria-label={`${toolName(tool)} source: Connected`}
-                title={`${toolName(tool)} connected · Manage in Settings`}
-                onClick={onSettings}
+                title={`${toolName(tool)} connected`}
               >
                 <span className="health-dot connected" aria-hidden="true" />
                 {collapsed ? (
@@ -130,7 +129,7 @@ export function Sidebar({
                 ) : (
                   <span>{toolName(tool)}</span>
                 )}
-              </button>
+              </div>
             )
           )}
           {!AGENT_TOOLS.some((tool) => snapshot?.health[tool].state === 'connected') && (
