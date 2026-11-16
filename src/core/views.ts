@@ -6,8 +6,8 @@ import type { AgentTool } from './tools'
 export type ViewId = 'active' | 'inbox' | 'pinned' | 'all'
 
 /**
- * Active holds Running; Inbox holds unread Errors and New replies.
- * Pinned and All Sessions each have one group. Waiting/Unknown remain snapshot status counts.
+ * Active holds Running; Inbox holds Waiting, unread Errors and New replies.
+ * Pinned and All Sessions each have one group; Unknown remains a snapshot status count.
  */
 export type GroupId =
   'waiting' | 'errors' | 'new-replies' | 'running' | 'unknown' | 'pinned' | 'all'
@@ -27,15 +27,16 @@ export interface ViewContents {
   toolCounts: Record<ToolFilter, number>
 }
 
-const INBOX_GROUP_ORDER: readonly GroupId[] = ['errors', 'new-replies']
+const INBOX_GROUP_ORDER: readonly GroupId[] = ['waiting', 'errors', 'new-replies']
 
 /**
- * Non-running sessions with unread results, each in its first matching group.
+ * Waiting and non-running sessions with unread results, each in its first matching group.
  * A new run always belongs to Active, even if an older reply remains unread.
  */
 export function inboxGroupOf(session: Session): GroupId | null {
   const { activity, attention } = session
   if (activity.state === 'running') return null
+  if (activity.state === 'waiting') return 'waiting'
   if (attention.error) return 'errors'
   if (attention.newReply) return 'new-replies'
   return null

@@ -80,6 +80,7 @@ function frozenSession(session: Session): Session {
     activity: Object.freeze({ ...session.activity }),
     attention: Object.freeze({ ...session.attention }),
     lastReply: session.lastReply === null ? null : Object.freeze({ ...session.lastReply }),
+    ...(session.unavailable ? { unavailable: true as const } : {}),
     pinned: session.pinned
   })
 }

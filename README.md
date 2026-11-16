@@ -15,10 +15,14 @@ built-app checks cover the implemented paths. VoiceOver speech, physical sleep/w
 app/browser actions and a complete real-session comparison still need acceptance evidence.
 
 **Active** contains only running sessions. Finished unread replies and errors move to **Inbox**;
-waiting sessions and unknown states remain available in **All Sessions**. Reading a result clears its
+Waiting sessions also appear in **Inbox**, ahead of unread errors and replies; unknown states remain available in **All Sessions**. Reading a result clears its
 Inbox count; its selected row stays while being read. Finished rows leave Active immediately,
 while their open detail stays available. Restarting a session moves it back to Active.
 View shortcuts follow sidebar order: ⌘1 Active, ⌘2 Inbox, ⌘3 Pinned, ⌘4 All Sessions.
+
+Use **View → Find Session…** (⌘K), or the search button in the session-list header, to find a loaded session by title, folder or session ID across every view and tool. Up/Down chooses a result, Enter opens it in the active reading pane, and Escape cancels. Search does not read conversation content or acknowledge replies while the dialog is open.
+
+Pinned sessions are exempt from the 7-day/50-session limits and the 90-day local-state cleanup. AgentPeek restores them from the original allowlisted files on launch. If a source file is missing, its saved ID remains as **Unavailable pinned session**; use Unpin to remove it. No title, folder or conversation copy is saved to preserve a pin. Turning source monitoring off still hides that source's pins until re-enabled.
 
 Sessions are grouped by **Project** by default. Click a project heading to collapse or expand it;
 its count, attention and running summaries stay visible while collapsed. **Group by → Status**

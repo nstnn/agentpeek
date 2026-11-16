@@ -40,6 +40,7 @@ export interface RendererState {
   reloadError: string | null
   reloadVersion: number
   settingsOpen: boolean
+  searchOpen: boolean
 }
 
 /** One subscription pair per mounted app. A pushed snapshot always wins over the initial request. */
@@ -69,7 +70,8 @@ export function createSessionsStore(api: AgentPeekApi) {
     reloadPending: false,
     reloadError: null,
     reloadVersion: 0,
-    settingsOpen: false
+    settingsOpen: false,
+    searchOpen: false
   }
   const listeners = new Set<() => void>()
   let disconnect: (() => void) | null = null
@@ -77,7 +79,7 @@ export function createSessionsStore(api: AgentPeekApi) {
   let visiblePanes: readonly PaneId[] = ['main']
   let targetSignature = ''
   const targetKey = (): SessionKey | null => {
-    if (state.settingsOpen) return null
+    if (state.settingsOpen || state.searchOpen) return null
     if (state.secondarySelection && state.splitBrowsing) return null
     if (!state.activePane || !visiblePanes.includes(state.activePane)) return null
     if (state.narrow && !state.detailOpen) return null
@@ -110,6 +112,7 @@ export function createSessionsStore(api: AgentPeekApi) {
       selected?.sourceEpoch,
       visiblePanes,
       state.settingsOpen,
+      state.searchOpen,
       !!state.secondarySelection
     ])
     if (signature !== targetSignature) {
@@ -117,7 +120,9 @@ export function createSessionsStore(api: AgentPeekApi) {
       const generation = state.targetGeneration + 1
       state = { ...state, targetGeneration: generation, targetReady: false }
       void api
-        .setSelection(key, { secondPaneOpen: !state.settingsOpen && !!state.secondarySelection })
+        .setSelection(key, {
+          secondPaneOpen: !state.settingsOpen && !state.searchOpen && !!state.secondarySelection
+        })
         .then(
           () => {
             if (generation === state.targetGeneration) emit({ targetReady: key !== null })
@@ -132,7 +137,7 @@ export function createSessionsStore(api: AgentPeekApi) {
   }
   const sendDetailOpen = (open: boolean) => {
     void api
-      .setDetailOpen(open && !state.settingsOpen)
+      .setDetailOpen(open && !state.settingsOpen && !state.searchOpen)
       .catch(() => emit({ actionError: "Couldn't update Back. Try again." }))
   }
   // Focusing a retained pane must not reinsert its row after a view/filter change.
@@ -169,7 +174,9 @@ export function createSessionsStore(api: AgentPeekApi) {
           const keepCursor =
             state.view === 'active'
               ? listed?.activity.state === 'running'
-              : !(state.view === 'inbox' && listed?.activity.state === 'running')
+              : state.view === 'pinned'
+                ? listed?.pinned === true
+                : !(state.view === 'inbox' && listed?.activity.state === 'running')
           emit({
             snapshot,
             failed: false,
@@ -187,6 +194,11 @@ export function createSessionsStore(api: AgentPeekApi) {
         }
         const offSnapshot = api.onSnapshot(receive)
         const offCommand = api.onCommand((command) => {
+          if (command === 'quick-open') {
+            store.openSearch()
+            return
+          }
+          if (state.searchOpen) return
           if (command === 'settings') {
             store.openSettings()
             return
@@ -223,6 +235,15 @@ export function createSessionsStore(api: AgentPeekApi) {
           disconnect = null
         }
       }
+    },
+    openSearch(this: void) {
+      if (state.settingsOpen) return
+      emit({ searchOpen: true })
+      sendDetailOpen(false)
+    },
+    closeSearch(this: void) {
+      emit({ searchOpen: false })
+      sendDetailOpen(state.detailOpen)
     },
     openSettings(this: void) {
       emit({ settingsOpen: true })
@@ -515,12 +536,18 @@ function reconcileSelection(
 ): Selection | null {
   if (!selected) return null
   const current = snapshot.sessions.find((s) => sameKey(s.key, selected.session.key))
-  const wasPresent = previous?.sessions.some((s) => sameKey(s.key, selected.session.key)) ?? false
+  const wasPresent =
+    previous?.sessions.some((s) => !s.unavailable && sameKey(s.key, selected.session.key)) ?? false
   return {
     ...selected,
-    session: current ?? selected.session,
-    lastSeenAt: current ? snapshot.takenAt : selected.lastSeenAt,
-    sourceEpoch: selected.sourceEpoch + (Boolean(current) !== wasPresent ? 1 : 0)
+    session:
+      current ??
+      (selected.session.unavailable && snapshot.health[selected.session.key.tool].state !== 'off'
+        ? { ...selected.session, pinned: false }
+        : selected.session),
+    lastSeenAt: current && !current.unavailable ? snapshot.takenAt : selected.lastSeenAt,
+    sourceEpoch:
+      selected.sourceEpoch + (Boolean(current && !current.unavailable) !== wasPresent ? 1 : 0)
   }
 }
 
@@ -540,6 +567,11 @@ export function displayedGroups(state: RendererState): ListGroup[] {
   )
     return groups
   if (state.view === 'inbox' && anchor.session.activity.state === 'running') return groups
+  if (
+    state.view === 'pinned' &&
+    !state.snapshot?.sessions.some((s) => s.pinned && sameKey(s.key, anchor.session.key))
+  )
+    return groups
   for (const group of groups)
     group.sessions = group.sessions.filter((s) => !sameKey(s.key, anchor.session.key))
   let group = groups.find((g) => g.id === anchor.group)

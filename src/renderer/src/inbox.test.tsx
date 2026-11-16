@@ -51,7 +51,7 @@ describe.each(['project', 'status'] as const)('%s Active and Inbox transitions',
     expect(row()?.textContent).toContain('Running')
   })
 
-  it('keeps running ahead of old unread attention and leaves waiting sessions in All Sessions', async () => {
+  it('keeps running ahead of old unread attention and puts waiting sessions in Inbox', async () => {
     const task = session('task', { attention: { waiting: false, error: true, newReply: true } })
     const waiting = session('waiting', {
       activity: { state: 'waiting', waitingFor: 'permission prompt' },
@@ -66,8 +66,8 @@ describe.each(['project', 'status'] as const)('%s Active and Inbox transitions',
     const running = await screen.findByRole(role, { name: /^Synthetic task,/ })
     expect(within(running).getByText('Running')).toBeTruthy()
     expect(screen.queryByRole(role, { name: /^Synthetic waiting,/ })).toBeNull()
-    await userEvent.click(screen.getByRole('button', { name: 'Inbox 0' }))
-    expect(screen.queryByRole(role, { name: /^Synthetic waiting,/ })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Inbox 1' }))
+    expect(screen.getByRole(role, { name: /^Synthetic waiting,/ })).toBeTruthy()
     expect(screen.queryByRole(role, { name: /^Synthetic task,/ })).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'All Sessions 2' }))
     expect(screen.getByRole(role, { name: /^Synthetic waiting,/ })).toBeTruthy()

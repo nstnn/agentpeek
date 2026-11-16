@@ -21,7 +21,8 @@ export const GROUP_NAMES: Record<GroupId, string> = {
 export const toolName = (tool: AgentTool): string => (tool === 'codex' ? 'Codex' : 'Claude Code')
 export const toolHome = (tool: AgentTool): string => (tool === 'codex' ? '~/.codex' : '~/.claude')
 export const sessionTitle = (session: Session): string =>
-  session.summary.title || `Untitled session · ${session.key.id.slice(0, 6)}`
+  session.summary.title ||
+  `${session.unavailable ? `Unavailable ${session.pinned ? 'pinned ' : ''}session` : 'Untitled session'} · ${session.key.id.slice(0, 6)}`
 export const workspaceName = (session: Session): string =>
   session.summary.workspacePath?.split('/').filter(Boolean).at(-1) ||
   (session.summary.workspacePath === '/' ? '/' : 'No folder')
@@ -42,6 +43,7 @@ const UNKNOWN = {
   unsupported: 'Unsupported format'
 }
 export function rowStatus(session: Session, missing = false): { kind: string; label: string } {
+  if (session.unavailable) return { kind: 'unknown', label: 'Unavailable' }
   if (missing)
     return { kind: 'unknown', label: `Unavailable — last known: ${rowStatus(session).label}` }
   const activity = session.activity

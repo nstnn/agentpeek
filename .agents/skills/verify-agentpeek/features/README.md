@@ -51,6 +51,8 @@ Keep implementation details out of the map. Name only user paths, stable handles
 
 ## Features
 
+- [Find Session and durable pins](./find-session-pins.md) covers metadata search, covered-read isolation, Waiting in Inbox, old-pin retention, unavailable pins and restart recovery.
+
 - [Navigation visibility](./navigation-visibility.md) covers independent Views rail/list toggles, retained reading state, available-width layout and connected-source status indicators.
 - [Source monitoring](./source-monitoring.md) covers the connected-source footer, Settings switches, disabled-source reading, recovery and saved choices.
 - [Settings and appearance](./settings.md) covers sidebar/rail/menu entry, System/Light/Dark selection, modal keyboard and read isolation, saved preferences and recovery.

@@ -138,6 +138,8 @@ export interface SessionAttention {
 
 /** A session as AgentPeek shows it: the source's facts plus the derived state. */
 export interface Session {
+  /** A saved pin whose source file is currently unavailable. No conversation is retained. */
+  unavailable?: true
   key: SessionKey
   summary: SessionSummary
   activity: SessionActivity

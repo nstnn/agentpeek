@@ -55,7 +55,7 @@ describe('application menu', () => {
     ])
     for (const [label, roles] of [
       ['AgentPeek', ['about', 'quit']],
-      ['Edit', ['copy', 'selectAll']]
+      ['Edit', ['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll']]
     ] as const) {
       expect(
         submenuOf(template, label)
@@ -71,6 +71,7 @@ describe('application menu', () => {
       (item) => item.label && !item.id?.startsWith('zoom-') && item.enabled !== false
     )
     expect(navigation.map((item) => [item.label, item.accelerator])).toEqual([
+      ['Find Session…', 'CommandOrControl+K'],
       ['Active', 'CommandOrControl+1'],
       ['Inbox', 'CommandOrControl+2'],
       ['Pinned', 'CommandOrControl+3'],
@@ -79,6 +80,7 @@ describe('application menu', () => {
     ])
     for (const item of navigation) click(item)
     expect(opts.command.mock.calls).toEqual([
+      ['quick-open'],
       ['view:active'],
       ['view:inbox'],
       ['view:pinned'],

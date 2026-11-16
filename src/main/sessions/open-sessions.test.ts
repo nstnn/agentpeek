@@ -37,6 +37,7 @@ import type { ChangeListener, SessionWatcher } from './file-watcher'
 import { openSessionsService } from './open-sessions'
 import { LIVENESS_INTERVAL_MS, type SessionsService } from './service'
 import { STATE_FILE_NAME } from './state-store'
+import { parseStateFile } from './state-file'
 
 // The real sources, store, and (in the last group) watcher, on synthetic files in a temporary
 // folder that stands in for the home folder. The process and app checks are fakes, and the clock
@@ -276,11 +277,10 @@ describe('with the real sources and store', () => {
     expect(first.setPinned(CODEX_KEY, true)).toBe(true)
     await first.stop()
 
-    const saved = JSON.parse(await readFile(join(stateFolder, STATE_FILE_NAME), 'utf8')) as {
-      baselines: Record<string, number>
-    }
+    const saved = parseStateFile(await readFile(join(stateFolder, STATE_FILE_NAME), 'utf8'))
+    if (saved.kind !== 'state') throw new Error('Expected saved state')
     // Claude Code is not installed in this home folder, so it has no baseline yet.
-    expect(saved.baselines).toEqual({ codex: NOW })
+    expect(saved.data.baselines).toEqual({ codex: NOW })
 
     snapshots = []
     clock = NOW + MINUTE
@@ -346,5 +346,48 @@ describe('with the real watcher', () => {
       },
       { timeout: 3000, interval: 250 }
     )
+  })
+})
+
+describe('durable pins', () => {
+  it('keeps pins across aging, restart, source deletion and recovery without storing conversation data', async () => {
+    const path = await writeRunningThread()
+    await writeClaudeSession('idle')
+    const app = await start()
+    await waitFor((s) => expect(s.sessions).toHaveLength(2))
+    expect(app.setPinned(CODEX_KEY, true)).toBe(true)
+    expect(app.setPinned(CLAUDE_KEY, true)).toBe(true)
+    await app.stop()
+    clock += 100 * DAY
+    const reopened = await start()
+    await waitFor((s) => {
+      expect(s.sessions).toHaveLength(2)
+      expect(s.sessions.every((session) => session.pinned && !session.unavailable)).toBe(true)
+    })
+    await rm(path)
+    await rm(join(claudePaths(home).projects, CWD_FOLDER, `${CLAUDE_ID}.jsonl`))
+    await reopened.reconcile()
+    await waitFor((s) => expect(s.sessions.every((session) => session.unavailable)).toBe(true))
+    expect(await reopened.recentMessages(CODEX_KEY, 20)).toEqual({ kind: 'not-found' })
+    await reopened.stop()
+    const missing = await start()
+    await waitFor((s) =>
+      expect(s.sessions.filter((session) => session.unavailable)).toHaveLength(2)
+    )
+    await writeRunningThread()
+    await missing.reconcile()
+    await waitFor((s) => expect(find(s, CODEX_KEY)?.unavailable).toBeUndefined())
+    expect(missing.setPinned(CLAUDE_KEY, false)).toBe(true)
+    await waitFor((s) => expect(find(s, CLAUDE_KEY)).toBeUndefined())
+    await missing.stop()
+    const saved = parseStateFile(await readFile(join(stateFolder, STATE_FILE_NAME), 'utf8'))
+    if (saved.kind !== 'state') throw new Error('Expected saved state')
+    expect(
+      saved.data.sessions.every(
+        (entry) =>
+          Object.keys(entry).sort().join(',') ===
+          'acknowledgedErrorCursor,id,lastListedAt,pinned,seenCursor,tool'
+      )
+    ).toBe(true)
   })
 })

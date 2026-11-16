@@ -33,7 +33,7 @@ export function createSessionController(options: {
     return {
       open: () => {
         const session = find(target())
-        if (session) void system.openTool(session.key.tool)
+        if (session && !session.unavailable) void system.openTool(session.key.tool)
       },
       markRead: () => {
         const session = find(target())
