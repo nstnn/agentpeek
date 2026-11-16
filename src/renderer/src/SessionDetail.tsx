@@ -331,15 +331,6 @@ export function SessionDetail({
           >
             {session.pinned ? 'Unpin' : 'Pin'}
           </button>
-          <button
-            type="button"
-            disabled={missing}
-            onClick={() =>
-              void action(() => api.copySessionId(session.key), "Couldn't copy the session ID.")
-            }
-          >
-            Copy Session ID
-          </button>
         </div>
         {actionError && (
           <p className="action-error" role="status">
