@@ -42,12 +42,12 @@ function layout(contents: ViewContents): Record<string, string[]> {
 
 describe('inboxGroupOf', () => {
   it('puts each session in the first group that matches', () => {
-    expect(
-      inboxGroupOf(session('a', { activity: WAITING, attention: { waiting: true } }))
-    ).toBeNull()
+    expect(inboxGroupOf(session('a', { activity: WAITING, attention: { waiting: true } }))).toBe(
+      'waiting'
+    )
     expect(
       inboxGroupOf(session('b', { activity: WAITING, attention: { waiting: true, error: true } }))
-    ).toBe('errors')
+    ).toBe('waiting')
     expect(inboxGroupOf(session('c', { activity: RUNNING, attention: { error: true } }))).toBeNull()
     expect(
       inboxGroupOf(session('d', { activity: RUNNING, attention: { newReply: true } }))
@@ -98,12 +98,14 @@ describe('buildView', () => {
     })
   })
 
-  it('keeps only unread result groups in Inbox', () => {
+  it('puts Waiting first, then unread errors and replies in Inbox', () => {
     expect(layout(buildView(sessions, 'inbox', 'all'))).toEqual({
+      waiting: ['waiting'],
       errors: ['error'],
       'new-replies': ['reply']
     })
     expect(buildView(sessions, 'inbox', 'all').groups.map((g) => g.id)).toEqual([
+      'waiting',
       'errors',
       'new-replies'
     ])
@@ -170,8 +172,8 @@ describe('buildView', () => {
     })
     expect(active.toolCounts).toEqual({ all: 3, codex: 2, claude: 1 })
     const inbox = buildView(sessions, 'inbox', 'claude')
-    expect(layout(inbox)).toEqual({ 'new-replies': ['reply'] })
-    expect(inbox.toolCounts).toEqual({ all: 2, codex: 1, claude: 1 })
+    expect(layout(inbox)).toEqual({ waiting: ['waiting'], 'new-replies': ['reply'] })
+    expect(inbox.toolCounts).toEqual({ all: 3, codex: 1, claude: 2 })
     expect(buildView(sessions, 'all', 'codex').toolCounts).toEqual({
       all: 10,
       codex: 6,

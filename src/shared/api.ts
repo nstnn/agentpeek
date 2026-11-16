@@ -16,6 +16,7 @@ export type MenuCommand =
   | 'view:all'
   | 'back'
   | 'settings'
+  | 'quick-open'
   | { type: 'open-primary'; key: SessionKey }
   | { type: 'open-secondary'; key: SessionKey }
   | { type: 'close-secondary' }

@@ -1564,3 +1564,80 @@ button[aria-disabled='true'] {
 .detail-pane[data-active='true'] .pane-toolbar {
   background: var(--info-bg);
 }
+
+.find-session {
+  margin-left: auto;
+  min-width: 28px;
+}
+.quick-open {
+  width: 600px;
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - 48px);
+  padding: 16px;
+  border: 1px solid var(--sep);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 16px 64px #0004;
+}
+.quick-open::backdrop {
+  background: #0005;
+}
+.quick-open-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.quick-open-heading h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.quick-open input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--sep);
+  border-radius: 6px;
+  font: inherit;
+}
+.quick-open-results {
+  max-height: 50vh;
+  overflow: auto;
+  margin-top: 10px;
+}
+.quick-open-results button {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 10px;
+  text-align: left;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+}
+.quick-open-results button[aria-selected='true'],
+.quick-open-results button:hover {
+  background: var(--info-bg);
+}
+.quick-open-results strong,
+.quick-open-results span,
+.quick-open-results small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quick-open-results small,
+.quick-open-hint {
+  color: var(--secondary);
+}
+.quick-open-hint {
+  margin: 12px 0 0;
+  font-size: 11px;
+}

@@ -40,12 +40,27 @@ export async function openSessionsService(options: OpenSessionsOptions): Promise
     sources: [
       createCodexSource({
         home,
+        pinnedIds: () =>
+          store
+            .pinnedKeys()
+            .filter((key) => key.tool === 'codex')
+            .map((key) => key.id),
         gate,
         isAppRunning: options.isCodexAppRunning,
         now,
         fixture: options.fixture
       }),
-      createClaudeSource({ home, gate, probe: options.probe, now })
+      createClaudeSource({
+        home,
+        gate,
+        probe: options.probe,
+        now,
+        pinnedIds: () =>
+          store
+            .pinnedKeys()
+            .filter((key) => key.tool === 'claude')
+            .map((key) => key.id)
+      })
     ],
     store,
     createWatcher:

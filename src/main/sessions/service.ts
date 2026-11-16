@@ -214,6 +214,19 @@ export function createSessionsService(options: SessionsServiceOptions): Sessions
         )
       }
     }
+    const present = new Set(sessions.map((session) => sessionKeyToString(session.key)))
+    for (const key of store.pinnedKeys()) {
+      if (!toolState(key.tool).enabled || present.has(sessionKeyToString(key))) continue
+      sessions.push({
+        key,
+        pinned: true,
+        unavailable: true,
+        summary: { title: null, workspacePath: null, lastActivityAt: 0, toolVersion: null },
+        activity: { state: 'unknown', reason: 'unreadable' },
+        attention: { waiting: false, newReply: false, error: false },
+        lastReply: null
+      })
+    }
     previousActivity = new Map(
       sessions.map((session) => [sessionKeyToString(session.key), session.activity])
     )
@@ -351,12 +364,14 @@ export function createSessionsService(options: SessionsServiceOptions): Sessions
     setPinned(key, pinned) {
       const session = listedSession(key)
       if (session === undefined) return false
-      return saveLocalState(session.key, { ...store.localState(session.key), pinned })
+      const saved = saveLocalState(session.key, { ...store.localState(session.key), pinned })
+      if (saved && started) void update(key.tool, (source) => source.catalog(), true)
+      return saved
     },
 
     markRead(key) {
       const session = listedSession(key)
-      if (session === undefined) return false
+      if (session === undefined || session.unavailable) return false
       // The reply the user saw: the one in the published snapshot.
       return saveLocalState(
         session.key,

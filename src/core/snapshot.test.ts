@@ -56,8 +56,8 @@ describe('countGroups', () => {
       session('g')
     ])
     expect(counts).toEqual({
-      waiting: 0,
-      errors: 1,
+      waiting: 1,
+      errors: 0,
       'new-replies': 1,
       running: 2,
       unknown: 1,

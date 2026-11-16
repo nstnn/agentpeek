@@ -86,6 +86,7 @@ export function SessionDetail({
   canAutoRead,
   missing,
   monitoringOff = false,
+  unavailablePinListed = false,
   onSettings,
   lastSeenAt,
   sourceEpoch,
@@ -103,6 +104,7 @@ export function SessionDetail({
   canAutoRead: () => boolean
   missing: boolean
   monitoringOff?: boolean
+  unavailablePinListed?: boolean
   onSettings?: () => void
   lastSeenAt: number | null
   sourceEpoch: number
@@ -321,7 +323,7 @@ export function SessionDetail({
           </button>
           <button
             type="button"
-            disabled={missing}
+            disabled={missing && !unavailablePinListed}
             onClick={() =>
               void action(
                 () => api.setPinned(session.key, !session.pinned),

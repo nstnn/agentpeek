@@ -22,6 +22,7 @@ import { clamp, layoutCapacity, paneLayout, type PaneSizes } from './pane-layout
 import { NavigationIcon } from './NavigationIcon'
 import { useNavigationMotion } from './use-navigation-motion'
 import { SettingsDialog } from './SettingsDialog'
+import { QuickOpen } from './QuickOpen'
 
 export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.Element {
   const [store] = useState(() => suppliedStore ?? createSessionsStore(window.agentpeek))
@@ -157,7 +158,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     : null
   useLayoutEffect(() => {
     const placed = previousPlacement.current !== state.placementVersion
-    if (state.settingsOpen) return
+    if (state.settingsOpen || state.searchOpen) return
     const previous = previousLayout.current
     const active = document.activeElement as HTMLElement | null
     const hiddenFocus = !!active?.closest('[hidden]')
@@ -213,7 +214,8 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     state.roomy,
     navigationVisible,
     sidebarCollapsed,
-    state.settingsOpen
+    state.settingsOpen,
+    state.searchOpen
   ])
   const stopNavigationMotion = useNavigationMotion(
     workspace,
@@ -235,7 +237,20 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
       if (
+        event.metaKey &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        event.key.toLowerCase() === 'k' &&
+        !state.settingsOpen
+      ) {
+        event.preventDefault()
+        store.openSearch()
+        return
+      }
+      if (
         state.settingsOpen ||
+        state.searchOpen ||
         event.defaultPrevented ||
         !event.metaKey ||
         !event.shiftKey ||
@@ -254,7 +269,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     }
     window.addEventListener('keydown', shortcut)
     return () => window.removeEventListener('keydown', shortcut)
-  }, [store, navigationVisible, state.settingsOpen])
+  }, [store, navigationVisible, state.settingsOpen, state.searchOpen])
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000)
     return () => window.clearInterval(timer)
@@ -312,7 +327,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
       className="app-shell"
       data-window-focused={windowFocused}
       onKeyDown={(event) => {
-        if (state.settingsOpen) return
+        if (state.settingsOpen || state.searchOpen) return
         if (event.key === 'Escape' && dragSession) {
           event.preventDefault()
           setDragSession(null)
@@ -453,6 +468,15 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
               <div className="list-heading">
                 {navigationVisible && sessionsToggle}
                 <h1>{VIEW_NAMES[view]}</h1>
+                <button
+                  type="button"
+                  className="find-session"
+                  aria-label="Find Session"
+                  title="Find Session (⌘K)"
+                  onClick={store.openSearch}
+                >
+                  ⌕
+                </button>
                 {state.splitBrowsing && (
                   <button
                     type="button"
@@ -593,8 +617,8 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
             )}
             {view === 'all' && (
               <p className="footnote">
-                Sessions active in the last 7 days (up to 50 per tool), plus every session that is
-                running or waiting.
+                Sessions active in the last 7 days (up to 50 per tool), plus saved pins and open
+                Claude Code sessions.
               </p>
             )}
           </div>
@@ -693,8 +717,8 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                       key={`${paneInstances[pane]}:${sessionKeyToString(selected.key)}`}
                       session={selected}
                       api={window.agentpeek}
-                      visible={visible && !state.settingsOpen}
-                      focused={windowFocused && !state.settingsOpen}
+                      visible={visible && !state.settingsOpen && !state.searchOpen}
+                      focused={windowFocused && !state.settingsOpen && !state.searchOpen}
                       paneLabel={split ? label : undefined}
                       showTitle={!split}
                       leadingControl={!split && !navigationVisible ? sessionsToggle : undefined}
@@ -702,9 +726,15 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                         store.canAutoRead(pane, selected.key, state.targetGeneration)
                       }
                       monitoringOff={snapshot?.health[selected.key.tool].state === 'off'}
+                      unavailablePinListed={snapshot?.sessions.some(
+                        (s) => s.unavailable && s.pinned && sameKey(s.key, selected.key)
+                      )}
                       onSettings={store.openSettings}
-                      missing={!snapshot?.sessions.some((s) => sameKey(s.key, selected.key))}
-                      lastSeenAt={selection.lastSeenAt}
+                      missing={
+                        !!selected.unavailable ||
+                        !snapshot?.sessions.some((s) => sameKey(s.key, selected.key))
+                      }
+                      lastSeenAt={selected.unavailable ? null : selection.lastSeenAt}
                       sourceEpoch={selection.sourceEpoch}
                       reloadPending={state.reloadPending}
                       reloadVersion={state.reloadVersion}
@@ -743,6 +773,16 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
           </div>
         )}
       </div>
+      {state.searchOpen && (
+        <QuickOpen
+          sessions={snapshot?.sessions ?? []}
+          onClose={store.closeSearch}
+          onOpen={(key) => {
+            store.closeSearch()
+            store.openPane(state.activePane ?? state.returnPane, key)
+          }}
+        />
+      )}
       {state.settingsOpen && (
         <SettingsDialog
           api={window.agentpeek}

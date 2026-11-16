@@ -42,7 +42,7 @@ export function buildSessionMenu(
       id: 'session-open',
       label: session?.key.tool === 'claude' ? 'Open Claude' : 'Open Codex',
       accelerator: 'CommandOrControl+O',
-      enabled,
+      enabled: enabled && !session.unavailable,
       click: actions.open
     },
     {
@@ -100,6 +100,12 @@ export function buildMenuTemplate(options: {
   zoom: (action: ZoomAction) => void
 }): MenuItemConstructorOptions[] {
   const viewItems: MenuItemConstructorOptions[] = [
+    {
+      label: 'Find Session…',
+      accelerator: 'CommandOrControl+K',
+      click: () => options.command('quick-open')
+    },
+    { type: 'separator' },
     {
       label: 'Active',
       accelerator: 'CommandOrControl+1',
@@ -179,7 +185,18 @@ export function buildMenuTemplate(options: {
         { role: 'quit' }
       ]
     },
-    { label: 'Edit', submenu: [{ role: 'copy' }, { role: 'selectAll' }] },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
     { label: 'View', submenu: viewItems },
     { label: 'Session', submenu: buildSessionMenu(options.session, options.actions, options) },
     {

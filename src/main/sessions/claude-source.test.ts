@@ -1093,3 +1093,20 @@ describe('recentMessages', () => {
     })
   })
 })
+
+describe('saved pins', () => {
+  it('restores an old catalog pin and a finished CLI-only pin beyond normal age limits', async () => {
+    const old = T0 - 100 * DAY
+    await writeTranscript(S1, finishedSession(R1, old), old)
+    await writeCatalog({ cliSessionId: S1, lastActivityAt: old }, old)
+    await writeTranscript(S2, finishedSession(R2, old), old)
+    let pins = [S1, S2]
+    const source = createSource({ pinnedIds: () => pins })
+    expect(ids(await source.catalog()).sort()).toEqual([S1, S2].sort())
+    expect(await source.recentMessages({ tool: 'claude', id: S2 }, 20)).toMatchObject({
+      kind: 'messages'
+    })
+    pins = []
+    expect(await source.catalog()).toEqual([])
+  })
+})
