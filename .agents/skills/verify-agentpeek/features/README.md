@@ -51,7 +51,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 
 ## Features
 
-- [Navigation visibility](./navigation-visibility.md) covers independent Views rail/list toggles, retained reading state, available-width layout and connected-source entry to Settings.
+- [Navigation visibility](./navigation-visibility.md) covers independent Views rail/list toggles, retained reading state, available-width layout and connected-source status indicators.
 - [Source monitoring](./source-monitoring.md) covers the connected-source footer, Settings switches, disabled-source reading, recovery and saved choices.
 - [Settings and appearance](./settings.md) covers sidebar/rail/menu entry, System/Light/Dark selection, modal keyboard and read isolation, saved preferences and recovery.
 - [Main window](./main-window.md) covers the window that opens at launch, its sidebar/list layout, its sizes, and its Light and Dark appearance.
@@ -62,9 +62,9 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Renderer lockdown](./renderer-lockdown.md) covers what the page can and cannot do: no Node.js, no navigation, no new windows, no remote loads, no permissions.
 - [Sessions connection](./sessions-connection.md) covers the live session total, fixture isolation, refresh, and clean service shutdown.
 - [Project grouping](./project-grouping.md) covers Project/Status selection, path identity, collapse, live summaries and tree navigation.
-- [Sessions list](./sessions-list.md) covers views, filtering, groups, selection, keyboard/context entry points, tool health and list notices.
+- [Sessions list](./sessions-list.md) covers running-only Active, Inbox transitions/counts, filtering, groups, selection, keyboard/context entry points, tool health and list notices.
 - [Session detail](./session-detail.md) covers messages, safe Markdown, long text, actions, focused read-on-view, two-pane placement/activation/isolation, compact split browse/return and pane selection, and single-pane narrow push/Back.
-- [Skill content](./skill-content.md) covers explicit Codex skill cards, on-demand conversation/current-file content, provenance, retry, safe Markdown and narrow reading.
+- [Skill content](./skill-content.md) covers explicit Codex and Claude slash skill cards, on-demand conversation/current-file content, provenance, retry, safe Markdown and narrow reading.
 - [Fixture regression](./fixture-regression.md) covers the synthetic generator/simulator and built-app Playwright smoke, including combined two-pane selection, read isolation, compact navigation and reset on relaunch.
 - [Local macOS package](./local-package.md) covers the signed arm64 bundle, fuses, native About panel, Finder reopen, window sizes and shutdown.
 - [Localhost preview](./localhost-preview.md) covers the development-only, fixture-only Remote View status page on 127.0.0.1: switch handling, redacted stream, the thin-slice page at desktop and 320 px, Host/Origin/method guards and closing on quit.

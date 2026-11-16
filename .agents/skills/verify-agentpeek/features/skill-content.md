@@ -1,6 +1,6 @@
 # Skill content
 
-Explicit skill links in Codex prompts appear as compact collapsed skill cards labeled Requested by you. Opening one shows safe read-only Markdown from the conversation when available, otherwise a clearly labeled current local file. This does not certify that the agent executed or applied a skill. Surrounding prompt text remains literal.
+Explicit skill links in Codex prompts and recognized Claude Code slash skills appear as compact collapsed skill cards labeled Requested by you. Opening one shows safe read-only Markdown from the conversation when available; Codex also supports a clearly labeled current local file. This does not certify that the agent executed or applied a skill. Surrounding prompt text and Claude command arguments remain literal.
 
 ## Sub-features
 
@@ -9,10 +9,12 @@ Explicit skill links in Codex prompts appear as compact collapsed skill cards la
 - `skill-recovery`: missing, blocked, unreadable, empty and limited content; Try Again and Reload Skill.
 - `skill-safety`: inert HTML, image placeholders, no automatic network loads, bounded content and fixture-only reads.
 - `skill-reading`: readable Light/Dark, minimum window and narrow detail, wrapping paths and reachable collapse while reading long content.
+- `skill-claude`: slash-command XML becomes a readable command with literal arguments; a matching injected skill copy enables the same on-demand disclosure.
 
 ## How to get to it (user POV)
 
 - Open a Codex session with an explicit skill link in the user prompt.
+- Or open a Claude Code session with a slash skill invocation and its recorded skill copy.
 - Open the named skill card; its label names the requested skill.
 - Expand File details to read the path, or use Try Again / Reload Skill when available.
 
@@ -31,10 +33,11 @@ Preconditions:
 - **Long/empty (`skill-recovery`, `skill-reading`).** Open the long and empty cards (nth 3 and 4). Long content has a limit notice; empty content says This skill has no body text. Scroll into the long card with Recent messages and PageDown: its sticky summary remains reachable. Collapse it through that summary and confirm its start is visible. Capture ARIA/PNG at minimum window and a 320px detail pane; long paths/text wrap without page overflow.
 - **Safety (`skill-safety`).** With the recorded card open, capture literal HTML and its image placeholder. Read-only `eval "({injected:globalThis.fixtureInjected===true,elements:document.querySelector('.skill-card').querySelectorAll('script,img,iframe,object,embed').length,network:performance.getEntriesByType('resource').filter(r=>/^https?:/.test(r.name)).length})"` returns false/zero/zero. Do not activate web links without separate browser-opening approval; component tests cover exact safe dispatch. Unit/source/IPC tests cover forged references, symlinks, credential paths, disabled-source epochs and output isolation.
 - **Themes/cleanup (`skill-reading`).** Repeat representative recorded/current and narrow/keyboard captures using the app-only Light/Dark overrides in main-window.md; restore the recorded theme. Run doctor, close through Window > Close Window, require wait-exit cleanExit, then stop. Record default-profile metadata advisories without assigning a writer.
+- **Claude (`skill-claude`).** In an approved fresh synthetic run, run `npm run fixture -- simulate <copied-homeDir> claude-skill`. Open All Sessions and the observed Fixture Claude busy row. Save `aria skill-claude-collapsed` and `screenshot skill-claude-collapsed`: the synthetic-skill card is collapsed, arguments appear underneath, and command XML is absent. Click its observed summary; save `aria skill-claude-expanded` and `screenshot skill-claude-expanded`: From this conversation and Synthetic Claude skill appear, with an image placeholder and inert HTML. Toggle with Space/Enter while focused and capture focus/collapse. Expand File details to inspect the synthetic path. Use the safety observation above for this card, then run doctor and the normal natural-exit/stop cleanup. This scenario never creates or opens a local Claude SKILL.md.
 
 ## Gotchas
 
-- A plain `$name`, normal file link, inline/fenced code or quoted example does not become a skill card. Claude prompts keep their existing plain-text behavior.
+- A plain `$name`, normal file link, inline/fenced code or quoted example does not become a skill card. Claude Markdown skill links also stay literal. Only a complete matching command-message/command-name envelope is normalized; a following matching injected skill before assistant activity or another prompt enables its card. Without that copy the command remains readable, with no guessed local file.
 - No recorded copy in the bounded tail does not prove there was never one. Current local version can differ from the file used historically. Missing recent references cannot authorize a local read.
 - Local reads are limited to 128 KiB and display to 60,000 characters; paths use only approved skill roots. Fixture mode never uses workspace roots outside its copied home.
 - No skill text is executed, persisted, logged or placed in snapshots. Reading a skill is not execution evidence.

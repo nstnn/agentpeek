@@ -29,7 +29,7 @@ export function Sidebar({
   onSettings: () => void
   remoteStatus?: RemoteStatusView | null
 }): JSX.Element {
-  const views = ['active', 'pinned', 'all'] as const
+  const views = ['active', 'inbox', 'pinned', 'all'] as const
   return (
     <aside
       className={`sidebar${collapsed ? ' sidebar-collapsed' : ''}`}
@@ -56,11 +56,14 @@ export function Sidebar({
         <nav aria-label="Session views">
           {views.map((id) => {
             const count =
-              id === 'active' ? (snapshot?.needsAttention ?? 0) : (snapshot?.groupCounts[id] ?? 0)
-            const label =
               id === 'active'
-                ? `Active, ${count} ${count === 1 ? 'session needs' : 'sessions need'} attention`
-                : `${VIEW_NAMES[id]} ${count}`
+                ? (snapshot?.groupCounts.running ?? 0)
+                : id === 'inbox'
+                  ? snapshot
+                    ? snapshot.groupCounts.errors + snapshot.groupCounts['new-replies']
+                    : 0
+                  : (snapshot?.groupCounts[id] ?? 0)
+            const label = `${VIEW_NAMES[id]} ${count}`
             return (
               <button
                 key={id}
@@ -68,8 +71,10 @@ export function Sidebar({
                 aria-label={label}
                 title={
                   id === 'active'
-                    ? `${label}. Waiting, unread replies or errors across both tools. Running alone doesn't need attention.`
-                    : label
+                    ? `${count} running ${count === 1 ? 'session' : 'sessions'} across both tools.`
+                    : id === 'inbox'
+                      ? `${label}. Unread replies and errors across both tools.`
+                      : label
                 }
                 aria-current={view === id ? 'page' : undefined}
                 tabIndex={view === id ? 0 : -1}
@@ -81,8 +86,9 @@ export function Sidebar({
                     event.key === 'Home'
                       ? 0
                       : event.key === 'End'
-                        ? 2
-                        : (views.indexOf(id) + (event.key === 'ArrowDown' ? 1 : 2)) % 3
+                        ? views.length - 1
+                        : (views.indexOf(id) + (event.key === 'ArrowDown' ? 1 : views.length - 1)) %
+                          views.length
                   onView(views[index]!)
                   event.currentTarget.parentElement?.querySelectorAll('button')[index]?.focus()
                 }}
@@ -90,15 +96,15 @@ export function Sidebar({
                 {id === 'pinned' ? (
                   <SessionIcon kind="pin" />
                 ) : (
-                  <NavigationIcon kind={id === 'active' ? 'active' : 'all'} />
+                  <NavigationIcon kind={id === 'active' || id === 'inbox' ? id : 'all'} />
                 )}
                 <span className="sidebar-view-label" aria-hidden="true">
                   {VIEW_NAMES[id]}
                 </span>
-                {(id !== 'active' || count > 0) && (
+                {(!collapsed || ((id === 'active' || id === 'inbox') && count > 0)) && (
                   <span
                     aria-hidden="true"
-                    className={id === 'active' ? 'badge' : collapsed ? 'sr-only' : 'count'}
+                    className={(id === 'inbox' && count > 0) || collapsed ? 'badge' : 'count'}
                   >
                     {count > 99 && collapsed ? '99+' : count}
                   </span>
@@ -112,13 +118,12 @@ export function Sidebar({
         <div className="connected-sources" aria-label="Connected sources">
           {AGENT_TOOLS.filter((tool) => snapshot?.health[tool].state === 'connected').map(
             (tool) => (
-              <button
+              <div
                 key={tool}
-                type="button"
                 className="connected-source"
+                role="img"
                 aria-label={`${toolName(tool)} source: Connected`}
-                title={`${toolName(tool)} connected · Manage in Settings`}
-                onClick={onSettings}
+                title={`${toolName(tool)} connected`}
               >
                 <span className="health-dot connected" aria-hidden="true" />
                 {collapsed ? (
@@ -128,7 +133,7 @@ export function Sidebar({
                 ) : (
                   <span>{toolName(tool)}</span>
                 )}
-              </button>
+              </div>
             )
           )}
           {!AGENT_TOOLS.some((tool) => snapshot?.health[tool].state === 'connected') && (
@@ -322,7 +327,14 @@ export function EmptyList({
     title = 'Unsupported format'
     body = `${toolName(filter)} ${health.toolVersion ?? '(unknown version)'} writes its files in a format AgentPeek doesn't recognize. Its sessions show as Unknown.`
   } else if (filter !== 'all' && unfilteredCount > 0) {
-    const scope = view === 'pinned' ? 'pinned ' : view === 'active' ? 'active ' : ''
+    const scope =
+      view === 'pinned'
+        ? 'pinned '
+        : view === 'active'
+          ? 'running '
+          : view === 'inbox'
+            ? 'inbox '
+            : ''
     title = `No ${scope}${toolName(filter)} sessions`
     body = `This view has sessions from other tools. Show all ${scope}sessions to see them.`
     action = {
@@ -331,7 +343,9 @@ export function EmptyList({
           ? 'Show All Pinned'
           : view === 'active'
             ? 'Show All Active'
-            : 'Show All Sessions',
+            : view === 'inbox'
+              ? 'Show All Inbox'
+              : 'Show All Sessions',
       onClick: onClearFilter
     }
   } else if (view === 'pinned') {
@@ -342,9 +356,11 @@ export function EmptyList({
     title = filter === 'all' ? 'No sessions yet' : `No ${toolName(filter)} sessions yet`
     body = `Start a conversation in ${filter === 'all' ? 'Codex or Claude Code' : toolName(filter)} and it will show up here. AgentPeek lists sessions from the last 7 days.`
   } else {
-    title = 'Nothing needs you right now'
+    title = view === 'active' ? 'No running sessions' : 'Inbox is clear'
     body =
-      'No sessions are running, waiting, or have unread replies, errors or unconfirmed open turns.'
+      view === 'active'
+        ? 'Finished sessions with unread results appear in Inbox.'
+        : 'No unread replies or errors.'
     action = { label: 'Show All Sessions', onClick: onShowAll }
   }
   return (

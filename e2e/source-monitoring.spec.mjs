@@ -86,7 +86,12 @@ test('Sources: footer, keyboard switches, disabled reading, save recovery and co
     await expect(page.getByText('Saving appearance…')).toHaveCount(0)
     await page.keyboard.press('Escape')
     const footer = page.locator('.sidebar-footer')
-    await expect(footer.getByRole('button', { name: /source: Connected/ })).toHaveCount(2)
+    await expect(footer.getByRole('img', { name: /source: Connected/ })).toHaveCount(2)
+    await save('sources-footer-before-clicks-light')
+    for (const name of ['Codex', 'Claude Code']) {
+      await footer.getByRole('img', { name: `${name} source: Connected` }).click()
+      await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(0)
+    }
     expect(
       await footer.evaluate((element) => {
         const bounds = element.getBoundingClientRect()
@@ -120,11 +125,9 @@ test('Sources: footer, keyboard switches, disabled reading, save recovery and co
     await save('sources-codex-off')
     await page.keyboard.press('Escape')
     await expect(page.getByRole('heading', { name: 'Codex monitoring is off' })).toBeVisible()
-    await expect(footer.getByRole('button', { name: 'Codex source: Connected' })).toHaveCount(0)
+    await expect(footer.getByRole('img', { name: 'Codex source: Connected' })).toHaveCount(0)
     await expect(page.getByRole('option', { name: /Fixture Codex/ })).toHaveCount(0)
-    await expect(
-      footer.getByRole('button', { name: 'Claude Code source: Connected' })
-    ).toBeVisible()
+    await expect(footer.getByRole('img', { name: 'Claude Code source: Connected' })).toBeVisible()
     await save('sources-reading-off')
     await page.getByRole('button', { name: 'Settings', exact: true }).click()
     await page.getByRole('radio', { name: 'Dark', exact: true }).check()
@@ -183,7 +186,15 @@ test('Sources: footer, keyboard switches, disabled reading, save recovery and co
     await expect(page.getByRole('treeitem', { name: /^Fixture Codex complete,/ })).toBeVisible()
     await page.getByRole('button', { name: 'Collapse Views' }).click()
     await save('sources-rail-connected-dark')
-    await page.getByRole('button', { name: 'Codex source: Connected' }).click()
+    for (const name of ['Codex', 'Claude Code']) {
+      await page.getByRole('img', { name: `${name} source: Connected` }).click()
+      await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(0)
+    }
+    await page.getByRole('button', { name: /^Pinned / }).click()
+    await page.keyboard.press('Tab')
+    await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeFocused()
+    await save('sources-rail-status-only-dark')
+    await page.keyboard.press('Enter')
     await application.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].setContentSize(760, 480)
     )
@@ -217,8 +228,8 @@ test('Sources: footer, keyboard switches, disabled reading, save recovery and co
     })
     expect(layout).toEqual({ fits: true, overflow: false })
     await page.keyboard.press('Escape')
-    await expect(page.getByRole('button', { name: 'Codex source: Connected' })).toBeFocused()
-    await page.getByRole('button', { name: 'Codex source: Connected' }).click()
+    await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeFocused()
+    await page.getByRole('button', { name: 'Settings', exact: true }).click()
     await choose('codex', false)
     await page.keyboard.press('Escape')
     await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeFocused()

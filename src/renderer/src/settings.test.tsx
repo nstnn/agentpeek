@@ -103,7 +103,7 @@ describe('Settings', () => {
     expect(screen.queryByText('No recent messages.')).toBeNull()
     expect(screen.queryByRole('option', { name: /Synthetic a/ })).toBeNull()
     expect(f.store.getSnapshot().listSelection).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Codex source: Connected' })).toBeNull()
+    expect(screen.queryByRole('img', { name: 'Codex source: Connected' })).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Settings' }))
     await userEvent.click(screen.getByRole('switch', { name: 'Monitor Codex' }))
     await userEvent.click(screen.getByRole('button', { name: 'Close Settings' }))

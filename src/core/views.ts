@@ -1,14 +1,13 @@
-import { looksOpen } from './activity'
 import type { Session } from './session'
 import { sessionKeyToString } from './session'
 import type { AgentTool } from './tools'
 
-/** The three views in the sidebar's Sessions section. */
-export type ViewId = 'active' | 'pinned' | 'all'
+/** The views in the sidebar's Sessions section. */
+export type ViewId = 'active' | 'inbox' | 'pinned' | 'all'
 
 /**
- * A group of rows in the list. The Active view has the first five, in this order; the Pinned and
- * All Sessions views each have one group.
+ * Active holds Running; Inbox holds unread Errors and New replies.
+ * Pinned and All Sessions each have one group. Waiting/Unknown remain snapshot status counts.
  */
 export type GroupId =
   'waiting' | 'errors' | 'new-replies' | 'running' | 'unknown' | 'pinned' | 'all'
@@ -28,25 +27,17 @@ export interface ViewContents {
   toolCounts: Record<ToolFilter, number>
 }
 
-const ACTIVE_GROUP_ORDER: readonly GroupId[] = [
-  'waiting',
-  'errors',
-  'new-replies',
-  'running',
-  'unknown'
-]
+const INBOX_GROUP_ORDER: readonly GroupId[] = ['errors', 'new-replies']
 
 /**
- * The Active view group a session belongs to: the first that matches, in display order, so each
- * session appears once. Null when the session is not active.
+ * Non-running sessions with unread results, each in its first matching group.
+ * A new run always belongs to Active, even if an older reply remains unread.
  */
-export function activeGroupOf(session: Session): GroupId | null {
+export function inboxGroupOf(session: Session): GroupId | null {
   const { activity, attention } = session
-  if (activity.state === 'waiting') return 'waiting'
+  if (activity.state === 'running') return null
   if (attention.error) return 'errors'
   if (attention.newReply) return 'new-replies'
-  if (activity.state === 'running') return 'running'
-  if (activity.state === 'unknown' && looksOpen(activity.reason)) return 'unknown'
   return null
 }
 
@@ -67,7 +58,9 @@ export function buildView(
 function sessionsInView(sessions: readonly Session[], view: ViewId): Session[] {
   switch (view) {
     case 'active':
-      return sessions.filter((session) => activeGroupOf(session) !== null)
+      return sessions.filter((session) => session.activity.state === 'running')
+    case 'inbox':
+      return sessions.filter((session) => inboxGroupOf(session) !== null)
     case 'pinned':
       return sessions.filter((session) => session.pinned)
     case 'all':
@@ -78,10 +71,12 @@ function sessionsInView(sessions: readonly Session[], view: ViewId): Session[] {
 function groupSessions(sessions: Session[], view: ViewId): SessionGroup[] {
   switch (view) {
     case 'active':
-      return ACTIVE_GROUP_ORDER.map((id) => ({
+      return nonEmpty({ id: 'running', sessions: sortSessions(sessions, true) })
+    case 'inbox':
+      return INBOX_GROUP_ORDER.map((id) => ({
         id,
         sessions: sortSessions(
-          sessions.filter((session) => activeGroupOf(session) === id),
+          sessions.filter((session) => inboxGroupOf(session) === id),
           true
         )
       })).filter((group) => group.sessions.length > 0)

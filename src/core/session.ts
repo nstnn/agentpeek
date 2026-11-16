@@ -1,4 +1,5 @@
 import type { AgentTool } from './tools'
+import type { SkillMention } from './skill-names'
 
 // The session domain model. Every type here is plain, serializable data (no classes), so the same
 // values can cross the IPC bridge later. Every time is in epoch milliseconds.
@@ -146,6 +147,17 @@ export interface Session {
   pinned: boolean
 }
 
+/**
+ * What a Claude Code call's result says, matched by the call's ID.
+ * - `done`: a result that is not an error.
+ * - `failed`: a result marked as an error, such as a failed command or a denied permission.
+ * - `interrupted`: the user stopped the call.
+ * - `pending`: no result yet, and nothing later shows the turn moved on. The detail shows it as
+ *   running or waiting only while the session is.
+ * - `no-result`: no result, but a later prompt, stop, or turn end shows it will never get one.
+ */
+export type ToolCallStatus = 'done' | 'failed' | 'interrupted' | 'pending' | 'no-result'
+
 /** On-demand tool input is conversation data, never snapshot or persisted state. */
 export interface ToolCallDetail {
   name: string
@@ -154,6 +166,14 @@ export interface ToolCallDetail {
   inputLength: number
   /** Names found in exec input, not proof of execution. Null for other tools. */
   nestedNames: string[] | null
+  /** Claude: one line built from the input, such as a command's description or a file path. */
+  summary?: string | null
+  /** Claude: `diff` when the input is an edit written as `-` and `+` lines. */
+  inputFormat?: 'diff'
+  /** Claude: what the call's result says. Codex details have none. */
+  status?: ToolCallStatus
+  /** Claude: the start of a failed call's error text. Never the output of a call that worked. */
+  error?: string
 }
 
 /**
@@ -161,9 +181,9 @@ export interface ToolCallDetail {
  * window only, and never logged, stored, or sent anywhere.
  */
 export type SessionMessage =
-  | { kind: 'prompt'; text: string; at: number }
+  | { kind: 'prompt'; text: string; at: number; skill?: SkillMention }
   | { kind: 'reply'; text: string; at: number }
-  // Calls can include bounded Codex details. Claude retains its name-only summary. Never output.
+  // Calls hold bounded details on the detail path. Never output, except a failed call's error.
   | { kind: 'tool-calls'; count: number; names: string[]; at: number; calls?: ToolCallDetail[] }
 
 /** Recent conversation text, returned only on request and never included in a snapshot. */

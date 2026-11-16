@@ -175,7 +175,7 @@ test('Zoom: exact steps, bounds, responsive reading, settings, recovery and cold
       .toBeCloseTo(offset, 0)
     await save('zoom-long-reading-divider-110')
     await zoom('zoom-reset', 100)
-    await page.getByRole('button', { name: /^Active,/ }).click()
+    await page.getByRole('button', { name: /^Active \d+$/ }).click()
 
     // Open two real reading targets using the UI, then cross the three-column boundary.
     await page.getByRole('radio', { name: 'Status', exact: true }).click()

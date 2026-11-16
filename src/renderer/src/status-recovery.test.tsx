@@ -15,6 +15,7 @@ function mount(initial = snapshot()) {
   Object.defineProperty(window, 'agentpeek', { value: fake.api, configurable: true })
   const store = createSessionsStore(fake.api)
   store.setGrouping('status')
+  store.setView('all')
   return { ...fake, store, ...render(<App store={store} />) }
 }
 
@@ -49,6 +50,7 @@ describe('truthful status and recovery transitions', () => {
       }
       const read = { ...unread, attention: { waiting: false, error: false, newReply: false } }
       const f = mount(snapshot([unread, other]))
+      act(() => f.store.setView('inbox'))
       f.api.markRead.mockImplementation(() => {
         f.push(snapshot([read, other]))
         return Promise.resolve(true)
@@ -70,8 +72,13 @@ describe('truthful status and recovery transitions', () => {
         lastReply: { ...read.lastReply, newerTurnStarted: true }
       }
       act(() => f.push(snapshot([next, other])))
-      expect(row.getAttribute('aria-label')).toContain('Running')
-      expect(row.getAttribute('aria-label')).not.toContain('Read')
+      expect(screen.queryByRole('option', { name: /Synthetic error/ })).toBeNull()
+      expect(f.store.getSnapshot().listSelection).toBeNull()
+      expect(f.store.getSnapshot().selection?.session.activity.state).toBe('running')
+      act(() => f.store.setView('active'))
+      expect(
+        screen.getByRole('option', { name: /Synthetic error/ }).getAttribute('aria-label')
+      ).toContain('Running')
       expect(f.api.markRead).toHaveBeenCalledTimes(1)
       await userEvent.click(screen.getByRole('option', { name: /Synthetic other/ }))
       expect(screen.queryByText('Kept here while selected.')).toBeNull()
@@ -275,6 +282,7 @@ describe('reload bounds and observation provenance', () => {
   it('never fabricates a last-seen time from an unobserved row or its activity time', () => {
     const store = createSessionsStore(fakeApi().api)
     store.setGrouping('status')
+    store.setView('inbox')
     store.select(failed, [{ id: 'errors', label: 'Errors', sessions: [failed] }])
     expect(store.getSnapshot().selection?.lastSeenAt).toBeNull()
     expect(displayedGroups(store.getSnapshot())[0]?.sessions[0]).toBe(failed)

@@ -1,8 +1,9 @@
 import { countNeedingAttention } from './attention'
+import { looksOpen } from './activity'
 import type { ToolHealth } from './health'
 import type { Session } from './session'
 import { AGENT_TOOLS, type AgentTool } from './tools'
-import { activeGroupOf, type GroupId, sortSessions } from './views'
+import { inboxGroupOf, type GroupId, sortSessions } from './views'
 
 // The snapshot the sessions service publishes: everything the list and the detail header show,
 // as plain, frozen data that can cross the IPC bridge. Messages are never part of it; the detail
@@ -22,7 +23,7 @@ export type LocalStateStatus =
 export interface SessionsSnapshot {
   /** Every listed session of both tools, newest activity first. */
   readonly sessions: readonly Session[]
-  /** How many sessions need attention, each counted once: the Active view's badge. */
+  /** How many sessions need attention, each counted once, across both tools. */
   readonly needsAttention: number
   /** How many sessions each group holds, before the tool filter. */
   readonly groupCounts: Readonly<Record<GroupId, number>>
@@ -84,8 +85,7 @@ function frozenSession(session: Session): Session {
 }
 
 /**
- * How many sessions each group holds: the Active view's five groups (each session in its first
- * matching group), plus the Pinned and All Sessions views.
+ * Status counts, with Running ahead of unread results, plus Pinned and All Sessions totals.
  */
 export function countGroups(sessions: readonly Session[]): Record<GroupId, number> {
   const counts: Record<GroupId, number> = {
@@ -98,8 +98,11 @@ export function countGroups(sessions: readonly Session[]): Record<GroupId, numbe
     all: sessions.length
   }
   for (const session of sessions) {
-    const group = activeGroupOf(session)
+    const group = session.activity.state === 'running' ? 'running' : inboxGroupOf(session)
     if (group !== null) counts[group] += 1
+    else if (session.activity.state === 'waiting') counts.waiting += 1
+    else if (session.activity.state === 'unknown' && looksOpen(session.activity.reason))
+      counts.unknown += 1
     if (session.pinned) counts.pinned += 1
   }
   return counts
