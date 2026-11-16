@@ -11,8 +11,9 @@ for the next launch. If a display is disconnected, the restored window fits an a
 **Status: Phase 1 implemented; final acceptance pending.** The app has live session lists,
 Active/Pinned/All Sessions views, tool filters, source health, safe message detail, pin/read
 actions, two session panes, keyboard navigation and a local macOS package. Automated tests and approved synthetic
-built-app checks cover the implemented paths. VoiceOver speech, physical sleep/wake, external
-app/browser actions and a complete real-session comparison still need acceptance evidence.
+built-app checks cover the implemented paths. Physical sleep/wake, external app/browser actions
+and a complete real-session comparison still need acceptance evidence. VoiceOver speech is not
+part of acceptance: AgentPeek is a personal tool and its owner does not use a screen reader.
 
 Sessions are grouped by **Project** by default. Click a project heading to collapse or expand it;
 its count, attention and running summaries stay visible while collapsed. **Group by → Status**
@@ -176,7 +177,7 @@ Accepted with synthetic data in the built desktop app, and on the owner's own Ta
 Safari on a Mac and an iPhone. Not yet observed: phone network loss, lock/unlock and Mac
 sleep/wake with a page open; a fresh load while AgentPeek is closed; refusal of an outside device
 or login through the real path; `tailscale serve reset` and device removal on the real path;
-VoiceOver; and the packaged app. Two reports await a recheck: titles staying visible on an open
+and the packaged app. Two reports await a recheck: titles staying visible on an open
 iPhone Safari page after Share session titles was turned off, and helper processes taking more
 than 5 seconds to exit after Quit. Any other process on the Mac can reach the loopback port and
 send the same headers that Serve adds. Recent messages stay not accepted, and not for real use,
