@@ -106,13 +106,18 @@ export function buildMenuTemplate(options: {
       click: () => options.command('view:active')
     },
     {
-      label: 'Pinned',
+      label: 'Inbox',
       accelerator: 'CommandOrControl+2',
+      click: () => options.command('view:inbox')
+    },
+    {
+      label: 'Pinned',
+      accelerator: 'CommandOrControl+3',
       click: () => options.command('view:pinned')
     },
     {
       label: 'All Sessions',
-      accelerator: 'CommandOrControl+3',
+      accelerator: 'CommandOrControl+4',
       click: () => options.command('view:all')
     },
     { type: 'separator' },

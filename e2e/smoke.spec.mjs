@@ -144,6 +144,20 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     evidence.launches.push({ pid: application.process().pid, ...paths })
     await focusWindow()
     await expect(page.locator('.app-shell')).toHaveAttribute('data-window-focused', 'true')
+    // Startup restores maximized geometry. Resize only after the window has opened so the
+    // title/pane assertions do not inherit the physical display's width.
+    await application.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0].unmaximize()
+    })
+    await expect
+      .poll(() =>
+        application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMaximized())
+      )
+      .toBe(false)
+    await application.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0].setContentSize(1000, 900)
+    })
+    await expect.poll(() => page.evaluate(() => globalThis.innerWidth)).toBe(1000)
   }
   const close = async () => {
     await audit()
@@ -178,6 +192,9 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     // Keep the target unselected, so read-on-view cannot hide the new-reply transition.
     const before = performance.now()
     await simulate(fixture.home, 'codex-complete')
+    await expect(page.getByRole('option', { name: /^Fixture Codex complete,/ })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Active 6', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Inbox 1', exact: true }).click()
     await expect(page.getByRole('option', { name: /^Fixture Codex complete,/ })).toContainText(
       'New reply',
       { timeout: 2000 }
@@ -386,6 +403,15 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     await simulate(fixture.home, 'codex-reply')
     await expect.poll(replyState).toMatchObject({ newReply: true })
     const hiddenReply = await replyState()
+    await application.evaluate(({ app, BrowserWindow }) => {
+      app.focus({ steal: true })
+      BrowserWindow.getAllWindows()[0].focus()
+    })
+    await expect
+      .poll(() =>
+        application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isFocused())
+      )
+      .toBe(true)
     await page.getByRole('button', { name: 'Hide Sessions', exact: true }).click()
     await expect(second).toBeFocused()
     await expect.poll(replyState).toEqual({ ...hiddenReply, newReply: false })

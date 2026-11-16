@@ -72,12 +72,18 @@ describe('application menu', () => {
     )
     expect(navigation.map((item) => [item.label, item.accelerator])).toEqual([
       ['Active', 'CommandOrControl+1'],
-      ['Pinned', 'CommandOrControl+2'],
-      ['All Sessions', 'CommandOrControl+3'],
+      ['Inbox', 'CommandOrControl+2'],
+      ['Pinned', 'CommandOrControl+3'],
+      ['All Sessions', 'CommandOrControl+4'],
       ['Reload Sessions', 'CommandOrControl+R']
     ])
     for (const item of navigation) click(item)
-    expect(opts.command.mock.calls).toEqual([['view:active'], ['view:pinned'], ['view:all']])
+    expect(opts.command.mock.calls).toEqual([
+      ['view:active'],
+      ['view:inbox'],
+      ['view:pinned'],
+      ['view:all']
+    ])
     expect(opts.reload).toHaveBeenCalledOnce()
     expect(view.find((item) => item.id === 'reload-sessions')?.enabled).toBe(true)
   })

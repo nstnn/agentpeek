@@ -17,6 +17,7 @@ export interface AppSnapshot extends SessionsSnapshot {
 
 export type MenuCommand =
   | 'view:active'
+  | 'view:inbox'
   | 'view:pinned'
   | 'view:all'
   | 'back'

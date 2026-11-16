@@ -120,6 +120,57 @@ export const assistant = (sessionId, at, error = false) =>
     },
     ...(error ? { isApiErrorMessage: true, error: 'rate_limit' } : {})
   })
+// Claude calls with each status the detail shows. Inputs are invented and displayed only.
+const claudeCall = (sessionId, at, callId, name, input) =>
+  claude(sessionId, 'assistant', at, {
+    message: {
+      role: 'assistant',
+      content: [{ type: 'tool_use', id: callId, name, input }],
+      stop_reason: 'tool_use'
+    }
+  })
+const claudeResult = (sessionId, at, callId, content, isError = false) =>
+  claude(sessionId, 'user', at, {
+    message: {
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: callId, content, is_error: isError }]
+    }
+  })
+export const claudeToolDetailCalls = (sessionId, at) =>
+  [
+    ['Bash', { command: 'git status --short', description: 'Show the synthetic working tree' }],
+    [
+      'Edit',
+      {
+        file_path: `${CWD}/src/app.ts`,
+        old_string: 'const synthetic = 1',
+        new_string: 'const synthetic = 2\nconst added = true'
+      }
+    ],
+    ['Read', { file_path: `${CWD}/README.md`, offset: 1, limit: 40 }],
+    ['Bash', { command: 'npm test', description: 'Run the synthetic tests' }, 'failed'],
+    ['mcp__00000000-0000-4000-8000-0000000000aa__web_search', { query: 'synthetic query' }],
+    [
+      'Write',
+      {
+        file_path: `${CWD}/notes/long.md`,
+        content:
+          '<script>globalThis.fixtureInjected = true</script>\n' +
+          'Synthetic long line.\n'.repeat(400)
+      }
+    ],
+    ['Bash', { command: 'sleep 30', description: 'Wait for the synthetic build' }, 'pending']
+  ].flatMap(([name, input, outcome], i) => {
+    const callId = `toolu_synthetic_${i}`
+    const use = claudeCall(sessionId, at + i * 10, callId, name, input)
+    if (outcome === 'pending') return [use]
+    return [
+      use,
+      outcome === 'failed'
+        ? claudeResult(sessionId, at + i * 10 + 1, callId, 'Exit code 1\nSynthetic failure.', true)
+        : claudeResult(sessionId, at + i * 10 + 1, callId, 'Synthetic tool output.')
+    ]
+  })
 export const registry = (name, status, at) =>
   JSON.stringify({
     pid: PIDS[name],

@@ -5,11 +5,11 @@ Only one AgentPeek runs at a time. Opening AgentPeek while it is already open do
 ## Sub-features
 
 - `second-launch-exits` makes a second copy exit with code 0, leaving the first one running with its one window.
-- `second-launch-focuses` brings the existing window to the front and restores it from the Dock if needed.
+- `second-launch-focuses` brings the existing window to the front and un-minimizes it if needed.
 
 ## How to get to it (user POV)
 
-- Open AgentPeek again while it is open: from Finder, Spotlight, or the Dock in a packaged build, or by running `npm start` again in development.
+- Start a second copy while AgentPeek is open: `open -n` on a packaged build, or `npm start` again in development. Opening a packaged build from Finder, Spotlight or the Dock usually just brings the running copy forward through macOS without starting a second process, so it does not reach this feature.
 
 ## Driving it with agentpeek.mjs
 

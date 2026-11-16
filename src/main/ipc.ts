@@ -177,8 +177,7 @@ export function registerSessionIpc(options: {
   )
   register(
     IPC.getSkill,
-    (args) =>
-      args.length === 2 && isKey(args[0]) && args[0].tool === 'codex' && isSkillRequest(args[1]),
+    (args) => args.length === 2 && isKey(args[0]) && isSkillRequest(args[1]),
     c.getSkill
   )
   register(

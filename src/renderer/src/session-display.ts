@@ -5,6 +5,7 @@ import type { GroupId, ViewId } from '../../core/views'
 
 export const VIEW_NAMES: Record<ViewId, string> = {
   active: 'Active',
+  inbox: 'Inbox',
   pinned: 'Pinned',
   all: 'All Sessions'
 }
@@ -44,6 +45,7 @@ export function rowStatus(session: Session, missing = false): { kind: string; la
   if (missing)
     return { kind: 'unknown', label: `Unavailable — last known: ${rowStatus(session).label}` }
   const activity = session.activity
+  if (activity.state === 'running') return { kind: 'running', label: 'Running' }
   if (activity.state === 'waiting') {
     const reason = WAITING[activity.waitingFor ?? '']
     return { kind: 'waiting', label: `Waiting for you${reason ? ` · ${reason}` : ''}` }
@@ -63,9 +65,7 @@ export function rowStatus(session: Session, missing = false): { kind: string; la
   if (activity.state === 'unknown') {
     return { kind: 'unknown', label: `Unknown · ${UNKNOWN[activity.reason]}` }
   }
-  return activity.state === 'running'
-    ? { kind: 'running', label: 'Running' }
-    : { kind: 'idle', label: 'Idle' }
+  return { kind: 'idle', label: 'Idle' }
 }
 
 export function relativeTime(at: number, now: number): string {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Session, SessionActivity, SessionAttention } from './session'
 import type { AgentTool } from './tools'
-import { activeGroupOf, buildView, sortSessions, type ViewContents } from './views'
+import { inboxGroupOf, buildView, sortSessions, type ViewContents } from './views'
 
 // Synthetic sessions only. `lastActivityAt` is in minutes to keep the order easy to read.
 const NO_ATTENTION: SessionAttention = { waiting: false, newReply: false, error: false }
@@ -40,38 +40,36 @@ function layout(contents: ViewContents): Record<string, string[]> {
   )
 }
 
-describe('activeGroupOf', () => {
+describe('inboxGroupOf', () => {
   it('puts each session in the first group that matches', () => {
-    expect(activeGroupOf(session('a', { activity: WAITING, attention: { waiting: true } }))).toBe(
-      'waiting'
-    )
     expect(
-      activeGroupOf(session('b', { activity: WAITING, attention: { waiting: true, error: true } }))
-    ).toBe('waiting')
-    expect(activeGroupOf(session('c', { activity: RUNNING, attention: { error: true } }))).toBe(
-      'errors'
-    )
-    expect(activeGroupOf(session('d', { activity: RUNNING, attention: { newReply: true } }))).toBe(
-      'new-replies'
-    )
-    expect(activeGroupOf(session('e', { activity: RUNNING }))).toBe('running')
+      inboxGroupOf(session('a', { activity: WAITING, attention: { waiting: true } }))
+    ).toBeNull()
+    expect(
+      inboxGroupOf(session('b', { activity: WAITING, attention: { waiting: true, error: true } }))
+    ).toBe('errors')
+    expect(inboxGroupOf(session('c', { activity: RUNNING, attention: { error: true } }))).toBeNull()
+    expect(
+      inboxGroupOf(session('d', { activity: RUNNING, attention: { newReply: true } }))
+    ).toBeNull()
+    expect(inboxGroupOf(session('e', { activity: RUNNING }))).toBeNull()
   })
 
-  it('keeps only open-looking Unknown sessions', () => {
+  it('excludes Unknown sessions without unread results', () => {
     const unknown = (reason: 'process-ended' | 'app-not-running' | 'quiet' | 'unreadable') =>
-      activeGroupOf(session('u', { activity: { state: 'unknown', reason } }))
-    expect(unknown('process-ended')).toBe('unknown')
-    expect(unknown('app-not-running')).toBe('unknown')
-    expect(unknown('quiet')).toBe('unknown')
+      inboxGroupOf(session('u', { activity: { state: 'unknown', reason } }))
+    expect(unknown('process-ended')).toBeNull()
+    expect(unknown('app-not-running')).toBeNull()
+    expect(unknown('quiet')).toBeNull()
     expect(unknown('unreadable')).toBeNull()
     expect(
-      activeGroupOf(session('v', { activity: { state: 'unknown', reason: 'unsupported' } }))
+      inboxGroupOf(session('v', { activity: { state: 'unknown', reason: 'unsupported' } }))
     ).toBeNull()
   })
 
   it('leaves out idle sessions with nothing to see', () => {
-    expect(activeGroupOf(session('i'))).toBeNull()
-    expect(activeGroupOf(session('j', { pinned: true }))).toBeNull()
+    expect(inboxGroupOf(session('i'))).toBeNull()
+    expect(inboxGroupOf(session('j', { pinned: true }))).toBeNull()
   })
 })
 
@@ -94,21 +92,39 @@ describe('buildView', () => {
     session('idle-pinned', { minute: 0, pinned: true, tool: 'claude' })
   ]
 
-  it('groups the Active view in the approved order, pinned first, then newest', () => {
+  it('keeps only running sessions in Active, pinned first, then newest', () => {
     expect(layout(buildView(sessions, 'active', 'all'))).toEqual({
-      waiting: ['waiting'],
-      errors: ['error'],
-      'new-replies': ['reply'],
-      running: ['running-pinned', 'running-2', 'running-1'],
-      unknown: ['gone']
+      running: ['running-pinned', 'running-2', 'running-1']
     })
-    expect(buildView(sessions, 'active', 'all').groups.map((group) => group.id)).toEqual([
-      'waiting',
+  })
+
+  it('keeps only unread result groups in Inbox', () => {
+    expect(layout(buildView(sessions, 'inbox', 'all'))).toEqual({
+      errors: ['error'],
+      'new-replies': ['reply']
+    })
+    expect(buildView(sessions, 'inbox', 'all').groups.map((g) => g.id)).toEqual([
       'errors',
-      'new-replies',
-      'running',
-      'unknown'
+      'new-replies'
     ])
+  })
+
+  it('moves finished replies and errors to Inbox, then back to Active on restart', () => {
+    const activeIds = (s: Session) =>
+      buildView([s], 'active', 'all').groups.flatMap((g) => g.sessions.map((s) => s.key.id))
+    const inboxIds = (s: Session) =>
+      buildView([s], 'inbox', 'all').groups.flatMap((g) => g.sessions.map((s) => s.key.id))
+    for (const attention of [{ newReply: true }, { error: true }]) {
+      const finished = session('task', { attention })
+      expect(activeIds(finished)).toEqual([])
+      expect(inboxIds(finished)).toEqual(['task'])
+      const restarted = { ...finished, activity: RUNNING }
+      expect(activeIds(restarted)).toEqual(['task'])
+      expect(inboxIds(restarted)).toEqual([])
+      const read = session('task')
+      expect(inboxIds(read)).toEqual([])
+      expect(layout(buildView([read], 'all', 'all'))).toEqual({ all: ['task'] })
+    }
   })
 
   it('hides empty groups', () => {
@@ -142,6 +158,7 @@ describe('buildView', () => {
   it('returns no groups for an empty view', () => {
     const unpinnedIdle = [session('a'), session('b')]
     expect(buildView(unpinnedIdle, 'active', 'all').groups).toEqual([])
+    expect(buildView(unpinnedIdle, 'inbox', 'all').groups).toEqual([])
     expect(buildView(unpinnedIdle, 'pinned', 'all').groups).toEqual([])
     expect(buildView([], 'all', 'all').groups).toEqual([])
   })
@@ -149,11 +166,12 @@ describe('buildView', () => {
   it('filters by tool, and counts each tool in the view before filtering', () => {
     const active = buildView(sessions, 'active', 'claude')
     expect(layout(active)).toEqual({
-      waiting: ['waiting'],
-      'new-replies': ['reply'],
       running: ['running-2']
     })
-    expect(active.toolCounts).toEqual({ all: 7, codex: 4, claude: 3 })
+    expect(active.toolCounts).toEqual({ all: 3, codex: 2, claude: 1 })
+    const inbox = buildView(sessions, 'inbox', 'claude')
+    expect(layout(inbox)).toEqual({ 'new-replies': ['reply'] })
+    expect(inbox.toolCounts).toEqual({ all: 2, codex: 1, claude: 1 })
     expect(buildView(sessions, 'all', 'codex').toolCounts).toEqual({
       all: 10,
       codex: 6,

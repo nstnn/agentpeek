@@ -75,22 +75,22 @@ describe('independent navigation visibility', () => {
     expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'Codex 0' }))
   })
 
-  it.each(['separator', 'source'] as const)(
+  it.each(['separator', 'settings'] as const)(
     'retains reachable focus when toggling Views with a focused %s during browsing',
     async (origin) => {
       const f = mount(760)
       await openSplit(f)
       await userEvent.click(screen.getByRole('button', { name: 'Show Sessions' }))
-      if (origin === 'source')
+      if (origin === 'settings')
         await userEvent.click(screen.getByRole('button', { name: 'Collapse Views' }))
       const control =
-        origin === 'source'
-          ? screen.getByLabelText('Codex source: Connected')
+        origin === 'settings'
+          ? screen.getByRole('button', { name: 'Settings' })
           : screen.getByRole('separator', { name: 'Sidebar width' })
       control.focus()
       fireEvent.keyDown(control, { key: 'B', metaKey: true, shiftKey: true })
       expect(document.activeElement).toBe(
-        origin === 'source' ? control : screen.getByRole('listbox')
+        origin === 'settings' ? control : screen.getByRole('listbox')
       )
       expect(f.store.getSnapshot().activePane).toBeNull()
       expect(screen.queryByRole('complementary', { name: 'Right pane' })).toBeNull()
@@ -210,9 +210,24 @@ describe('independent navigation visibility', () => {
     expect(f.api.getMessages).toHaveBeenCalledTimes(1)
   })
 
-  it('shows only connected tools in the footer and opens Settings from a source in the rail', async () => {
+  it('shows connected tools as non-interactive indicators in the sidebar and rail', async () => {
     const f = mount()
     await screen.findByRole('option', { name: /Synthetic a,/ })
+    for (const layout of ['expanded', 'rail']) {
+      if (layout === 'rail')
+        await userEvent.click(screen.getByRole('button', { name: 'Collapse Views' }))
+      for (const name of ['Codex', 'Claude Code']) {
+        const indicator = screen.getByRole('img', { name: `${name} source: Connected` })
+        expect(indicator.closest('.sidebar-footer')).toBeTruthy()
+        expect(indicator.tabIndex).toBe(-1)
+        await userEvent.click(indicator)
+        expect(f.store.getSnapshot().settingsOpen).toBe(false)
+      }
+      const view = screen.getByRole('button', { name: 'All Sessions 2' })
+      await userEvent.click(view)
+      await userEvent.tab()
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Settings' }))
+    }
     act(() =>
       f.push(
         snapshot([f.a, f.b], {
@@ -223,11 +238,10 @@ describe('independent navigation visibility', () => {
         })
       )
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Collapse Views' }))
     expect(screen.queryByLabelText('Codex source: No access')).toBeNull()
-    const trigger = screen.getByRole('button', { name: 'Claude Code source: Connected' })
-    expect(trigger.closest('.sidebar-footer')).toBeTruthy()
-    await userEvent.click(trigger)
+    expect(screen.queryByLabelText('Codex source: Connected')).toBeNull()
+    expect(screen.getByRole('img', { name: 'Claude Code source: Connected' })).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: 'Settings' }))
     expect(f.store.getSnapshot().settingsOpen).toBe(true)
   })
 })
