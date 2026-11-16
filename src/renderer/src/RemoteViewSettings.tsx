@@ -320,6 +320,9 @@ export function RemoteViewSettings({
   )
   const copyLabel = (target: RemoteCopyTarget) =>
     copied?.target === target ? (copied.ok ? 'Copied' : "Couldn't copy") : 'Copy'
+  // The visible word stays first so the accessible name contains it; the object tells the two apart.
+  const copyName = (target: RemoteCopyTarget) =>
+    `${copyLabel(target)} ${target === 'viewer-address' ? 'viewer address' : 'serve command'}`
   const port = settings?.port
   const address = settings?.hostName ? remoteViewerAddress(settings.hostName) : null
   const notice = (value: Notice | null) =>
@@ -438,7 +441,11 @@ export function RemoteViewSettings({
             <span>
               Viewer address: <code>{address}</code>
             </span>
-            <button type="button" onClick={() => void copy('viewer-address')}>
+            <button
+              type="button"
+              aria-label={copyName('viewer-address')}
+              onClick={() => void copy('viewer-address')}
+            >
               {copyLabel('viewer-address')}
             </button>
           </p>
@@ -622,6 +629,7 @@ export function RemoteViewSettings({
               <button
                 type="button"
                 disabled={port === undefined}
+                aria-label={copyName('serve-command')}
                 onClick={() => void copy('serve-command')}
               >
                 {copyLabel('serve-command')}
