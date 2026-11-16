@@ -3,6 +3,7 @@
   "productName": "AgentPeek",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "A macOS app that shows what your local Codex and Claude Code sessions are doing.",
   "main": "./out/main/index.js",
   "scripts": {

@@ -5,10 +5,10 @@ AgentPeek is a standalone macOS app built with Electron, TypeScript, and React. 
 ## Where to look
 
 - [`README.md`](README.md): what AgentPeek is, its status, how to set it up, run, and check it, and the source folder layout.
-- [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md): product behavior, scope, privacy rules, and approved decisions; it separates planned from implemented behavior.
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): process boundaries, IPC, sources, state, security, and fixture mode.
-- [`plan/agent-sessions/agent-sessions.md`](plan/agent-sessions/agent-sessions.md): Phase 1 requirements, constraints, and task cards, plus the observed formats of the tools' local files.
-- [`plan/agent-sessions/evidence/acceptance.md`](plan/agent-sessions/evidence/acceptance.md): Phase 1 acceptance results, build identity, and checks that still need evidence.
+- `docs/REQUIREMENTS.md`: product behavior, scope, privacy rules, and approved decisions; it separates planned from implemented behavior.
+- `docs/ARCHITECTURE.md`: process boundaries, IPC, sources, state, security, and fixture mode.
+- `plan/agent-sessions/agent-sessions.md`: Phase 1 requirements, constraints, and task cards, plus the observed formats of the tools' local files.
+- `plan/agent-sessions/evidence/acceptance.md`: Phase 1 acceptance results, build identity, and checks that still need evidence.
 
 `docs/` and `plan/` are local and ignored by Git, so other checkouts may not have them.
 

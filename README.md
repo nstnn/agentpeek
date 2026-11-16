@@ -196,3 +196,11 @@ acceptance limits), `docs/ARCHITECTURE.md` (processes, data flow and security), 
 are intentionally ignored by Git and may be absent in another checkout. The versioned
 [verification map](.agents/skills/verify-agentpeek/features/README.md) and fixture guide remain
 available there.
+
+## License
+
+AgentPeek is released under the [MIT License](LICENSE). See [SECURITY.md](SECURITY.md) to report
+a vulnerability privately.
+
+AgentPeek is an independent project. It is not affiliated with, endorsed by, or sponsored by
+OpenAI or Anthropic. Codex and Claude Code are trademarks of their respective owners.
