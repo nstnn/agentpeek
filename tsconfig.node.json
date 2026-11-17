@@ -12,6 +12,9 @@
     "src/main/**/*",
     "src/preload/**/*",
     "src/core/**/*",
-    "src/shared/**/*"
+    "src/shared/**/*",
+    "remote/web/vite.config.ts",
+    "remote/web/*.test.ts",
+    "remote/web/browser/**/*"
   ]
 }

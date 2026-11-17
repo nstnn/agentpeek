@@ -16,7 +16,7 @@ The synthetic simulator changes the same local file shapes the tools write. The 
 - Create data with `npm run fixture -- create`; launch AgentPeek with the two printed overrides after approval.
 - Change synthetic tool activity with `npm run fixture -- simulate <home> <step>`.
 - Read Active, All Sessions and Pinned, open detail, choose Show More / Collapse Message or Try Again, or use View > Reload Sessions.
-- After a build and launch approval, run `npm run e2e -- e2e/smoke.spec.mjs --output <new-evidence-dir>` for the smoke alone. `npm run e2e -- --output <new-evidence-dir>` runs all four current specs: smoke, Settings, Source monitoring and Zoom, each with two launches. `npm run e2e -- --list` lists them without launching anything.
+- After a build and launch approval, run `npm run e2e -- e2e/smoke.spec.mjs --output <new-evidence-dir>` for the smoke alone. `npm run e2e -- --output <new-evidence-dir>` runs every spec in `e2e/`: smoke, Settings, Source monitoring, Zoom and the three Remote View specs (`remote-settings`, `remote-messages-switch`, `remote-desktop-status`), each with its own launches. Prefix `AGENTPEEK_E2E_BACKGROUND=1` while the user is using the Mac: the window stays invisible and unfocused and native focus is emulated, so treat that run as a regression check, not as focus or acceptance evidence. `npm run e2e -- --list` lists them without launching anything.
 
 ## Driving it with agentpeek.mjs
 

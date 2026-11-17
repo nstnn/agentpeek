@@ -1,12 +1,23 @@
 import type { IpcMain, IpcMainInvokeEvent, WebContents } from 'electron'
 import type { SessionKey } from '../core/session'
 import { isAgentTool } from '../core/tools'
-import { IPC, MAX_MESSAGE_LIMIT } from '../shared/ipc'
+import { IPC, MAX_MESSAGE_LIMIT, MAX_REMOTE_TEXT_LENGTH } from '../shared/ipc'
 import type { SessionController } from './session-controller'
 import { isTheme } from '../shared/preferences'
 import type { Preferences } from './preferences'
 import type { SessionsService } from './sessions/service'
 import { isSkillName, isSkillPath, type SkillRequest } from '../core/skills'
+import { isShareableWorkspace } from '../core/remote/share-policy'
+import {
+  isRemoteCopyTarget,
+  remoteServeCommand,
+  remoteViewerAddress,
+  type RemoteActionResult,
+  type RemoteConnectionInput,
+  type RemoteCopyTarget,
+  type RemoteStatusView
+} from '../shared/remote-settings'
+import type { RemoteView } from './remote/remote-view'
 
 /** Every request must come from this exact top-level frame at the expected app URL. */
 export function isTrustedSender(
@@ -69,6 +80,37 @@ function isSkillRequest(value: unknown): value is SkillRequest {
   )
 }
 
+/** Exactly `{ownerLogin, hostName, port}`: bounded strings and a number. `checkConnection` decides validity. */
+function isConnectionInput(value: unknown): value is RemoteConnectionInput {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const input = value as Record<string, unknown>
+  const text = (field: unknown) =>
+    typeof field === 'string' && field.length <= MAX_REMOTE_TEXT_LENGTH
+  return (
+    Object.keys(input).length === 3 &&
+    Object.hasOwn(input, 'ownerLogin') &&
+    Object.hasOwn(input, 'hostName') &&
+    Object.hasOwn(input, 'port') &&
+    text(input.ownerLogin) &&
+    text(input.hostName) &&
+    typeof input.port === 'number'
+  )
+}
+
+export type RemoteSettingsControl = Pick<
+  RemoteView,
+  | 'status'
+  | 'aliasFor'
+  | 'retryLoad'
+  | 'enable'
+  | 'disable'
+  | 'saveConnection'
+  | 'shareWorkspace'
+  | 'unshareWorkspace'
+  | 'setShareTitles'
+  | 'setShareMessages'
+>
+
 /** No generic channels, Electron events, file-open capabilities or raw errors reach the renderer. */
 export function registerSessionIpc(options: {
   ipc: Pick<IpcMain, 'handle' | 'removeHandler'>
@@ -77,6 +119,8 @@ export function registerSessionIpc(options: {
   controller: SessionController
   preferences: Pick<Preferences, 'getTheme' | 'setTheme' | 'setSourceEnabled'>
   setSourceEnabled: SessionsService['setSourceEnabled']
+  remote: RemoteSettingsControl
+  copyText: (text: string) => Promise<void>
 }): () => void {
   const { ipc, controller: c } = options
   const channels: string[] = []
@@ -168,6 +212,54 @@ export function registerSessionIpc(options: {
   )
   register(IPC.showSessionMenu, key, c.showSessionMenu)
   register(IPC.setDetailOpen, (a) => a.length === 1 && typeof a[0] === 'boolean', c.setDetailOpen)
+
+  // Remote View settings (TASK-016): one handler per action, no method name from the page and
+  // nothing that runs Tailscale. The listener keeps its own rules; these only check the shape.
+  const { remote } = options
+  const flag = (a: unknown[]) => a.length === 1 && typeof a[0] === 'boolean'
+  register(IPC.getRemoteStatus, none, (): RemoteStatusView => remote.status())
+  register(IPC.getRemoteAlias, key, (session: SessionKey): string | null =>
+    remote.aliasFor(session)
+  )
+  register(IPC.retryRemoteLoad, none, (): Promise<void> => remote.retryLoad())
+  register(IPC.setRemoteEnabled, flag, (enabled: boolean): Promise<RemoteActionResult> =>
+    enabled ? remote.enable() : remote.disable()
+  )
+  register(
+    IPC.saveRemoteConnection,
+    (a) => a.length === 1 && isConnectionInput(a[0]),
+    (connection: RemoteConnectionInput): Promise<RemoteActionResult> =>
+      remote.saveConnection(connection)
+  )
+  register(
+    IPC.setRemoteWorkspaceShared,
+    (a) => a.length === 2 && isShareableWorkspace(a[0]) && typeof a[1] === 'boolean',
+    (workspace: string, shared: boolean): Promise<RemoteActionResult> =>
+      shared ? remote.shareWorkspace(workspace) : remote.unshareWorkspace(workspace)
+  )
+  register(IPC.setRemoteShareTitles, flag, (shareTitles: boolean): Promise<RemoteActionResult> =>
+    remote.setShareTitles(shareTitles)
+  )
+  register(
+    IPC.setRemoteShareMessages,
+    flag,
+    (shareMessages: boolean): Promise<RemoteActionResult> =>
+      Promise.resolve(remote.setShareMessages(shareMessages))
+  )
+  register(
+    IPC.copyRemoteText,
+    (a) => a.length === 1 && isRemoteCopyTarget(a[0]),
+    async (target: RemoteCopyTarget): Promise<boolean> => {
+      const status = remote.status()
+      if (status.state !== 'on' && status.state !== 'off') return false
+      const { hostName, port } = status.settings
+      if (target === 'viewer-address' && hostName === '') return false
+      await options.copyText(
+        target === 'serve-command' ? remoteServeCommand(port) : remoteViewerAddress(hostName)
+      )
+      return true
+    }
+  )
   return () => {
     for (const channel of channels) ipc.removeHandler(channel)
   }

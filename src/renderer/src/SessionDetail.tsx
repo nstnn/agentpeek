@@ -9,6 +9,8 @@ import {
 } from 'react'
 import type { RecentMessages, Session, SessionMessage } from '../../core/session'
 import type { AgentPeekApi } from '../../shared/api'
+import type { RemoteStatusView } from '../../shared/remote-settings'
+import { useRemoteAlias } from './remote-status'
 import { rowStatus, sessionTitle, toolName, workspaceName } from './session-display'
 import { clockTime, detailStatus } from './detail-status'
 import { SessionIcon } from './SessionIcon'
@@ -92,7 +94,9 @@ export function SessionDetail({
   sourceEpoch,
   reloadPending,
   reloadVersion,
-  onReload
+  onReload,
+  remoteStatus = null,
+  remoteRevision
 }: {
   session: Session
   api: AgentPeekApi
@@ -111,6 +115,9 @@ export function SessionDetail({
   reloadPending: boolean
   reloadVersion: number
   onReload: () => Promise<void>
+  remoteStatus?: RemoteStatusView | null
+  /** Changes with the session list, which can renumber Remote View aliases. */
+  remoteRevision?: unknown
 }): JSX.Element {
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const [retry, setRetry] = useState(0)
@@ -126,6 +133,7 @@ export function SessionDetail({
   const seen = useRef<string | null>(null)
   const revision = `${session.summary.lastActivityAt}:${session.lastReply?.cursor ?? ''}:${sourceEpoch}:${reloadVersion}`
   const { tool, id } = session.key
+  const remoteAlias = useRemoteAlias(api, session.key, remoteStatus, remoteRevision)
   useEffect(() => {
     if (!visible || missing) return
     let active = true
@@ -271,6 +279,11 @@ export function SessionDetail({
             {leadingControl}
             <DetailTitle title={sessionTitle(session)} />
           </div>
+        )}
+        {remoteAlias !== null && (
+          <p className="detail-meta detail-remote-alias" title="The name Remote View shows">
+            Remote: {remoteAlias}
+          </p>
         )}
         <p className="detail-meta" title={session.summary.workspacePath ?? 'No folder'}>
           {toolName(tool)} · {workspaceName(session)}
@@ -554,8 +567,9 @@ function MessageText({
         scroller.scrollTop +=
           element.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 8
       }
-      // Chromium may continue the earlier PageDown animation after an immediate jump.
-      // Re-align after it settles, but cancel as soon as the user starts another action.
+      // Chromium may continue the earlier PageDown animation after an immediate jump, and
+      // even after a re-align. Re-align each time it settles until the start stays put,
+      // but cancel as soon as the user starts another action.
       let timer: number | undefined
       const inputs = ['wheel', 'keydown', 'pointerdown', 'touchstart'] as const
       const cancel = () => {
@@ -567,8 +581,9 @@ function MessageText({
       const schedule = () => {
         window.clearTimeout(timer)
         timer = window.setTimeout(() => {
-          cancel()
           align()
+          // A further scroll reschedules; a quiet interval ends the alignment.
+          timer = window.setTimeout(cancel, 100)
         }, 100)
       }
       cancelAlignment.current = cancel

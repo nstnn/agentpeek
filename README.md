@@ -1,6 +1,6 @@
 # AgentPeek
 
-AgentPeek is a macOS app that shows what your local AI coding agents are doing. Open it to see which Codex and Claude Code sessions on your Mac are running, waiting for you, have a new reply, or failed. It only reads the tools' own local files: it never changes them, never stores conversation text, and makes no network requests.
+AgentPeek is a macOS app that shows what your local AI coding agents are doing. Open it to see which Codex and Claude Code sessions on your Mac are running, waiting for you, have a new reply, or failed. It only reads the tools' own local files: it never changes them, never stores conversation text, and makes no outbound network requests. The one network feature, [Remote View](#remote-view-status-beta), is off by default; when you turn it on, AgentPeek listens on `127.0.0.1` so your own devices can see session status through your Tailscale.
 
 AgentPeek is built with Electron, TypeScript, and React.
 
@@ -11,8 +11,9 @@ for the next launch. If a display is disconnected, the restored window fits an a
 **Status: Phase 1 implemented; final acceptance pending.** The app has live session lists,
 Active/Inbox/Pinned/All Sessions views, tool filters, source health, safe message detail, pin/read
 actions, two session panes, keyboard navigation and a local macOS package. Automated tests and approved synthetic
-built-app checks cover the implemented paths. VoiceOver speech, physical sleep/wake, external
-app/browser actions and a complete real-session comparison still need acceptance evidence.
+built-app checks cover the implemented paths. Physical sleep/wake, external app/browser actions
+and a complete real-session comparison still need acceptance evidence. VoiceOver speech is not
+part of acceptance: AgentPeek is a personal tool and its owner does not use a screen reader.
 
 **Active** contains only running sessions. Finished unread replies and errors move to **Inbox**;
 Waiting sessions also appear in **Inbox**, ahead of unread errors and replies; unknown states remain available in **All Sessions**. Reading a result clears its
@@ -90,6 +91,115 @@ conversation pane. Sizes stay within readable limits and are remembered until qu
 Double-click a divider to reset it. With a divider focused, Left/Right adjusts by 10 pixels
 (Shift: 40), Home/End reaches its limits, and Enter resets it. Escape cancels an ongoing resize.
 
+## Remote View (status beta)
+
+Remote View lets you check session status from your phone or another computer, using your own
+[Tailscale](https://tailscale.com/) network. It is a personal beta: one Mac, your own devices,
+and only the projects you pick. It is not a public release.
+
+**What it shows.** A read-only list of the sessions in the projects you share: tool, status
+(running, waiting, new reply, failed) and age, laid out like the AgentPeek window: on a wide
+screen a sidebar (Active, All Sessions, sources), the list grouped by status or by project folder
+name with a Codex / Claude Code filter, and the session detail beside it; on a phone the list,
+with the sidebar behind a menu button. Session titles appear only when you turn on **Share session titles**;
+otherwise rows are named `Session 1`, `Session 2`, … and the Mac's session detail shows the
+matching "Remote: Session N" line. Message text appears only while you turn on **Share recent
+messages** (see [Recent messages](#recent-messages-not-yet-accepted)). The page never shows folder
+paths, your login or the Mac address, and it cannot control the tools, pin, or mark anything read.
+
+**What it does not do.** AgentPeek makes no outbound requests and never runs, installs or
+configures Tailscale. It listens only on `127.0.0.1` and answers only requests that carry your
+Tailscale login and your Mac's `*.ts.net` address, as Tailscale Serve adds them. It has no
+background process: viewing works only while AgentPeek is open on an awake Mac. If AgentPeek was
+on when you quit, it turns Remote View back on when you open the app again.
+
+### Set up
+
+Do these steps yourself; Settings > Remote View > **Set up Tailscale** shows the same list.
+
+1. Install Tailscale on the Mac and on each device you want to view from, and sign in with the
+   same account everywhere. Turn on two-factor sign-in with your login provider.
+2. In the Tailscale admin console, turn on **Tailnet Lock**, so no new device can join without a
+   signature from one of yours.
+3. Give the Mac a neutral machine name (for example `mac-01`) **before** turning on HTTPS: the name
+   becomes public in certificate logs.
+4. In the admin console, turn on HTTPS certificates (DNS → HTTPS Certificates).
+5. In AgentPeek, open **Settings > Remote View**, enter your Tailscale login and the Mac's address
+   (`<machine>.<tailnet>.ts.net`), keep or change the port (default 47613), **Save**, add the
+   projects to share and turn Remote View on.
+6. In Terminal on the Mac, run the command that Settings shows and copies, for example:
+
+   ```bash
+   tailscale serve --bg --https=443 http://127.0.0.1:47613
+   ```
+
+   Never use `tailscale funnel` for this port: Funnel makes it public on the internet.
+
+7. On your phone, with Tailscale connected, open `https://<machine>.<tailnet>.ts.net/`.
+
+While Remote View is on, the sidebar shows **Remote View on**, and Settings shows how many viewer
+pages are open.
+
+### Recent messages (not yet accepted)
+
+**Share recent messages** in Settings > Remote View lets a viewer page open one session and read
+its latest prompts and replies. It is off when AgentPeek opens, every time, and it can be on only
+while Remote View is on. It turns itself off when you quit, turn Remote View off or save a new
+connection. While it is on, conversation text leaves the Mac, and the sidebar shows **Remote View
+on / Messages shared**.
+
+- **What a page gets:** for the session it opens, at most the latest 20 prompts and replies and
+  at most 64 KB of text. Older entries are dropped first ("Only the latest messages are shown.")
+  and a long entry is cut ("Shortened to fit."). Tool calls show as a count only.
+- **What it never gets:** full history, files, tool input or output, skill content, or link
+  targets. A link shows as its text only. A path written in a message itself is sent as written.
+- **On the page:** with the switch on, session rows become buttons. Text is shown as plain,
+  inert formatting: nothing in it loads, runs or links anywhere. **Back to sessions** and the
+  browser or phone Back both return to the list. The page keeps the text in memory only, never
+  in storage, the address or history.
+- **When it stops:** turning the switch off, turning Remote View off, removing the project,
+  turning the source off, changing the allowed login, closing the page and quitting AgentPeek
+  each remove the text from open pages at once. Nothing takes back text a device already showed.
+
+This part is checked only with synthetic data on the Mac (built app and Chrome through a
+simulated Serve). It is not yet accepted for real use: the device checks listed under
+[Known limits](#known-limits) must pass on your own devices first.
+
+### Browsers
+
+Checked: Safari on iPhone and Safari on macOS through Tailscale Serve, and headless Chrome against
+a simulated Serve. Other current browsers that support streamed `fetch` should work but have not
+been checked. The page keeps everything in memory only: no storage, cookies or caches. If you see
+a Tailscale error page instead of AgentPeek, AgentPeek is closed, or the Mac is asleep or offline.
+
+### Turn it off or remove a device
+
+- **Stop all remote viewing:** turn Remote View off in Settings. Open pages show "Remote View is
+  off" and the port closes. You can also run `tailscale serve reset`; either one alone stops
+  remote viewing. Local use of AgentPeek is unaffected.
+- **Stop sharing something:** remove a project, turn off Share session titles, or turn off a
+  source. Open pages update at once.
+- **Stop one device:** remove it from your tailnet in the Tailscale admin console, or change your
+  access controls (ACLs) so it cannot reach the Mac. Changing the allowed login in Settings ends
+  every open page.
+
+None of these takes back what a device already showed or what was copied from it.
+
+### Known limits
+
+Accepted with synthetic data in the built desktop app, and on the owner's own Tailscale with
+Safari on a Mac and an iPhone. Not yet observed: phone network loss, lock/unlock and Mac
+sleep/wake with a page open; a fresh load while AgentPeek is closed; refusal of an outside device
+or login through the real path; `tailscale serve reset` and device removal on the real path;
+and the packaged app on the real path (it was checked with synthetic data and a simulated Serve).
+One report awaits a recheck: titles staying visible on an open iPhone Safari page after Share
+session titles was turned off. Helper processes taking more than 5 seconds to exit after Quit was
+not reproduced in a synthetic rerun (clean exit in under a second). Any other process on the Mac can reach the loopback port and
+send the same headers that Serve adds. Recent messages stay not accepted, and not for real use,
+until the device checks above (allowed-login change, `tailscale serve reset`, quit and reopen with
+the phone page open, phone lock/unlock and network loss, Mac sleep/wake, and the titles recheck)
+pass on your own devices; they have also not been tried on a phone or in Safari.
+
 ## Requirements
 
 - macOS on Apple Silicon
@@ -162,14 +272,17 @@ synthetic fixture overrides, just like development runs.
 
 ## Check
 
-| Command                     | What it does                                                                                        |
-| --------------------------- | --------------------------------------------------------------------------------------------------- |
-| `npm run typecheck`         | Type-checks the main process and the renderer separately.                                           |
-| `npm run lint`              | Runs ESLint, then checks formatting with Prettier.                                                  |
-| `npm test`                  | Runs the unit tests with vitest.                                                                    |
-| `npm run fixture -- create` | Creates an isolated synthetic home for regression checks.                                           |
-| `npm run e2e`               | Opens the built app twice for the Playwright fixture smoke; build first and obtain launch approval. |
-| `npm run format`            | Rewrites files in the Prettier style.                                                               |
+| Command                       | What it does                                                                                        |
+| ----------------------------- | --------------------------------------------------------------------------------------------------- |
+| `npm run typecheck`           | Type-checks the main process, the renderer and the Remote View page separately.                     |
+| `npm run lint`                | Runs ESLint, then checks formatting with Prettier.                                                  |
+| `npm test`                    | Runs the unit tests with vitest.                                                                    |
+| `npm run test:remote-web`     | Runs only the Remote View page's tests, including its import-boundary check.                        |
+| `npm run build:remote-web`    | Builds only the Remote View page into `out/remote-web/` (`npm run build` includes it).              |
+| `npm run test:remote-browser` | Checks the Remote View page in headless Chrome through a simulated Tailscale Serve (needs Chrome).  |
+| `npm run fixture -- create`   | Creates an isolated synthetic home for regression checks.                                           |
+| `npm run e2e`                 | Opens the built app twice for the Playwright fixture smoke; build first and obtain launch approval. |
+| `npm run format`              | Rewrites files in the Prettier style.                                                               |
 
 The [fixture guide](scripts/fixture/README.md) lists the simulator commands and expected states.
 The smoke checks bootstrap, a live update within 2 seconds, safe detail rendering, independent
@@ -179,6 +292,12 @@ It uses temporary fixture/profile folders,
 removes them after the run, and retains evidence in ignored `test-results/e2e/`. It does not
 replace manual system, accessibility, packaged-build or consented real-data acceptance.
 
+To keep using the Mac during a run, set `AGENTPEEK_E2E_BACKGROUND=1`, for example
+`AGENTPEEK_E2E_BACKGROUND=1 npm run e2e`. The test window is then invisible, ignores the
+mouse except during a spec's own drag, never takes focus and has no Dock icon. The test
+bootstrap reports the window as focused instead. Because focus is emulated, a normal run is
+still needed for acceptance evidence.
+
 ## Project layout
 
 AgentPeek follows Electron's process model. Only the main process touches files and the system; the window shows what the main process sends it.
@@ -187,12 +306,14 @@ AgentPeek follows Electron's process model. Only the main process touches files 
 | ------------------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | `src/main/*.ts`     | Electron main process: app lifecycle, window, menus                                                           | Electron, Node.js                  |
 | `src/main/sessions` | Reading and watching the tools' files, the sessions service, and saving AgentPeek's own state (plain Node.js) | Node.js, but not Electron          |
+| `src/main/remote`   | Remote View: the opt-in loopback listener, its limits, settings, sharing policy, lifecycle, the dev preview   | Node.js, but not Electron          |
 | `src/preload`       | The bridge that exposes `window.agentpeek`                                                                    | Electron's `contextBridge`         |
-| `src/renderer`      | The React interface, in a sandboxed window                                                                    | React, but not Node.js or Electron |
+| `src/renderer`      | The React interface, in a sandboxed window, including Settings > Remote View                                  | React, but not Node.js or Electron |
 | `src/core`          | Pure logic shared by the other parts                                                                          | Nothing from Node.js or Electron   |
 | `src/shared`        | Types used on both sides of the bridge                                                                        | Nothing from Node.js or Electron   |
+| `remote/web`        | The Remote View page, a separate Vite build served by the listener to a browser on another device             | React and `src/core` only          |
 
-ESLint enforces the import rules. Tests sit next to the code they test, as `*.test.ts` or `*.test.tsx`. Renderer component tests use Testing Library in jsdom; source and main-process tests use Node.js.
+ESLint enforces the import rules. Tests sit next to the code they test, as `*.test.ts` or `*.test.tsx`. Renderer and Remote View page component tests use Testing Library in jsdom; source and main-process tests use Node.js.
 
 ## Contributing
 

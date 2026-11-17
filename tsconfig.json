@@ -1,10 +1,11 @@
 {
   // Editors use this file to find the right project for each source file.
-  // The main process and the renderer are checked separately because they run in different environments.
+  // The main process, the renderer and the Remote View page are checked separately because they run in different environments.
   "files": [],
   "references": [
     { "path": "./tsconfig.node.json" },
     { "path": "./tsconfig.web.json" },
-    { "path": "./tsconfig.renderer-tests.json" }
+    { "path": "./tsconfig.renderer-tests.json" },
+    { "path": "./tsconfig.remote-web.json" }
   ]
 }

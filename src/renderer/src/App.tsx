@@ -23,11 +23,13 @@ import { NavigationIcon } from './NavigationIcon'
 import { useNavigationMotion } from './use-navigation-motion'
 import { SettingsDialog } from './SettingsDialog'
 import { QuickOpen } from './QuickOpen'
+import { useRemoteStatus } from './remote-status'
 
 export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.Element {
   const [store] = useState(() => suppliedStore ?? createSessionsStore(window.agentpeek))
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot)
   const { snapshot, view, filter } = state
+  const remoteStatus = useRemoteStatus(window.agentpeek)
   const [now, setNow] = useState(Date.now)
   const [firstLaunchDismissed, dismissFirstLaunch] = useState(false)
   const [windowFocused, setWindowFocused] = useState(() => document.hasFocus())
@@ -439,6 +441,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
             onToggle={() => setSidebarCollapsed((collapsed) => !collapsed)}
             controls={`${regionId}-sidebar`}
             onSettings={store.openSettings}
+            remoteStatus={remoteStatus}
           />
         </div>
         <PaneDivider
@@ -739,6 +742,8 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                       reloadPending={state.reloadPending}
                       reloadVersion={state.reloadVersion}
                       onReload={store.reload}
+                      remoteStatus={remoteStatus}
+                      remoteRevision={snapshot}
                     />
                   ) : (
                     <div className="detail-placeholder">

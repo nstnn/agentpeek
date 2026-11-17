@@ -1,4 +1,4 @@
-import { isSkillName, isSkillPath } from '../skills'
+import { isSkillName, isSkillPath } from '../skill-names'
 import type { ClaudeRecord } from './records'
 
 /** Only a complete command envelope, never quoted examples or arbitrary slash text. */

@@ -7,12 +7,14 @@ import { _electron, expect, test } from '@playwright/test'
 import { createFixture, removeFixture } from '../scripts/fixture/home.mjs'
 import { simulate } from '../scripts/fixture/simulate.mjs'
 import { profileProcesses, stopProfile } from './cleanup.mjs'
+import { seedDefaultWindow } from './window-state.mjs'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 
 // eslint-disable-next-line no-empty-pattern
 test('Zoom: exact steps, bounds, responsive reading, settings, recovery and cold start', async ({}, info) => {
   const fixture = await createFixture()
+  await seedDefaultWindow(fixture.userData)
   const file = join(fixture.userData, 'preferences.json')
   const evidence = { actions: [], launches: [], cleanup: null }
   const errors = []
@@ -173,7 +175,7 @@ test('Zoom: exact steps, bounds, responsive reading, settings, recovery and cold
       .toBeCloseTo(offset, 0)
     await save('zoom-long-reading-divider-110')
     await zoom('zoom-reset', 100)
-    await page.getByRole('button', { name: /^Active,/ }).click()
+    await page.getByRole('button', { name: /^Active \d+$/ }).click()
 
     // Open two real reading targets using the UI, then cross the three-column boundary.
     await page.getByRole('radio', { name: 'Status', exact: true }).click()

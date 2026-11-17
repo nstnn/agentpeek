@@ -31,7 +31,17 @@ describe('preload API', () => {
         'setSelection',
         'setDetailOpen',
         'showSessionMenu',
-        'onCommand'
+        'onCommand',
+        'getRemoteStatus',
+        'onRemoteStatus',
+        'getRemoteAlias',
+        'retryRemoteLoad',
+        'setRemoteEnabled',
+        'saveRemoteConnection',
+        'setRemoteWorkspaceShared',
+        'setRemoteShareTitles',
+        'setRemoteShareMessages',
+        'copyRemoteText'
       ].sort()
     )
     expect(Object.isFrozen(api)).toBe(true)
@@ -56,6 +66,17 @@ describe('preload API', () => {
     await api.setSelection(key, { secondPaneOpen: true })
     await api.setDetailOpen(true)
     await api.showSessionMenu(key)
+    await api.getRemoteStatus()
+    await api.getRemoteAlias(key)
+    await api.retryRemoteLoad()
+    await api.setRemoteEnabled(true)
+    const connection = { ownerLogin: 'owner@example.com', hostName: 'mac.tailnet.ts.net', port: 1 }
+    // Extra properties on a caller's object never cross the bridge.
+    await api.saveRemoteConnection({ ...connection, enabled: true } as typeof connection)
+    await api.setRemoteWorkspaceShared('/synthetic/demo', false)
+    await api.setRemoteShareTitles(true)
+    await api.setRemoteShareMessages(true)
+    await api.copyRemoteText('serve-command')
     expect(transport.invoke.mock.calls).toEqual([
       [IPC.getSnapshot],
       [IPC.getTheme],
@@ -72,15 +93,29 @@ describe('preload API', () => {
       [IPC.setSelection, null],
       [IPC.setSelection, key, { secondPaneOpen: true }],
       [IPC.setDetailOpen, true],
-      [IPC.showSessionMenu, key]
+      [IPC.showSessionMenu, key],
+      [IPC.getRemoteStatus],
+      [IPC.getRemoteAlias, key],
+      [IPC.retryRemoteLoad],
+      [IPC.setRemoteEnabled, true],
+      [IPC.saveRemoteConnection, connection],
+      [IPC.setRemoteWorkspaceShared, '/synthetic/demo', false],
+      [IPC.setRemoteShareTitles, true],
+      [IPC.setRemoteShareMessages, true],
+      [IPC.copyRemoteText, 'serve-command']
     ])
   })
-  it.each(['snapshot', 'command'] as const)(
+  it.each(['snapshot', 'command', 'remoteStatus'] as const)(
     'strips the Electron event and removes exactly its own %s listener',
     (kind) => {
       const { api, transport } = setup()
       const callback = vi.fn()
-      const unsubscribe = kind === 'snapshot' ? api.onSnapshot(callback) : api.onCommand(callback)
+      const unsubscribe =
+        kind === 'snapshot'
+          ? api.onSnapshot(callback)
+          : kind === 'command'
+            ? api.onCommand(callback)
+            : api.onRemoteStatus(callback)
       const [channel, listener] = transport.on.mock.calls[0] as [
         string,
         (event: unknown, value: unknown) => void
@@ -88,7 +123,9 @@ describe('preload API', () => {
       const payload =
         kind === 'snapshot'
           ? { sessions: [] }
-          : { type: 'open-secondary', key: { tool: 'codex', id: 'synthetic' } }
+          : kind === 'remoteStatus'
+            ? { state: 'loading' }
+            : { type: 'open-secondary', key: { tool: 'codex', id: 'synthetic' } }
       listener({ sender: 'must never escape' }, payload)
       expect(callback.mock.calls).toEqual([[payload]])
       unsubscribe()

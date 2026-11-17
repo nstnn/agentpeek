@@ -1,4 +1,5 @@
 import { homedir } from 'node:os'
+import { join } from 'node:path'
 import {
   app,
   ipcMain,
@@ -21,6 +22,12 @@ import type { SessionsService } from './sessions/service'
 import { systemActions } from './system-actions'
 import { createMainWindow, rendererPageUrl } from './window'
 import { openPreferences, type Preferences } from './preferences'
+import {
+  shouldStartPreview,
+  startPreviewServer,
+  type PreviewServer
+} from './remote/preview/preview-server'
+import { createRemoteView, type RemoteView } from './remote/remote-view'
 import type { ZoomAction } from '../shared/preferences'
 
 app.enableSandbox()
@@ -36,6 +43,8 @@ let removeIpc: (() => void) | null = null
 let quitting = false
 let quitReady = false
 let preferences: Preferences | null = null
+let preview: Promise<PreviewServer | null> | null = null
+let remote: RemoteView | null = null
 
 function send(channel: string, value: unknown): void {
   const contents = mainWindow?.webContents
@@ -94,12 +103,15 @@ if (!app.requestSingleInstanceLock()) {
     quitting = true
     removeIpc?.()
     powerMonitor.removeListener('resume', onResume)
+    powerMonitor.removeListener('suspend', onSuspend)
     // A quit during the store open stops that service before it can start.
     void (async () => {
       try {
         await Promise.allSettled([
           lifecycle ? lifecycle.stop() : opening?.then((service) => service.stop()),
-          preferences?.flush()
+          preferences?.flush(),
+          preview?.then((server) => server?.close()),
+          remote?.close()
         ])
       } finally {
         quitReady = true
@@ -132,7 +144,9 @@ if (!app.requestSingleInstanceLock()) {
       opening = openSessionsService({
         ...paths,
         enabledSources: preferences.getSources(),
-        onSnapshot: () => {
+        onSnapshot: (snapshot) => {
+          void preview?.then((server) => server?.publish(snapshot))
+          remote?.publish(snapshot)
           controller?.publish()
           if (controller) send(IPC.snapshot, controller.snapshot())
         },
@@ -147,6 +161,31 @@ if (!app.requestSingleInstanceLock()) {
       const service = await opening
       if (quitting) return
       lifecycle = createServiceLifecycle(service)
+      // Off by default: without saved "on" settings this opens no socket.
+      remote = createRemoteView({
+        folder: paths.stateFolder,
+        viewerFolder: join(__dirname, '../remote-web'),
+        snapshot: () => service.snapshot(),
+        // Recent messages come only from the service's bounded reader, never the controller, so
+        // remote reading cannot select, mark read or pin anything.
+        recentMessages: (key, limit) => service.recentMessages(key, limit),
+        // The sidebar label and Settings follow every change, viewer page counts included.
+        onChange: (status) => send(IPC.remoteStatus, status)
+      })
+      void remote.open().catch(() => undefined)
+      if (shouldStartPreview(process.env, paths)) {
+        preview = startPreviewServer({ snapshot: () => service.snapshot() }).then(
+          (server) => {
+            // The development terminal only; the URL carries no session data.
+            process.stdout.write(`AgentPeek localhost preview: ${server.url}/\n`)
+            return server
+          },
+          () => {
+            process.stdout.write('AgentPeek localhost preview could not start.\n')
+            return null
+          }
+        )
+      }
       mainWindow = createMainWindow(preferences.getZoom())
       controller = createSessionController({
         service,
@@ -169,7 +208,9 @@ if (!app.requestSingleInstanceLock()) {
         pageUrl: rendererPageUrl(),
         controller,
         preferences,
-        setSourceEnabled: service.setSourceEnabled
+        setSourceEnabled: service.setSourceEnabled,
+        remote,
+        copyText: (text) => systemActions.copyText(text)
       })
       mainWindow.on('focus', () => lifecycle?.focus())
       mainWindow.on('resize', updateMenu)
@@ -183,6 +224,7 @@ if (!app.requestSingleInstanceLock()) {
         mainWindow = null
       })
       powerMonitor.on('resume', onResume)
+      powerMonitor.on('suspend', onSuspend)
       updateMenu()
       await service.start()
     })
@@ -192,6 +234,11 @@ if (!app.requestSingleInstanceLock()) {
     })
 }
 
+function onSuspend(): void {
+  remote?.suspend()
+}
+
 function onResume(): void {
+  remote?.resume()
   void lifecycle?.reload()
 }

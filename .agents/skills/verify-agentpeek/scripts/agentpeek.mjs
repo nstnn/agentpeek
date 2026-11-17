@@ -26,8 +26,9 @@ const RENDERER_URL = pathToFileURL(path.join(ROOT, 'out', 'renderer', 'index.htm
 
 const USAGE = `Usage: node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs <command> [options]
 
-  launch [--label <name>] [--fixture <dir>] [--no-build]
+  launch [--label <name>] [--fixture <dir>] [--state <dir>] [--no-build]
                               Build, start an isolated instance, wait until it is usable.
+                              --state copies synthetic app state (e.g. remote-view.json) first.
   doctor [--run <id>]         Read-only health check of a run's instance. Exit 1 on any FAIL.
   eval <js> [--run <id>]      Evaluate an expression in the window's page; print the JSON value.
   main-eval <js> [--run <id>] Evaluate in the main process; \`require\`, \`electron\`, \`app\`,
@@ -95,6 +96,12 @@ async function launch() {
     if (!fs.statSync(fixture).isDirectory()) fail(`--fixture ${fixture} is not a folder.`)
     // A copy, so a simulator can append to it without touching the original.
     fs.cpSync(fixture, homeDir, { recursive: true, preserveTimestamps: true })
+  }
+  if (flags.state) {
+    const state = path.resolve(String(flags.state))
+    if (!fs.statSync(state).isDirectory()) fail(`--state ${state} is not a folder.`)
+    // Synthetic app state the instance reads at startup, copied into its own profile.
+    fs.cpSync(state, userDataDir, { recursive: true })
   }
 
   const env = { ...process.env }
@@ -330,6 +337,36 @@ async function evalMain() {
   printAndLog(run, 'main-eval', { expression }, value)
 }
 
+// The center of the element's border box, and what covers that point when the topmost node there
+// is neither the element nor inside it (hit-tested like a real pointer).
+async function clickPoint(s, backendNodeId) {
+  const { model } = await s.send('DOM.getBoxModel', { backendNodeId })
+  const [x1, y1, , , x3, y3] = model.border
+  const x = (x1 + x3) / 2
+  const y = (y1 + y3) / 2
+  const hit = await s.send('DOM.getNodeForLocation', { x: Math.round(x), y: Math.round(y) })
+  const { object: target } = await s.send('DOM.resolveNode', { backendNodeId })
+  const { object: top } = await s.send('DOM.resolveNode', { backendNodeId: hit.backendNodeId })
+  const { result, exceptionDetails } = await s.send('Runtime.callFunctionOn', {
+    objectId: target.objectId,
+    // A click on a control's own <label> reaches the control, so that counts as a hit too.
+    // The cover is named by tag and role only: labels can hold session titles or paths.
+    functionDeclaration: `function (top) {
+      const el = top.nodeType === 1 ? top : top.parentElement
+      if (this === top || this.contains(top) || el?.closest('label')?.control === this) return null
+      if (!el) return top.nodeName.toLowerCase()
+      const control = el.closest('button, a, input, select, textarea, summary, [role]')
+      const kind = control && (control.getAttribute('role') || control.tagName.toLowerCase())
+      return el.tagName.toLowerCase() + (kind ? ' in ' + kind : '')
+    }`,
+    arguments: [{ objectId: top.objectId }],
+    returnByValue: true
+  })
+  // Never fall back to an unchecked click when the hit test itself failed.
+  if (exceptionDetails) throw new Error(`hit test failed: ${exceptionDetails.text}`)
+  return { x, y, coveredBy: result.value }
+}
+
 async function click() {
   const run = loadLiveRun()
   const nth = Number(flags.nth ?? 0)
@@ -368,10 +405,19 @@ async function click() {
       throw new Error('click needs --role and --name, or --selector')
     }
     await s.send('DOM.scrollIntoViewIfNeeded', { backendNodeId })
-    const { model } = await s.send('DOM.getBoxModel', { backendNodeId })
-    const [x1, y1, , , x3, y3] = model.border
-    const x = (x1 + x3) / 2
-    const y = (y1 + y3) / 2
+    let { x, y, coveredBy } = await clickPoint(s, backendNodeId)
+    const recentered = coveredBy ? { from: coveredBy } : undefined
+    if (coveredBy) {
+      // Partly visible under a sticky header or overlay: scroll it to the middle, as a user would,
+      // and refuse rather than press whatever covers it.
+      const { object } = await s.send('DOM.resolveNode', { backendNodeId })
+      await s.send('Runtime.callFunctionOn', {
+        objectId: object.objectId,
+        functionDeclaration: "function () { this.scrollIntoView({ block: 'center' }) }"
+      })
+      ;({ x, y, coveredBy } = await clickPoint(s, backendNodeId))
+      if (coveredBy) throw new Error(`target is covered by ${coveredBy} at its center`)
+    }
     const base = { x, y, button: 'left' }
     // No mouseMoved first: when the window is in the background, Chromium holds a move event for
     // about 5 seconds. Press and release alone produce mousedown, mouseup, and click.
@@ -389,7 +435,7 @@ async function click() {
         buttons: 0
       })
     }
-    return { clickedAt: { x: Math.round(x), y: Math.round(y) } }
+    return { clickedAt: { x: Math.round(x), y: Math.round(y) }, recentered }
   })
   printAndLog(
     run,

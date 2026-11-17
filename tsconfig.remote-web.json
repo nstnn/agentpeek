@@ -1,0 +1,12 @@
+{
+  // The Remote View page (remote/web). It runs in any browser on the owner's tailnet: DOM, no
+  // Node.js types, and no access to the Electron renderer, preload or main process.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "jsx": "react-jsx"
+  },
+  "include": ["remote/web/src/**/*"]
+}

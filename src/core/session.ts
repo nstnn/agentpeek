@@ -1,5 +1,5 @@
 import type { AgentTool } from './tools'
-import type { SkillMention } from './skills'
+import type { SkillMention } from './skill-names'
 
 // The session domain model. Every type here is plain, serializable data (no classes), so the same
 // values can cross the IPC bridge later. Every time is in epoch milliseconds.

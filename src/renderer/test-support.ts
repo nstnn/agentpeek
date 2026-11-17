@@ -1,5 +1,6 @@
 import { vi } from 'vitest'
 import type { AgentPeekApi, AppSnapshot, MenuCommand } from '../shared/api'
+import type { RemoteStatusView } from '../shared/remote-settings'
 import { createSnapshot } from '../core/snapshot'
 import type { Session } from '../core/session'
 
@@ -40,6 +41,7 @@ export function snapshot(sessions: Session[] = [], change: Partial<AppSnapshot> 
 export function fakeApi(initial = snapshot()) {
   let receive: ((s: AppSnapshot) => void) | null = null
   const commands = new Set<(c: MenuCommand) => void>()
+  const remoteListeners = new Set<(s: RemoteStatusView) => void>()
   const offSnapshot = vi.fn()
   const offCommand = vi.fn()
   const api = {
@@ -72,12 +74,48 @@ export function fakeApi(initial = snapshot()) {
     reload: vi.fn(() => Promise.resolve()),
     setSelection: vi.fn<AgentPeekApi['setSelection']>(() => Promise.resolve()),
     setDetailOpen: vi.fn(() => Promise.resolve()),
-    showSessionMenu: vi.fn<AgentPeekApi['showSessionMenu']>(() => Promise.resolve())
+    showSessionMenu: vi.fn<AgentPeekApi['showSessionMenu']>(() => Promise.resolve()),
+    getRemoteStatus: vi.fn<AgentPeekApi['getRemoteStatus']>().mockResolvedValue({
+      state: 'off',
+      settings: {
+        enabled: false,
+        ownerLogin: '',
+        hostName: '',
+        port: 47613,
+        sharedWorkspaces: [],
+        shareTitles: false
+      },
+      startError: null
+    }),
+    onRemoteStatus: vi.fn<AgentPeekApi['onRemoteStatus']>((fn) => {
+      remoteListeners.add(fn)
+      return () => {
+        remoteListeners.delete(fn)
+      }
+    }),
+    getRemoteAlias: vi.fn<AgentPeekApi['getRemoteAlias']>().mockResolvedValue(null),
+    retryRemoteLoad: vi.fn<AgentPeekApi['retryRemoteLoad']>().mockResolvedValue(undefined),
+    setRemoteEnabled: vi.fn<AgentPeekApi['setRemoteEnabled']>().mockResolvedValue({ ok: true }),
+    saveRemoteConnection: vi
+      .fn<AgentPeekApi['saveRemoteConnection']>()
+      .mockResolvedValue({ ok: true }),
+    setRemoteWorkspaceShared: vi
+      .fn<AgentPeekApi['setRemoteWorkspaceShared']>()
+      .mockResolvedValue({ ok: true }),
+    setRemoteShareTitles: vi
+      .fn<AgentPeekApi['setRemoteShareTitles']>()
+      .mockResolvedValue({ ok: true }),
+    setRemoteShareMessages: vi
+      .fn<AgentPeekApi['setRemoteShareMessages']>()
+      .mockResolvedValue({ ok: true }),
+    copyRemoteText: vi.fn<AgentPeekApi['copyRemoteText']>().mockResolvedValue(true)
   } satisfies AgentPeekApi
   return {
     api,
     push: (s: AppSnapshot) => receive?.(s),
     command: (c: MenuCommand) => commands.forEach((fn) => fn(c)),
+    /** A Remote View status announced by the main process. */
+    remote: (status: RemoteStatusView) => remoteListeners.forEach((fn) => fn(status)),
     offSnapshot,
     offCommand
   }

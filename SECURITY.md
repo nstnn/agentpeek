@@ -16,6 +16,10 @@ Use synthetic data only: never attach real conversation text, session files, or 
 - AgentPeek writing, renaming, locking, or deleting any Codex or Claude Code file or setting.
 - Reading files outside AgentPeek's path allowlist, including credential files.
 - Conversation text being logged, stored, or sent anywhere, or any network request made by the app.
+- Remote View, the one opt-in network feature (see the README): the listener accepting connections
+  beyond `127.0.0.1`, answering anyone other than the owner's Tailscale login, or sending anything
+  beyond what its settings allow (status fields, titles only when shared, and bounded recent
+  messages only while that option is on).
 - Escaping the renderer sandbox, bypassing context isolation, or calling IPC handlers with
   unvalidated senders or arguments.
 - Script execution or unsafe links through rendered message content.
