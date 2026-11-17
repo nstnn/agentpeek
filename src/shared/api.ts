@@ -37,7 +37,7 @@ export interface AgentPeekApi {
   getSkill(key: SessionKey, request: SkillRequest): Promise<SkillContent>
   setPinned(key: SessionKey, pinned: boolean): Promise<boolean>
   markRead(key: SessionKey, expectedCursor?: string): Promise<boolean>
-  openTool(tool: AgentTool): Promise<boolean>
+  openTool(key: SessionKey): Promise<boolean>
   copySessionId(key: SessionKey): Promise<boolean>
   openLink(url: string): Promise<boolean>
   reload(): Promise<void>

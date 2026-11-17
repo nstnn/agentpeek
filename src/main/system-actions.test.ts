@@ -24,27 +24,39 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 describe('system actions', () => {
-  it.each([
-    ['codex', 'com.openai.codex'],
-    ['claude', 'com.anthropic.claudefordesktop']
-  ] as const)(
-    'opens %s with a fixed executable and bundle ID, without a shell',
-    async (tool, bundle) => {
-      ports.execFile.mockImplementation((_file, _args, _options, callback) => callback(null))
-      expect(await systemActions.openTool(tool)).toBe(true)
-      expect(ports.execFile).toHaveBeenCalledWith(
-        '/usr/bin/open',
-        ['-b', bundle],
-        { timeout: 5000 },
-        expect.any(Function)
-      )
+  it('opens Claude with its existing fixed executable and bundle ID, without a shell', async () => {
+    ports.execFile.mockImplementation((_file, _args, _options, callback) => callback(null))
+    expect(await systemActions.openTool({ tool: 'claude', id: 'synthetic-session' })).toBe(true)
+    expect(ports.execFile).toHaveBeenCalledWith(
+      '/usr/bin/open',
+      ['-b', 'com.anthropic.claudefordesktop'],
+      { timeout: 5000 },
+      expect.any(Function)
+    )
+    expect(ports.openExternal).not.toHaveBeenCalled()
+  })
+  it('opens the exact Codex thread without starting a resume process', async () => {
+    const id = '00000000-0000-4000-8000-000000000001'
+    ports.openExternal.mockResolvedValue(undefined)
+    expect(await systemActions.openTool({ tool: 'codex', id })).toBe(true)
+    expect(ports.openExternal).toHaveBeenCalledExactlyOnceWith(`codex://threads/${id}`)
+    expect(ports.execFile).not.toHaveBeenCalled()
+    ports.openExternal.mockRejectedValueOnce(new Error('Synthetic error'))
+    expect(await systemActions.openTool({ tool: 'codex', id })).toBe(false)
+  })
+  it.each(['new', '..', '../new', 'id?prompt=synthetic', 'https://example.com', ''])(
+    'rejects an invalid Codex thread ID without opening anything: %s',
+    async (id) => {
+      expect(await systemActions.openTool({ tool: 'codex', id })).toBe(false)
+      expect(ports.openExternal).not.toHaveBeenCalled()
+      expect(ports.execFile).not.toHaveBeenCalled()
     }
   )
   it('reports an unavailable tool without propagating its error text', async () => {
     ports.execFile.mockImplementation((_file, _args, _options, callback) =>
       callback(new Error('Synthetic error'))
     )
-    expect(await systemActions.openTool('codex')).toBe(false)
+    expect(await systemActions.openTool({ tool: 'claude', id: 'synthetic-session' })).toBe(false)
   })
   it('copies text and opens a validated link through Electron', async () => {
     await systemActions.copyText('synthetic-session')
