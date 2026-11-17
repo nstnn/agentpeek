@@ -43,6 +43,10 @@ accent header showing its session title once; the metadata below starts with the
 Only a successfully loaded, active visible reply/error is marked read while the window is
 focused; waiting still requires action in the tool.
 
+**Open Codex** opens the selected session in Codex using its thread ID. The detail button,
+row context menu, and **Session → Open Codex** (⌘O) use the same target. **Open Claude**
+continues to bring the Claude app to the front.
+
 Click the icon beside **Sessions** (⇧⌘B) to collapse the sidebar to a 56-pixel icon rail.
 The icon beside **Active**, **Pinned** or **All Sessions** (⇧⌘L) independently hides the
 session list. Its restore icon appears in the reading header while the list is hidden.
