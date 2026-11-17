@@ -131,6 +131,9 @@ test('Remote View outside Settings: sidebar label, detail alias and live viewer 
 
     // Every listed session's desktop alias is the title the viewer stream carries for it.
     await page.getByRole('button', { name: /^All/ }).click()
+    // Wait until both synthetic sources have loaded: a stream opened earlier can carry a partial
+    // first snapshot, which numbers the aliases differently from the finished desktop list.
+    await expect(rows()).toHaveCount(100)
     const viewer = openStream(port)
     const status = await viewer.first
     const streamTitles = status.status.projects.flatMap((project) =>

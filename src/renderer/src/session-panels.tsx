@@ -60,7 +60,9 @@ export function Sidebar({
                 ? (snapshot?.groupCounts.running ?? 0)
                 : id === 'inbox'
                   ? snapshot
-                    ? snapshot.groupCounts.errors + snapshot.groupCounts['new-replies']
+                    ? snapshot.groupCounts.waiting +
+                      snapshot.groupCounts.errors +
+                      snapshot.groupCounts['new-replies']
                     : 0
                   : (snapshot?.groupCounts[id] ?? 0)
             const label = `${VIEW_NAMES[id]} ${count}`
@@ -73,7 +75,7 @@ export function Sidebar({
                   id === 'active'
                     ? `${count} running ${count === 1 ? 'session' : 'sessions'} across both tools.`
                     : id === 'inbox'
-                      ? `${label}. Unread replies and errors across both tools.`
+                      ? `${label}. Waiting sessions, unread replies and errors across both tools.`
                       : label
                 }
                 aria-current={view === id ? 'page' : undefined}
@@ -360,7 +362,7 @@ export function EmptyList({
     body =
       view === 'active'
         ? 'Finished sessions with unread results appear in Inbox.'
-        : 'No unread replies or errors.'
+        : 'No waiting sessions, unread replies or errors.'
     action = { label: 'Show All Sessions', onClick: onShowAll }
   }
   return (

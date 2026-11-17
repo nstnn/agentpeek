@@ -111,7 +111,7 @@ describe('truthful status and recovery transitions', () => {
     expect(screen.getByText(/Last seen in AgentPeek:/).textContent).toBe(lastSeen)
     expect(screen.getByRole('option', { name: /Unavailable — last known: Error/ })).toBeTruthy()
     const detail = screen.getByRole('complementary', { name: 'Session detail' })
-    for (const name of ['Open Codex', 'Mark Read', 'Pin', 'Copy Session ID'])
+    for (const name of ['Open Codex', 'Mark Read', 'Pin'])
       expect(within(detail).getByRole('button', { name }).hasAttribute('disabled')).toBe(true)
     await act(async () => {
       finish({

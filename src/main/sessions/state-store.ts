@@ -37,7 +37,7 @@ export const MAX_STATE_FILE_BYTES = 4 * 1024 * 1024
 /** Changes are saved at most this often, so rapid actions write a few times per second at most. */
 export const STATE_WRITE_DELAY_MS = 250
 
-/** A session that no source listed for this long is forgotten, pin and cursors included. */
+/** An unpinned session that no source listed for this long is forgotten. */
 export const FORGET_AFTER_MS = 90 * 24 * 60 * 60 * 1000
 
 /** How often `lastListedAt` moves forward: precise enough for `FORGET_AFTER_MS`, rarely saved. */
@@ -55,6 +55,7 @@ export interface StateStore {
    */
   setStatusListener(listener: (() => void) | null): void
   /** A session's state, or `EMPTY_LOCAL_STATE` when nothing is stored for it. */
+  pinnedKeys(): SessionKey[]
   localState(key: SessionKey): SessionLocalState
   /**
    * Replaces a session's state: a pin, or a cursor from `markRead`. The empty state removes the
@@ -67,7 +68,7 @@ export interface StateStore {
   /** Saves the baseline that `establishBaseline` returned. Throws `TypeError` for a bad value. */
   setBaseline(tool: AgentTool, at: number): void
   /**
-   * Tells the store which sessions the sources list now, so their entries are kept. An entry not
+   * Tells the store which sessions the sources list now, so their entries are kept. An unpinned entry not
    * listed for 90 days is dropped the next time the store opens.
    */
   noteListed(keys: readonly SessionKey[]): void
@@ -148,7 +149,7 @@ export async function openStateStore(options: StateStoreOptions): Promise<StateS
   if (loaded.kind === 'state') {
     const forgetBefore = now() - FORGET_AFTER_MS
     for (const session of loaded.data.sessions) {
-      if (session.lastListedAt < forgetBefore) continue
+      if (!session.pinned && session.lastListedAt < forgetBefore) continue
       sessions.set(sessionKeyToString(session), session)
     }
     if (sessions.size < loaded.data.sessions.length) changed()
@@ -160,6 +161,11 @@ export async function openStateStore(options: StateStoreOptions): Promise<StateS
     setStatusListener(listener) {
       statusListener = listener
     },
+
+    pinnedKeys: () =>
+      [...sessions.values()]
+        .filter((session) => session.pinned)
+        .map(({ tool, id }) => ({ tool, id })),
 
     localState(key) {
       const session = sessions.get(sessionKeyToString(key))

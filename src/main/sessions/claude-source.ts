@@ -62,6 +62,8 @@ import { createQueue, isMissing } from './source-support'
 // Everything read here is conversation data: it is never logged or kept beyond what the facts hold.
 
 export interface ClaudeSourceOptions {
+  /** Saved pin IDs, exempt from recent-session limits. */
+  pinnedIds?: () => readonly string[]
   /** The home folder: the user's, or `AGENTPEEK_HOME` in fixture mode. */
   home: string
   /** The access gate for `home`. Tests pass one that records what it opens. */
@@ -250,7 +252,7 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
       // Claude.app rewrites a catalog file whenever its session's activity time changes, so an
       // older file holds a session last active more than 7 days ago (107 of 107 files, TASK-008).
       // Such a session is still listed while its registry says busy or waiting.
-      if (file.modifiedAt < cutoff) continue
+      if (file.modifiedAt < cutoff && !options.pinnedIds?.().length) continue
       present.add(file.path)
       if (catalogFiles.get(file.path)?.signature !== file.signature) {
         await readCatalog(file.path, file.signature)
@@ -329,6 +331,9 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
       }
     }
     for (const id of archived) all.delete(id)
+    for (const id of options.pinnedIds?.() ?? []) {
+      if (!all.has(id) && !archived.has(id)) all.set(id, { id, catalog: null, registry: null })
+    }
     return all
   }
 
@@ -349,10 +354,17 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
     }
     found.sort((a, b) => b.activeAt - a.activeAt || a.candidate.id.localeCompare(b.candidate.id))
 
+    const pins = new Set(options.pinnedIds?.() ?? [])
+    let recentCount = 0
     const kept = new Map<string, TrackedTranscript>()
     for (const { candidate, transcript, activeAt } of found) {
       const open = isOpen(candidate.registry)
-      if (!open && (kept.size >= MAX_SESSIONS_PER_TOOL || activeAt < cutoff)) continue
+      if (
+        !pins.has(candidate.id) &&
+        !open &&
+        (recentCount >= MAX_SESSIONS_PER_TOOL || activeAt < cutoff)
+      )
+        continue
       let entry = tracked.get(candidate.id)
       if (entry?.path !== transcript.path) {
         entry = newTranscript(transcript.path)
@@ -369,7 +381,8 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
         transcript: entry.state,
         transcriptModifiedAt: entry.modifiedAt
       })
-      if (!open && lastActivityAt < cutoff) continue
+      if (!pins.has(candidate.id) && !open && lastActivityAt < cutoff) continue
+      if (!pins.has(candidate.id)) recentCount++
       kept.set(candidate.id, entry)
     }
     tracked.clear()
@@ -465,7 +478,12 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
         transcriptStatus: transcript.status,
         transcriptModifiedAt: transcript.modifiedAt
       })
-      if (!isOpen(registry) && fact.summary.lastActivityAt < cutoff) continue
+      if (
+        !options.pinnedIds?.().includes(id) &&
+        !isOpen(registry) &&
+        fact.summary.lastActivityAt < cutoff
+      )
+        continue
       list.push(fact)
     }
     return list.sort(

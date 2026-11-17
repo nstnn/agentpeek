@@ -16,10 +16,14 @@ and a complete real-session comparison still need acceptance evidence. VoiceOver
 part of acceptance: AgentPeek is a personal tool and its owner does not use a screen reader.
 
 **Active** contains only running sessions. Finished unread replies and errors move to **Inbox**;
-waiting sessions and unknown states remain available in **All Sessions**. Reading a result clears its
+Waiting sessions also appear in **Inbox**, ahead of unread errors and replies; unknown states remain available in **All Sessions**. Reading a result clears its
 Inbox count; its selected row stays while being read. Finished rows leave Active immediately,
 while their open detail stays available. Restarting a session moves it back to Active.
 View shortcuts follow sidebar order: ⌘1 Active, ⌘2 Inbox, ⌘3 Pinned, ⌘4 All Sessions.
+
+Use **View → Find Session…** (⌘K), or the search button in the session-list header, to find a loaded session by title, folder or session ID across every view and tool. Up/Down chooses a result, Enter opens it in the active reading pane, and Escape cancels. Search does not read conversation content or acknowledge replies while the dialog is open.
+
+Pinned sessions are exempt from the 7-day/50-session limits and the 90-day local-state cleanup. AgentPeek restores them from the original allowlisted files on launch. If a source file is missing, its saved ID remains as **Unavailable pinned session**; use Unpin to remove it. No title, folder or conversation copy is saved to preserve a pin. Turning source monitoring off still hides that source's pins until re-enabled.
 
 Sessions are grouped by **Project** by default. Click a project heading to collapse or expand it;
 its count, attention and running summaries stay visible while collapsed. **Group by → Status**
@@ -183,9 +187,10 @@ Accepted with synthetic data in the built desktop app, and on the owner's own Ta
 Safari on a Mac and an iPhone. Not yet observed: phone network loss, lock/unlock and Mac
 sleep/wake with a page open; a fresh load while AgentPeek is closed; refusal of an outside device
 or login through the real path; `tailscale serve reset` and device removal on the real path;
-and the packaged app. Two reports await a recheck: titles staying visible on an open
-iPhone Safari page after Share session titles was turned off, and helper processes taking more
-than 5 seconds to exit after Quit. Any other process on the Mac can reach the loopback port and
+and the packaged app on the real path (it was checked with synthetic data and a simulated Serve).
+One report awaits a recheck: titles staying visible on an open iPhone Safari page after Share
+session titles was turned off. Helper processes taking more than 5 seconds to exit after Quit was
+not reproduced in a synthetic rerun (clean exit in under a second). Any other process on the Mac can reach the loopback port and
 send the same headers that Serve adds. Recent messages stay not accepted, and not for real use,
 until the device checks above (allowed-login change, `tailscale serve reset`, quit and reopen with
 the phone page open, phone lock/unlock and network loss, Mac sleep/wake, and the titles recheck)
@@ -316,3 +321,11 @@ acceptance limits), `docs/ARCHITECTURE.md` (processes, data flow and security), 
 are intentionally ignored by Git and may be absent in another checkout. The versioned
 [verification map](.agents/skills/verify-agentpeek/features/README.md) and fixture guide remain
 available there.
+
+## License
+
+AgentPeek is released under the [MIT License](LICENSE). See [SECURITY.md](SECURITY.md) to report
+a vulnerability privately.
+
+AgentPeek is an independent project. It is not affiliated with, endorsed by, or sponsored by
+OpenAI or Anthropic. Codex and Claude Code are trademarks of their respective owners.

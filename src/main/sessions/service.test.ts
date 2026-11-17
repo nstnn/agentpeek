@@ -200,6 +200,13 @@ function fakeStore(
       status = next
       listener?.()
     },
+    pinnedKeys: () =>
+      [...sessions.entries()]
+        .filter(([, local]) => local.pinned)
+        .map(([key]) => {
+          const colon = key.indexOf(':')
+          return { tool: key.slice(0, colon) as AgentTool, id: key.slice(colon + 1) }
+        }),
     localState: (key) => sessions.get(sessionKeyToString(key)) ?? EMPTY_LOCAL_STATE,
     setLocalState: vi.fn((key: SessionKey, local: SessionLocalState) => {
       if (!isStoredId(key.id)) throw new TypeError('A session key has an unexpected shape.')
@@ -998,7 +1005,7 @@ describe('source monitoring switches', () => {
       pinned: true,
       attention: { newReply: false }
     })
-    expect(codex.catalog).toHaveBeenCalledTimes(2)
+    expect(codex.catalog).toHaveBeenCalledTimes(3)
   })
   it('discards late catalog and message results after switching off and on', async () => {
     codex.facts = [codexFacts(1)]

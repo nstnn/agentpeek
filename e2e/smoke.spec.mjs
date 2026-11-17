@@ -211,7 +211,8 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     await save('pinned')
 
     await page.getByRole('button', { name: /^All Sessions/ }).click()
-    await expect(page.getByRole('option')).toHaveCount(100)
+    // The pinned session no longer counts toward the 50-session Codex cap, so one more is listed.
+    await expect(page.getByRole('option')).toHaveCount(101)
     await page.getByRole('option', { name: /^Fixture Codex hostile,/ }).click()
     await expect(page.getByRole('region', { name: 'Recent messages' })).toContainText(
       'Image: Synthetic remote image'

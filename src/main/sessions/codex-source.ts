@@ -44,6 +44,8 @@ import { createQueue, isMissing } from './source-support'
 // Everything read here is conversation data: it is never logged or kept beyond what the facts hold.
 
 export interface CodexSourceOptions {
+  /** Saved pin IDs, exempt from recent-session limits. */
+  pinnedIds?: () => readonly string[]
   /** The home folder: the user's, or `AGENTPEEK_HOME` in fixture mode. */
   home: string
   fixture?: boolean
@@ -129,15 +131,21 @@ export function createCodexSource(options: CodexSourceOptions): SessionSource {
     }
     forgetAbsent(new Set(files.map((file) => file.path)))
 
-    const recent = files
-      .filter((file) => startedAt - file.modifiedAt <= RECENT_SESSION_WINDOW_MS)
-      .sort((a, b) => b.modifiedAt - a.modifiedAt)
+    const pins = new Set(options.pinnedIds?.() ?? [])
+    const remainingPins = new Set(pins)
+    const recent = files.sort((a, b) => b.modifiedAt - a.modifiedAt)
+    let recentCount = 0
     const kept: TrackedRollout[] = []
     let recognized = 0
     let unrecognized = 0
     let unrecognizedVersion: string | null = null
     for (const file of recent) {
-      if (kept.length >= MAX_SESSIONS_PER_TOOL) break
+      const recentCandidate =
+        startedAt - file.modifiedAt <= RECENT_SESSION_WINDOW_MS &&
+        recentCount < MAX_SESSIONS_PER_TOOL
+      if (!recentCandidate && remainingPins.size === 0) break
+      if (!recentCandidate && ![...remainingPins].some((id) => file.path.endsWith(`-${id}.jsonl`)))
+        continue
       const meta = await threadMeta(file.path)
       if (meta === 'skip') continue
       if (meta === 'not-yet') {
@@ -151,9 +159,15 @@ export function createCodexSource(options: CodexSourceOptions): SessionSource {
       }
       recognized++
       if (!meta.meta.isUserThread) continue
+      const pinned = pins.has(meta.meta.id)
+      remainingPins.delete(meta.meta.id)
+      if (!pinned && !recentCandidate) continue
       const entry = tracked.get(file.path) ?? newEntry(file.path, meta.meta, file.modifiedAt)
       entry.modifiedAt = file.modifiedAt
-      if (await readRollout(entry)) kept.push(entry)
+      if (await readRollout(entry)) {
+        kept.push(entry)
+        if (!pinned) recentCount++
+      }
     }
     keep(kept)
     await readIndex()
@@ -321,9 +335,14 @@ export function createCodexSource(options: CodexSourceOptions): SessionSource {
     const cutoff = now() - RECENT_SESSION_WINDOW_MS
     const ids = new Set<string>()
     tracked.clear()
+    const pins = new Set(options.pinnedIds?.() ?? [])
+    let recentCount = 0
     for (const entry of [...entries].sort(newestFirst)) {
-      if (tracked.size >= MAX_SESSIONS_PER_TOOL) break
-      if (lastActivityAt(entry) < cutoff || ids.has(entry.meta.id)) continue
+      const pinned = pins.has(entry.meta.id)
+      if (ids.has(entry.meta.id)) continue
+      if (!pinned && (recentCount >= MAX_SESSIONS_PER_TOOL || lastActivityAt(entry) < cutoff))
+        continue
+      if (!pinned) recentCount++
       ids.add(entry.meta.id)
       tracked.set(entry.path, entry)
     }

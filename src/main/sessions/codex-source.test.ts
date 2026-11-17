@@ -750,3 +750,28 @@ describe('recentMessages', () => {
     })
   })
 })
+
+describe('saved pins', () => {
+  it('restores old pins beyond the recent cap, then applies limits again after unpin', async () => {
+    const pinned = syntheticId(0xfa1)
+    const oldPath = await writeRollout(
+      pinned,
+      finishedThread(pinned, T0 - 100 * DAY),
+      NOW - 100 * DAY
+    )
+    for (let i = 0; i < 51; i++) {
+      const id = syntheticId(0xfb0 + i)
+      await writeRollout(id, finishedThread(id, T0), NOW - i * SECOND)
+    }
+    let pins = [pinned]
+    const source = createSource({ pinnedIds: () => pins })
+    expect(await source.catalog()).toHaveLength(51)
+    expect(source.watchedFiles()).toContain(oldPath)
+    expect(await source.recentMessages({ tool: 'codex', id: pinned }, 20)).toMatchObject({
+      kind: 'messages'
+    })
+    pins = []
+    expect(await source.catalog()).toHaveLength(50)
+    expect(source.watchedFiles()).not.toContain(oldPath)
+  })
+})

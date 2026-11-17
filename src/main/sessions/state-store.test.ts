@@ -438,11 +438,15 @@ describe('a file AgentPeek cannot use', () => {
 })
 
 describe('forgetting old sessions', () => {
-  it('drops sessions not listed for 90 days when it opens, and saves that', async () => {
+  it('drops unpinned sessions not listed for 90 days, retaining pins', async () => {
     await writeState(
       [
-        stored(CODEX, { lastListedAt: clock - FORGET_AFTER_MS - 1 }),
-        stored(CLAUDE, { lastListedAt: clock - FORGET_AFTER_MS })
+        stored(CODEX, {
+          pinned: false,
+          seenCursor: REPLY,
+          lastListedAt: clock - FORGET_AFTER_MS - 1
+        }),
+        stored(CLAUDE, { lastListedAt: clock - 2 * FORGET_AFTER_MS })
       ],
       { codex: clock - 200 * DAY }
     )

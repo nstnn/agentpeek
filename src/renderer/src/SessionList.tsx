@@ -68,10 +68,11 @@ export function SessionList({
   const renderRows = (group: ListGroup) =>
     group.sessions.map((session) => {
       const id = sessionKeyToString(session.key)
-      const missing = !state.snapshot?.sessions.some((s) => sameKey(s.key, session.key))
+      const missing =
+        session.unavailable || !state.snapshot?.sessions.some((s) => sameKey(s.key, session.key))
       const status = rowStatus(session, missing)
       const title = sessionTitle(session)
-      const time = relativeTime(session.summary.lastActivityAt, now)
+      const time = session.unavailable ? '—' : relativeTime(session.summary.lastActivityAt, now)
       const active = id === selectedId
       const inSecond =
         !!state.secondarySelection &&

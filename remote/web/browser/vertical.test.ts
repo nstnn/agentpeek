@@ -292,11 +292,13 @@ it('proves the local vertical journey with real fixture readers and two viewer p
 
     // Restore All tools through the page before checking the source scope.
     for (const page of pages) await page.getByRole('button', { name: /^All, / }).click()
+    // The Claude session pinned above no longer counts toward the 50-session cap, so the rescan
+    // after a source change lists one more Claude session: 50 + 1 pinned, then 98 with Codex.
     await service.setSourceEnabled('codex', false)
-    await expect.poll(() => rowsAre(50)).toBe(true)
+    await expect.poll(() => rowsAre(51)).toBe(true)
     expect((await bodies()).every((text) => !text.includes('New reply'))).toBe(true)
     await service.setSourceEnabled('codex', true)
-    await expect.poll(() => rowsAre(97)).toBe(true)
+    await expect.poll(() => rowsAre(98)).toBe(true)
     expect(await remote.unshareWorkspace(workspace)).toEqual({ ok: true })
     await expect
       .poll(async () =>
@@ -306,7 +308,7 @@ it('proves the local vertical journey with real fixture readers and two viewer p
       )
       .toBe(true)
     expect(await remote.shareWorkspace(workspace)).toEqual({ ok: true })
-    await expect.poll(() => rowsAre(97)).toBe(true)
+    await expect.poll(() => rowsAre(98)).toBe(true)
     checks.push(
       'A06: source OFF clears Codex on both pages; folder removal clears all rows; widening restores full state'
     )

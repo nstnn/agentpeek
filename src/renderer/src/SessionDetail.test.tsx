@@ -667,15 +667,17 @@ describe('session detail', () => {
         screen.getByRole('button', { name: tool === 'codex' ? 'Open Codex' : 'Open Claude' })
       )
       expect(f.api.openTool).toHaveBeenCalledWith(tool)
-      await userEvent.click(screen.getByRole('button', { name: 'Copy Session ID' }))
-      expect(f.api.copySessionId).toHaveBeenCalledWith({ tool, id: 'exact-synthetic-id' })
       await userEvent.click(screen.getByRole('button', { name: 'Pin' }))
       expect(f.api.setPinned).toHaveBeenCalledWith({ tool, id: 'exact-synthetic-id' }, true)
       await userEvent.click(screen.getByRole('button', { name: 'Mark Read' }))
       expect(f.api.markRead).toHaveBeenCalledWith({ tool, id: 'exact-synthetic-id' })
-      f.api.copySessionId.mockResolvedValueOnce(false)
-      await userEvent.click(screen.getByRole('button', { name: 'Copy Session ID' }))
-      expect(screen.getByRole('status').textContent).toBe("Couldn't copy the session ID.")
+      f.api.openTool.mockResolvedValueOnce(false)
+      await userEvent.click(
+        screen.getByRole('button', { name: tool === 'codex' ? 'Open Codex' : 'Open Claude' })
+      )
+      expect(screen.getByRole('status').textContent).toBe(
+        `Couldn't open ${tool === 'codex' ? 'Codex' : 'Claude Code'}.`
+      )
     }
   )
 })
