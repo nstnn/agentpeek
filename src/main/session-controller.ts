@@ -29,11 +29,17 @@ export function createSessionController(options: {
           .sessions.find((session) => session.key.tool === key.tool && session.key.id === key.id) ??
         null)
 
+  function openTool(key: SessionKey): Promise<boolean> {
+    const session = find(key)
+    if (!session || session.unavailable) return Promise.resolve(false)
+    return system.openTool(session.key)
+  }
+
   function actions(target: () => SessionKey | null): SessionMenuActions {
     return {
       open: () => {
         const session = find(target())
-        if (session && !session.unavailable) void system.openTool(session.key.tool)
+        if (session) void openTool(session.key)
       },
       markRead: () => {
         const session = find(target())
@@ -107,7 +113,7 @@ export function createSessionController(options: {
         return false
       return service.markRead(key)
     },
-    openTool: (tool: SessionKey['tool']) => system.openTool(tool),
+    openTool,
     copySessionId: async (key: SessionKey) => {
       const session = find(key)
       if (!session) return false

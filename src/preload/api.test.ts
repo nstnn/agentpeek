@@ -58,7 +58,7 @@ describe('preload API', () => {
     await api.getSkill(key, skill)
     await api.setPinned(key, true)
     await api.markRead(key)
-    await api.openTool('claude')
+    await api.openTool(key)
     await api.copySessionId(key)
     await api.openLink('https://example.com')
     await api.reload()
@@ -86,7 +86,7 @@ describe('preload API', () => {
       [IPC.getSkill, key, skill],
       [IPC.setPinned, key, true],
       [IPC.markRead, key],
-      [IPC.openTool, 'claude'],
+      [IPC.openTool, key],
       [IPC.copySessionId, key],
       [IPC.openLink, 'https://example.com'],
       [IPC.reload],

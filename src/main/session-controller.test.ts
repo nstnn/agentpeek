@@ -20,6 +20,38 @@ function setup() {
 }
 
 describe('session controller', () => {
+  it('opens the explicit detail or context key and the latest native menu target', async () => {
+    const s = setup()
+    const a = testSession()
+    const b = testSession({ key: { tool: 'codex', id: 'second-thread' } })
+    s.service.snapshot.mockReturnValue({ ...s.service.snapshot(), sessions: [a, b] })
+    s.controller.setSelection(a.key)
+    const native = s.controller.actions()
+    await s.controller.showSessionMenu(a.key)
+    const context = s.popup.mock.calls[0]![0].find((item) => item.id === 'session-open')!
+    s.controller.setSelection(b.key)
+    native.open()
+    context.click!(null as never, null as never, null as never)
+    expect(await s.controller.openTool(a.key)).toBe(true)
+    expect(s.system.openTool.mock.calls).toEqual([[b.key], [a.key], [a.key]])
+    s.system.openTool.mockClear()
+    s.service.snapshot.mockReturnValue({ ...s.service.snapshot(), sessions: [b] })
+    expect(await s.controller.openTool(a.key)).toBe(false)
+    context.click!(null as never, null as never, null as never)
+    expect(s.system.openTool).not.toHaveBeenCalled()
+  })
+  it('does not open unavailable sessions and preserves the Claude target', async () => {
+    const s = setup()
+    const missing = testSession({ unavailable: true })
+    const claude = testSession({ key: { tool: 'claude', id: 'synthetic-claude' } })
+    s.service.snapshot.mockReturnValue({ ...s.service.snapshot(), sessions: [missing, claude] })
+    expect(await s.controller.openTool(missing.key)).toBe(false)
+    s.controller.setSelection(missing.key)
+    s.controller.actions().open()
+    expect(s.system.openTool).not.toHaveBeenCalled()
+    expect(await s.controller.openTool(claude.key)).toBe(true)
+    expect(s.system.openTool).toHaveBeenCalledExactlyOnceWith(claude.key)
+  })
   it('rejects delayed automatic reads for an inactive key while explicit row reads remain valid', () => {
     const s = setup()
     const a = testSession({

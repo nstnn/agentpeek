@@ -15,7 +15,7 @@ const requests: [string, unknown[]][] = [
   [IPC.getSkill, [key, { at: 1, name: 'pr', path: '/synthetic/.agents/skills/pr/SKILL.md' }]],
   [IPC.setPinned, [key, true]],
   [IPC.markRead, [key]],
-  [IPC.openTool, ['codex']],
+  [IPC.openTool, [key]],
   [IPC.copySessionId, [key]],
   [IPC.openLink, ['https://example.com/path?q=1']],
   [IPC.reload, []],
@@ -298,7 +298,7 @@ describe('IPC trust boundary', () => {
     { ...key, path: '/not-allowed' }
   ])('rejects an invalid key without reading or performing actions: %j', async (value) => {
     const s = setup()
-    for (const channel of [IPC.markRead, IPC.copySessionId, IPC.showSessionMenu])
+    for (const channel of [IPC.markRead, IPC.openTool, IPC.copySessionId, IPC.showSessionMenu])
       await expect(s.invoke(channel, [value])).rejects.toThrow('Invalid AgentPeek request')
     await expect(s.invoke(IPC.getMessages, [value, 20])).rejects.toThrow(
       'Invalid AgentPeek request'

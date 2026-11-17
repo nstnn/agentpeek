@@ -32,7 +32,7 @@ export function createPreloadApi(transport: PreloadTransport): AgentPeekApi {
     setPinned: (key, pinned) => invoke(IPC.setPinned, key, pinned),
     markRead: (key, cursor) =>
       cursor === undefined ? invoke(IPC.markRead, key) : invoke(IPC.markRead, key, cursor),
-    openTool: (tool) => invoke(IPC.openTool, tool),
+    openTool: (key) => invoke(IPC.openTool, key),
     copySessionId: (key) => invoke(IPC.copySessionId, key),
     openLink: (url) => invoke(IPC.openLink, url),
     reload: () => invoke(IPC.reload),

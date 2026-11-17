@@ -666,7 +666,7 @@ describe('session detail', () => {
       await userEvent.click(
         screen.getByRole('button', { name: tool === 'codex' ? 'Open Codex' : 'Open Claude' })
       )
-      expect(f.api.openTool).toHaveBeenCalledWith(tool)
+      expect(f.api.openTool).toHaveBeenCalledWith({ tool, id: 'exact-synthetic-id' })
       await userEvent.click(screen.getByRole('button', { name: 'Pin' }))
       expect(f.api.setPinned).toHaveBeenCalledWith({ tool, id: 'exact-synthetic-id' }, true)
       await userEvent.click(screen.getByRole('button', { name: 'Mark Read' }))

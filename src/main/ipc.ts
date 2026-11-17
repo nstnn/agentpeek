@@ -192,7 +192,7 @@ export function registerSessionIpc(options: {
         !/\p{Cc}/u.test(a[1])),
     c.markRead
   )
-  register(IPC.openTool, (a) => a.length === 1 && isAgentTool(a[0]), c.openTool)
+  register(IPC.openTool, key, c.openTool)
   register(IPC.copySessionId, key, c.copySessionId)
   register(IPC.openLink, (a) => a.length === 1 && isWebLink(a[0]), c.openLink)
   register(IPC.reload, none, c.reload)
