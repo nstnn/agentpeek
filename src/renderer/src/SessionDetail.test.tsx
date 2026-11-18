@@ -652,6 +652,15 @@ describe('session detail', () => {
     ).toBeTruthy()
   })
 
+  it.each([
+    [{}, 'Bring the Claude app to the front'],
+    [{ appSessionId: 'local_synthetic' }, 'Open this session in Claude']
+  ])('describes what Open Claude opens: %o', async (extra, tooltip) => {
+    mountDetail({ key: { tool: 'claude', id: 'exact-synthetic-id' }, ...extra }, false)
+    await screen.findByText('Synthetic prompt')
+    expect(screen.getByRole('button', { name: 'Open Claude' }).getAttribute('title')).toBe(tooltip)
+  })
+
   it.each(['codex', 'claude'] as const)(
     'dispatches %s header actions and reports failures',
     async (tool) => {

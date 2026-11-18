@@ -22,7 +22,7 @@ function setup() {
 describe('session controller', () => {
   it('opens the explicit detail or context key and the latest native menu target', async () => {
     const s = setup()
-    const a = testSession()
+    const a = testSession({ appSessionId: 'local_synthetic' })
     const b = testSession({ key: { tool: 'codex', id: 'second-thread' } })
     s.service.snapshot.mockReturnValue({ ...s.service.snapshot(), sessions: [a, b] })
     s.controller.setSelection(a.key)
@@ -33,7 +33,12 @@ describe('session controller', () => {
     native.open()
     context.click!(null as never, null as never, null as never)
     expect(await s.controller.openTool(a.key)).toBe(true)
-    expect(s.system.openTool.mock.calls).toEqual([[b.key], [a.key], [a.key]])
+    // Claude.app's own session ID goes along, so the exact session opens there.
+    expect(s.system.openTool.mock.calls).toEqual([
+      [b.key, undefined],
+      [a.key, 'local_synthetic'],
+      [a.key, 'local_synthetic']
+    ])
     s.system.openTool.mockClear()
     s.service.snapshot.mockReturnValue({ ...s.service.snapshot(), sessions: [b] })
     expect(await s.controller.openTool(a.key)).toBe(false)
@@ -50,7 +55,7 @@ describe('session controller', () => {
     s.controller.actions().open()
     expect(s.system.openTool).not.toHaveBeenCalled()
     expect(await s.controller.openTool(claude.key)).toBe(true)
-    expect(s.system.openTool).toHaveBeenCalledExactlyOnceWith(claude.key)
+    expect(s.system.openTool).toHaveBeenCalledExactlyOnceWith(claude.key, undefined)
   })
   it('rejects delayed automatic reads for an inactive key while explicit row reads remain valid', () => {
     const s = setup()

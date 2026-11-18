@@ -37,6 +37,7 @@ export function claudeSessionFacts(input: ClaudeFactsInput): SessionFacts {
   const { catalog, registry, transcript } = input
   return {
     key: { tool: 'claude', id: input.sessionId },
+    ...(catalog?.appSessionId ? { appSessionId: catalog.appSessionId } : {}),
     summary: {
       // The plan's title rule: the catalog title, then the registry name, then the custom title.
       title: catalog?.title ?? registry?.name ?? transcript.customTitle,

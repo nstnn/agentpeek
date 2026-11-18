@@ -226,6 +226,7 @@ describe('the observed format (fixture claude-2.1.295)', () => {
     expect(await source.catalog()).toEqual([
       {
         key: { tool: 'claude', id: report },
+        appSessionId: 'local_synthetic',
         summary: {
           title: 'Synthetic report session',
           workspacePath: CWD,
@@ -243,6 +244,8 @@ describe('the observed format (fixture claude-2.1.295)', () => {
       },
       {
         key: { tool: 'claude', id: desktop },
+        // Claude.app's own ID from the catalog, for opening this session there.
+        appSessionId: 'local_synthetic',
         summary: {
           title: 'Synthetic Desktop session',
           workspacePath: CWD,

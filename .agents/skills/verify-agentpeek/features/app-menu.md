@@ -6,7 +6,7 @@ AgentPeek has five native menus: AgentPeek, Edit, View, Session, and Window. Vie
 
 - `menu-structure` lists About, Settings… (Command-comma), Quit (Command-Q), Copy (Command-C), Select All (Command-A), Active/Inbox/Pinned/All Sessions (Command-1/2/3/4), Reload Sessions (Command-R), Zoom In (Command-Plus), Zoom Out (Command-Minus), Actual Size (Command-0) and the disabled `Zoom: N%` label; Session: Open to the Right (or Open in Left Pane / Open in Right Pane in split), Open Codex or Open Claude (Command-O), Mark Read (Shift-Command-U), Pin or Unpin (Shift-Command-P), Copy Session ID (Option-Command-C), Close Right Pane and Back (Command-[); Window: Minimize (Command-M), Zoom, Close Window (Command-W) and Bring All to Front. Developer tools (Option-Command-I) appear only in development. Settings entry and modal behavior follow settings.md.
 - `menu-reload` refreshes sessions through the enabled Reload Sessions item.
-- `menu-open-codex` opens the active visible Codex chat by thread ID; the row context action uses its own row even when another chat is selected. Open Claude retains app activation.
+- `menu-open-codex` opens the active visible Codex chat by thread ID; the row context action uses its own row even when another chat is selected. Open Claude opens the Claude.app session by its `local_` ID, or activates the app for a terminal session.
 - `menu-session-unselected` disables source actions and placement actions without an active visible source target.
 - `menu-secondary` sends explicit-key placement and close events; Close depends on split presence independently of source availability.
 - `menu-back` follows actual replacement-detail navigation including unavailable content, independently of width and source target.

@@ -21,7 +21,7 @@ Built with Electron, TypeScript and React. **Status:** Phase 1 is implemented; f
 - **Projects.** Sessions are grouped by working folder by default, Codex and Claude Code together;
   switch to Group by → Status for status sections.
 - **Two reading panes.** Right-click a session → Open to the Right, or drag it to the right side.
-- **Open Codex** (⌘O) opens the session's thread in Codex; Open Claude brings Claude to the front.
+- **Open Codex** (⌘O) opens the session's thread in Codex; Open Claude opens the session in Claude.app, or only brings Claude to the front for a session run in a terminal.
 - **Settings** (⌘,): Appearance (System, Light, Dark), Monitor Codex / Monitor Claude Code, and
   Remote View.
 - **Layout.** Collapse the sidebar (⇧⌘B) or hide the session list (⇧⌘L), and drag dividers to

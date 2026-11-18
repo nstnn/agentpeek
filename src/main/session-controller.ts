@@ -32,7 +32,7 @@ export function createSessionController(options: {
   function openTool(key: SessionKey): Promise<boolean> {
     const session = find(key)
     if (!session || session.unavailable) return Promise.resolve(false)
-    return system.openTool(session.key)
+    return system.openTool(session.key, session.appSessionId)
   }
 
   function actions(target: () => SessionKey | null): SessionMenuActions {
