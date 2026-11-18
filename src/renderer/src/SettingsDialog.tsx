@@ -8,9 +8,15 @@ import {
   type ReactNode
 } from 'react'
 import type { AgentPeekApi, AppSnapshot } from '../../shared/api'
-import { THEMES, type Theme } from '../../shared/preferences'
+import {
+  SESSION_DAYS,
+  SESSIONS_PER_TOOL,
+  THEMES,
+  type SessionRange,
+  type Theme
+} from '../../shared/preferences'
 import { AGENT_TOOLS, type AgentTool } from '../../core/tools'
-import { healthCopy, toolName } from './session-display'
+import { healthCopy, rangeDays, toolName } from './session-display'
 import { RemoteViewSettings } from './RemoteViewSettings'
 
 const LABELS = { system: 'System', light: 'Light', dark: 'Dark' }
@@ -247,8 +253,97 @@ export function SettingsDialog({
           </p>
         )}
       </section>
+      <SessionHistorySettings api={api} snapshot={snapshot} />
       <RemoteViewSettings api={api} snapshot={snapshot} />
       {feedback}
     </dialog>
+  )
+}
+
+/** Settings > Session history (REQ-002): how far back the list reaches, and how many per tool. */
+function SessionHistorySettings({
+  api,
+  snapshot
+}: {
+  api: AgentPeekApi
+  snapshot: AppSnapshot | null
+}): JSX.Element {
+  const id = useId()
+  const mounted = useRef(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  useLayoutEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+  const saved: SessionRange | null = snapshot
+    ? { days: snapshot.range.savedDays, maxPerTool: snapshot.range.savedMaxPerTool }
+    : null
+  const save = async (next: SessionRange) => {
+    if (saving) return
+    setSaving(true)
+    setError(null)
+    try {
+      await api.setSessionRange(next)
+    } catch {
+      if (mounted.current) setError("Couldn't save session history. Try again.")
+    } finally {
+      if (mounted.current) setSaving(false)
+    }
+  }
+  return (
+    <section className="settings-body settings-sources" aria-labelledby={`${id}-title`}>
+      <h2 id={`${id}-title`}>Session history</h2>
+      <div className="settings-source">
+        <label htmlFor={`${id}-days`}>Show sessions active in the last</label>
+        <select
+          id={`${id}-days`}
+          className="settings-select"
+          value={saved?.days ?? ''}
+          disabled={!saved}
+          aria-disabled={saving}
+          onChange={(event) => {
+            if (saved) void save({ ...saved, days: Number(event.target.value) })
+          }}
+        >
+          {SESSION_DAYS.map((days) => (
+            <option key={days} value={days}>
+              {rangeDays(days)}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="settings-source">
+        <label htmlFor={`${id}-count`}>At most, per tool</label>
+        <select
+          id={`${id}-count`}
+          className="settings-select"
+          value={saved?.maxPerTool ?? ''}
+          disabled={!saved}
+          aria-disabled={saving}
+          onChange={(event) => {
+            if (saved) void save({ ...saved, maxPerTool: Number(event.target.value) })
+          }}
+        >
+          {SESSIONS_PER_TOOL.map((count) => (
+            <option key={count} value={count}>
+              {count} sessions
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="settings-hint" aria-live="polite">
+        {saving
+          ? 'Saving…'
+          : 'Pinned and open Claude Code sessions always show. Longer ranges read more files and can make refreshes slower.'}
+      </p>
+      {error && (
+        <p className="settings-error" role="alert">
+          {error}
+        </p>
+      )}
+    </section>
   )
 }

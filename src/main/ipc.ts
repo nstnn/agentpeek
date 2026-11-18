@@ -3,7 +3,7 @@ import type { SessionKey } from '../core/session'
 import { isAgentTool } from '../core/tools'
 import { IPC, MAX_MESSAGE_LIMIT, MAX_REMOTE_TEXT_LENGTH } from '../shared/ipc'
 import type { SessionController } from './session-controller'
-import { isTheme } from '../shared/preferences'
+import { isSessionRange, isTheme, type SessionRange } from '../shared/preferences'
 import type { Preferences } from './preferences'
 import type { SessionsService } from './sessions/service'
 import { isSkillName, isSkillPath, type SkillRequest } from '../core/skills'
@@ -117,8 +117,10 @@ export function registerSessionIpc(options: {
   contents: WebContents
   pageUrl: string
   controller: SessionController
-  preferences: Pick<Preferences, 'getTheme' | 'setTheme' | 'setSourceEnabled'>
+  preferences: Pick<Preferences, 'getTheme' | 'setTheme' | 'setSourceEnabled' | 'setSessionRange'>
   setSourceEnabled: SessionsService['setSourceEnabled']
+  setSessionRange: SessionsService['setSessionRange']
+  loadOlderSessions: SessionsService['loadOlder']
   remote: RemoteSettingsControl
   copyText: (text: string) => Promise<void>
 }): () => void {
@@ -159,6 +161,17 @@ export function registerSessionIpc(options: {
       await options.setSourceEnabled(tool, enabled)
     }
   )
+  register(
+    IPC.setSessionRange,
+    (args) => args.length === 1 && isSessionRange(args[0]),
+    async (range: SessionRange) => {
+      // Persist first: a failed save leaves the listed range unchanged.
+      const saved = { days: range.days, maxPerTool: range.maxPerTool }
+      await options.preferences.setSessionRange(saved)
+      await options.setSessionRange(saved)
+    }
+  )
+  register(IPC.loadOlderSessions, none, options.loadOlderSessions)
   register(
     IPC.getMessages,
     (a) =>

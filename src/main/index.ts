@@ -144,6 +144,7 @@ if (!app.requestSingleInstanceLock()) {
       opening = openSessionsService({
         ...paths,
         enabledSources: preferences.getSources(),
+        sessionRange: preferences.getSessionRange(),
         onSnapshot: (snapshot) => {
           void preview?.then((server) => server?.publish(snapshot))
           remote?.publish(snapshot)
@@ -209,6 +210,8 @@ if (!app.requestSingleInstanceLock()) {
         controller,
         preferences,
         setSourceEnabled: service.setSourceEnabled,
+        setSessionRange: service.setSessionRange,
+        loadOlderSessions: service.loadOlder,
         remote,
         copyText: (text) => systemActions.copyText(text)
       })

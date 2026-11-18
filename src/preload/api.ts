@@ -25,6 +25,9 @@ export function createPreloadApi(transport: PreloadTransport): AgentPeekApi {
     getTheme: () => invoke(IPC.getTheme),
     setTheme: (theme) => invoke(IPC.setTheme, theme),
     setSourceEnabled: (tool, enabled) => invoke(IPC.setSourceEnabled, tool, enabled),
+    setSessionRange: (range) =>
+      invoke(IPC.setSessionRange, { days: range.days, maxPerTool: range.maxPerTool }),
+    loadOlderSessions: () => invoke(IPC.loadOlderSessions),
     getSnapshot: () => invoke(IPC.getSnapshot),
     onSnapshot: (callback: (snapshot: AppSnapshot) => void) => subscribe(IPC.snapshot, callback),
     getMessages: (key, limit) => invoke(IPC.getMessages, key, limit),

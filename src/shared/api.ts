@@ -1,7 +1,7 @@
 import type { RecentMessages, SessionKey } from '../core/session'
 import type { SessionsSnapshot } from '../core/snapshot'
 import type { AgentTool } from '../core/tools'
-import type { Theme } from './preferences'
+import type { SessionRange, Theme } from './preferences'
 import type { SkillContent, SkillRequest } from '../core/skills'
 import type {
   RemoteActionResult,
@@ -37,6 +37,10 @@ export interface AgentPeekApi {
   getTheme(): Promise<Theme>
   setTheme(theme: Theme): Promise<void>
   setSourceEnabled(tool: AgentTool, enabled: boolean): Promise<void>
+  /** Saves Settings > Session history and lists again; the snapshot carries the result. */
+  setSessionRange(range: SessionRange): Promise<void>
+  /** Load Older Sessions: doubles the loaded range until quit or the next saved change. */
+  loadOlderSessions(): Promise<void>
   getSnapshot(): Promise<AppSnapshot>
   onSnapshot(callback: (snapshot: AppSnapshot) => void): () => void
   getMessages(key: SessionKey, limit: number): Promise<RecentMessages>

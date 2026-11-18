@@ -12,9 +12,19 @@ import {
 import { createSnapshot, type SessionsSnapshot } from '../../core/snapshot'
 import { AGENT_TOOLS, type AgentTool } from '../../core/tools'
 import type { ChangeListener, SessionWatcher } from './file-watcher'
-import type { RecentMessages, SessionSource } from './session-source'
-import type { StateStore } from './state-store'
-import { DEFAULT_SOURCES, type SourcePreferences } from '../../shared/preferences'
+import {
+  DAY_MS,
+  type ListingRange,
+  type RecentMessages,
+  type SessionSource
+} from './session-source'
+import { FORGET_AFTER_MS, type StateStore } from './state-store'
+import {
+  DEFAULT_SESSION_RANGE,
+  DEFAULT_SOURCES,
+  type SessionRange,
+  type SourcePreferences
+} from '../../shared/preferences'
 import type { SkillContent, SkillRequest } from '../../core/skills'
 
 // The sessions service (TASK-010). It runs while the window is open and ties together:
@@ -38,6 +48,9 @@ export const SNAPSHOT_INTERVAL_MS = 250
  */
 export const STOP_SAVE_LIMIT_MS = 1000
 
+/** Load Older Sessions doubles the range at most this many times (7 days become about 20 years). */
+export const MAX_RANGE_DOUBLINGS = 10
+
 export interface SessionsServiceOptions {
   /** One source per tool. */
   sources: readonly SessionSource[]
@@ -49,6 +62,8 @@ export interface SessionsServiceOptions {
   /** True when the sources read synthetic data (`AGENTPEEK_HOME`). */
   fixture: boolean
   enabledSources?: SourcePreferences
+  /** The saved Settings > Session history range. The default range when absent. */
+  sessionRange?: SessionRange
   /** The clock, in epoch milliseconds. */
   now?: () => number
 }
@@ -56,6 +71,12 @@ export interface SessionsServiceOptions {
 export interface SessionsService {
   /** Enables/disables this app's monitoring only; disabled sources perform no new reads. */
   setSourceEnabled(this: void, tool: AgentTool, enabled: boolean): Promise<void>
+  /** What the sources list now: the saved range, doubled once per Load Older Sessions. */
+  listingRange(this: void): ListingRange
+  /** Applies a newly saved range, drops any Load Older Sessions extension and lists again. */
+  setSessionRange(this: void, range: SessionRange): Promise<void>
+  /** Load Older Sessions: doubles the loaded days and per-tool cap until quit, then lists again. */
+  loadOlder(this: void): Promise<void>
   /** Reads enabled tools, then starts the watcher and the timer. Call it once; after `stop` it does nothing. */
   start(): Promise<void>
   /**
@@ -125,6 +146,9 @@ export function createSessionsService(options: SessionsServiceOptions): Sessions
   let publishPause: ReturnType<typeof setTimeout> | null = null
   let changedDuringPause = false
   let previousActivity = new Map<string, SessionActivity>()
+  let savedRange: SessionRange = options.sessionRange ?? DEFAULT_SESSION_RANGE
+  /** How many times Load Older Sessions doubled the saved range since launch or the last change. */
+  let doublings = 0
   let current = build()
   let listed = sessionsByKey(current)
   const watcher = options.createWatcher((tool, paths) => {
@@ -200,8 +224,10 @@ export function createSessionsService(options: SessionsServiceOptions): Sessions
       const toolHealth = healthOf(state)
       health[tool] = toolHealth
       if (!state.enabled) continue
-      // Until a tool has been read once, every reply it finished counts as read.
-      const baselineAt = store.baseline(tool) ?? at
+      // Until a tool has been read once, every reply it finished counts as read. Read markers of
+      // sessions not listed for 90 days are forgotten, so older replies count as read too: loading
+      // older sessions must not mark them all new.
+      const baselineAt = Math.max(store.baseline(tool) ?? at, at - FORGET_AFTER_MS)
       for (const facts of state.facts) {
         sessions.push(
           deriveSession({
@@ -232,14 +258,41 @@ export function createSessionsService(options: SessionsServiceOptions): Sessions
     )
     // Keeps the stored pins and markers of listed sessions from being forgotten after 90 days.
     store.noteListed(sessions.map((session) => session.key))
+    const loaded = listingRange()
     return createSnapshot({
       sessions,
       health,
       localState: store.status(),
       firstLaunch,
       fixture: options.fixture,
-      takenAt: at
+      takenAt: at,
+      range: {
+        savedDays: savedRange.days,
+        savedMaxPerTool: savedRange.maxPerTool,
+        loadedDays: loaded.windowMs / DAY_MS,
+        loadedMaxPerTool: loaded.maxPerTool,
+        olderAvailable:
+          doublings < MAX_RANGE_DOUBLINGS &&
+          [...tools.values()].some(
+            (state) => state.enabled && state.read && state.source.olderAvailable()
+          )
+      }
     })
+  }
+
+  function listingRange(): ListingRange {
+    const factor = 2 ** doublings
+    return {
+      windowMs: savedRange.days * factor * DAY_MS,
+      maxPerTool: savedRange.maxPerTool * factor
+    }
+  }
+
+  /** Lists every enabled tool again with the current range, publishing the new range first. */
+  async function relist(): Promise<void> {
+    if (stopped !== null) return
+    changed()
+    if (started) await reconcileAll()
   }
 
   /** Publishes a snapshot now, or when the pause after the last one ends. */
@@ -307,6 +360,27 @@ export function createSessionsService(options: SessionsServiceOptions): Sessions
   }
 
   return {
+    listingRange,
+
+    async setSessionRange(range) {
+      if (stopped !== null) return
+      if (
+        range.days === savedRange.days &&
+        range.maxPerTool === savedRange.maxPerTool &&
+        doublings === 0
+      )
+        return
+      savedRange = range
+      doublings = 0
+      await relist()
+    },
+
+    async loadOlder() {
+      if (stopped !== null || doublings >= MAX_RANGE_DOUBLINGS) return
+      doublings++
+      await relist()
+    },
+
     async setSourceEnabled(tool, enabled) {
       if (stopped !== null) return
       const state = toolState(tool)

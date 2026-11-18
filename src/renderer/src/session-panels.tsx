@@ -1,9 +1,9 @@
-import { useLayoutEffect, useRef, type JSX } from 'react'
+import { useLayoutEffect, useRef, useState, type JSX } from 'react'
 import type { AppSnapshot } from '../../shared/api'
 import { AGENT_TOOLS } from '../../core/tools'
 import type { ViewId } from '../../core/views'
 import type { RendererState } from './sessions-store'
-import { toolHome, toolName, VIEW_NAMES } from './session-display'
+import { rangeDays, toolHome, toolName, VIEW_NAMES } from './session-display'
 import { NavigationIcon } from './NavigationIcon'
 import { SessionIcon } from './SessionIcon'
 import { SettingsIcon } from './SettingsDialog'
@@ -175,6 +175,64 @@ export function Sidebar({
         </button>
       </div>
     </aside>
+  )
+}
+
+/** All Sessions' footer: the loaded range and, while sources left out older ones, Load Older. */
+export function SessionRangeFootnote({
+  snapshot,
+  onLoadOlder
+}: {
+  snapshot: AppSnapshot | null
+  onLoadOlder: () => Promise<void>
+}): JSX.Element {
+  const [pending, setPending] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const mounted = useRef(true)
+  useLayoutEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+  const range = snapshot?.range
+  const extended =
+    range !== undefined &&
+    (range.loadedDays !== range.savedDays || range.loadedMaxPerTool !== range.savedMaxPerTool)
+  return (
+    <div className="footnote">
+      <p>
+        Sessions active in the last {rangeDays(range?.loadedDays ?? 7)} (up to{' '}
+        {range?.loadedMaxPerTool ?? 50} per tool), plus saved pins and open Claude Code sessions.
+        {extended && ' Older sessions stay loaded until you quit.'}
+      </p>
+      {failed && (
+        <p className="footnote-error" role="alert">
+          Couldn't load older sessions. Try again.
+        </p>
+      )}
+      {range?.olderAvailable && (
+        <button
+          type="button"
+          className="load-older"
+          aria-disabled={pending}
+          onClick={() => {
+            if (pending) return
+            setPending(true)
+            setFailed(false)
+            void onLoadOlder()
+              .catch(() => {
+                if (mounted.current) setFailed(true)
+              })
+              .finally(() => {
+                if (mounted.current) setPending(false)
+              })
+          }}
+        >
+          {pending ? 'Loading…' : 'Load Older Sessions'}
+        </button>
+      )}
+    </div>
   )
 }
 

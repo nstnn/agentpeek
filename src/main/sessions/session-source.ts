@@ -9,11 +9,19 @@ import type { SkillContent, SkillRequest } from '../../core/skills'
 // sessions service (TASK-010) turns those into sessions with the reducers in src/core. A source
 // never writes a tool file and never logs what it reads.
 
-/** REQ-002: the list holds the sessions active in the last 7 days… */
-export const RECENT_SESSION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+export const DAY_MS = 24 * 60 * 60 * 1000
 
-/** …at most 50 per tool. */
-export const MAX_SESSIONS_PER_TOOL = 50
+/**
+ * REQ-002: which sessions a source lists: those active within `windowMs`, at most `maxPerTool`.
+ * The service passes the saved range, extended by Load Older Sessions.
+ */
+export interface ListingRange {
+  readonly windowMs: number
+  readonly maxPerTool: number
+}
+
+/** The default: the last 7 days, at most 50 per tool. */
+export const DEFAULT_LISTING_RANGE: ListingRange = { windowMs: 7 * DAY_MS, maxPerTool: 50 }
 
 export interface SessionSource {
   readonly tool: AgentTool
@@ -35,6 +43,11 @@ export interface SessionSource {
   getSkill?(key: SessionKey, request: SkillRequest): Promise<SkillContent>
   /** The tool's health line, as of the last `catalog` or `refresh`. */
   health(): ToolHealth
+  /**
+   * Whether the last listing left out sessions because of the range, so Load Older Sessions can
+   * find more. It may be true when the older files hold nothing listable, such as child threads.
+   */
+  olderAvailable(): boolean
   /**
    * The files that need their own file watch, because a folder watch misses their changes. The
    * service keeps one watch per path and drops watches for paths no longer listed. After adding a

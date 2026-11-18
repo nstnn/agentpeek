@@ -14,7 +14,7 @@ import { sessionKeyToString, type Session } from '../../core/session'
 import { buildView } from '../../core/views'
 import { createSessionsStore, displayedGroups, sameKey, type SessionsStore } from './sessions-store'
 import { VIEW_NAMES } from './session-display'
-import { Sidebar, SessionBanners, EmptyList } from './session-panels'
+import { Sidebar, SessionBanners, EmptyList, SessionRangeFootnote } from './session-panels'
 import { SessionList } from './SessionList'
 import { SessionDetail } from './SessionDetail'
 import { PaneDivider } from './PaneDivider'
@@ -623,10 +623,10 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
               />
             )}
             {view === 'all' && (
-              <p className="footnote">
-                Sessions active in the last 7 days (up to 50 per tool), plus saved pins and open
-                Claude Code sessions.
-              </p>
+              <SessionRangeFootnote
+                snapshot={snapshot}
+                onLoadOlder={() => window.agentpeek.loadOlderSessions()}
+              />
             )}
           </div>
         </main>

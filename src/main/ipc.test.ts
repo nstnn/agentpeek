@@ -10,6 +10,8 @@ const requests: [string, unknown[]][] = [
   [IPC.getTheme, []],
   [IPC.setTheme, ['dark']],
   [IPC.setSourceEnabled, ['codex', false]],
+  [IPC.setSessionRange, [{ days: 30, maxPerTool: 100 }]],
+  [IPC.loadOlderSessions, []],
   [IPC.getSnapshot, []],
   [IPC.getMessages, [key, 20]],
   [IPC.getSkill, [key, { at: 1, name: 'pr', path: '/synthetic/.agents/skills/pr/SKILL.md' }]],
@@ -95,6 +97,7 @@ function setup() {
     getTheme: vi.fn().mockResolvedValue('system'),
     setTheme: vi.fn().mockResolvedValue(undefined),
     setSourceEnabled: vi.fn().mockResolvedValue(undefined),
+    setSessionRange: vi.fn().mockResolvedValue(undefined),
     flush: vi.fn().mockResolvedValue(undefined)
   }
   const remote = testRemote()
@@ -106,6 +109,8 @@ function setup() {
     controller,
     preferences,
     setSourceEnabled: service.setSourceEnabled,
+    setSessionRange: service.setSessionRange,
+    loadOlderSessions: service.loadOlder,
     remote,
     copyText
   })
@@ -130,7 +135,10 @@ function setup() {
       preferences.getTheme,
       preferences.setTheme,
       preferences.setSourceEnabled,
+      preferences.setSessionRange,
       service.setSourceEnabled,
+      service.setSessionRange,
+      service.loadOlder,
       ...Object.values(remote),
       copyText
     ])
@@ -215,6 +223,36 @@ describe('IPC trust boundary', () => {
     expect(s.service.setSourceEnabled).not.toHaveBeenCalled()
     await s.invoke(IPC.setSourceEnabled, ['codex', false])
     expect(s.service.setSourceEnabled).toHaveBeenCalledWith('codex', false)
+  })
+  it.each([
+    [],
+    [null],
+    [{ days: 8, maxPerTool: 50 }],
+    [{ days: 7, maxPerTool: 51 }],
+    [{ days: '7', maxPerTool: 50 }],
+    [{ days: 7 }],
+    [{ days: 7, maxPerTool: 50, extra: true }],
+    [{ days: 7, maxPerTool: 50 }, true]
+  ])('rejects malformed session ranges: %j', async (...args) => {
+    const s = setup()
+    await expect(s.invoke(IPC.setSessionRange, args)).rejects.toThrow('Invalid AgentPeek request')
+    await expect(s.invoke(IPC.loadOlderSessions, [true])).rejects.toThrow(
+      'Invalid AgentPeek request'
+    )
+    s.expectNoEffects()
+  })
+  it('persists a session range before applying it and leaves the list unchanged after a failed save', async () => {
+    const s = setup()
+    s.preferences.setSessionRange.mockRejectedValueOnce(new Error('synthetic private error'))
+    await expect(s.invoke(IPC.setSessionRange, [{ days: 90, maxPerTool: 200 }])).rejects.toThrow(
+      'AgentPeek could not complete the request.'
+    )
+    expect(s.service.setSessionRange).not.toHaveBeenCalled()
+    await s.invoke(IPC.setSessionRange, [{ days: 90, maxPerTool: 200 }])
+    expect(s.preferences.setSessionRange).toHaveBeenCalledWith({ days: 90, maxPerTool: 200 })
+    expect(s.service.setSessionRange).toHaveBeenCalledWith({ days: 90, maxPerTool: 200 })
+    await s.invoke(IPC.loadOlderSessions, [])
+    expect(s.service.loadOlder).toHaveBeenCalledOnce()
   })
   it.each([null, true, {}, [], 'Dark', 'auto', '../preferences.json', 1])(
     'rejects invalid theme values without effects: %j',

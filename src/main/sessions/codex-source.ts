@@ -23,8 +23,8 @@ import { isCodexAppRunning } from './codex-app'
 import { codexPaths, isRolloutPath, type RolloutFile, sweepRollouts } from './codex-files'
 import { type JsonlCursor, readFirstLine, readLastLines, readNewLines } from './jsonl-reader'
 import {
-  MAX_SESSIONS_PER_TOOL,
-  RECENT_SESSION_WINDOW_MS,
+  DEFAULT_LISTING_RANGE,
+  type ListingRange,
   type RecentMessages,
   type SessionSource
 } from './session-source'
@@ -32,8 +32,9 @@ import { createQueue, isMissing } from './source-support'
 
 // The Codex source (TASK-007). It lists the user's Codex threads and reports their facts.
 // - Which threads: at each reconcile, a metadata-only sweep lists the rollouts and their
-//   modification times. The newest rollouts from the last 7 days are sorted out by their first line
-//   (`session_meta`, read once per file), and the first 50 user threads are kept. Child threads
+//   modification times. The newest rollouts in the listing range (7 days by default) are sorted out
+//   by their first line (`session_meta`, read once per file), and the first user threads up to the
+//   range's cap (50 by default) are kept. Child threads
 //   (reviews, subagents) are skipped. `session_index.jsonl` gives titles only: it also has lines for
 //   child threads and for threads whose rollouts were archived or compressed, so a thread with an
 //   index line but no rollout is not listed.
@@ -46,6 +47,8 @@ import { createQueue, isMissing } from './source-support'
 export interface CodexSourceOptions {
   /** Saved pin IDs, exempt from recent-session limits. */
   pinnedIds?: () => readonly string[]
+  /** The listing range, read at each listing. The default range when absent. */
+  range?: () => ListingRange
   /** The home folder: the user's, or `AGENTPEEK_HOME` in fixture mode. */
   home: string
   fixture?: boolean
@@ -116,10 +119,14 @@ export function createCodexSource(options: CodexSourceOptions): SessionSource {
   let health: ToolHealth = { state: 'checking' }
   let lastReadAt: number | null = null
   let appCheck: { at: number; running: boolean } | null = null
+  /** Whether the last listing left out rollouts because of the range. */
+  let older = false
   const serialized = createQueue()
+  const range = () => options.range?.() ?? DEFAULT_LISTING_RANGE
 
   async function reconcile(): Promise<SessionFacts[]> {
     const startedAt = now()
+    const { windowMs, maxPerTool } = range()
     let files: RolloutFile[]
     try {
       files = await sweepRollouts(paths.sessions)
@@ -139,10 +146,10 @@ export function createCodexSource(options: CodexSourceOptions): SessionSource {
     let recognized = 0
     let unrecognized = 0
     let unrecognizedVersion: string | null = null
+    older = false
     for (const file of recent) {
-      const recentCandidate =
-        startedAt - file.modifiedAt <= RECENT_SESSION_WINDOW_MS &&
-        recentCount < MAX_SESSIONS_PER_TOOL
+      const recentCandidate = startedAt - file.modifiedAt <= windowMs && recentCount < maxPerTool
+      if (!recentCandidate) older = true
       if (!recentCandidate && remainingPins.size === 0) break
       if (!recentCandidate && ![...remainingPins].some((id) => file.path.endsWith(`-${id}.jsonl`)))
         continue
@@ -328,11 +335,12 @@ export function createCodexSource(options: CodexSourceOptions): SessionSource {
   }
 
   /**
-   * Keeps the threads to list: active in the last 7 days, newest first, one rollout per thread,
-   * at most 50. The rest are no longer tracked.
+   * Keeps the threads to list: active within the range, newest first, one rollout per thread, at
+   * most the range's cap. The rest are no longer tracked.
    */
   function keep(entries: readonly TrackedRollout[]): void {
-    const cutoff = now() - RECENT_SESSION_WINDOW_MS
+    const { windowMs, maxPerTool } = range()
+    const cutoff = now() - windowMs
     const ids = new Set<string>()
     tracked.clear()
     const pins = new Set(options.pinnedIds?.() ?? [])
@@ -340,8 +348,10 @@ export function createCodexSource(options: CodexSourceOptions): SessionSource {
     for (const entry of [...entries].sort(newestFirst)) {
       const pinned = pins.has(entry.meta.id)
       if (ids.has(entry.meta.id)) continue
-      if (!pinned && (recentCount >= MAX_SESSIONS_PER_TOOL || lastActivityAt(entry) < cutoff))
+      if (!pinned && (recentCount >= maxPerTool || lastActivityAt(entry) < cutoff)) {
+        older = true
         continue
+      }
       if (!pinned) recentCount++
       ids.add(entry.meta.id)
       tracked.set(entry.path, entry)
@@ -430,7 +440,8 @@ export function createCodexSource(options: CodexSourceOptions): SessionSource {
       }
     },
     health: () => health,
-    watchedFiles: () => [...tracked.keys(), ...pending]
+    watchedFiles: () => [...tracked.keys(), ...pending],
+    olderAvailable: () => older
   }
 }
 

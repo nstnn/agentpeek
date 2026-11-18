@@ -52,6 +52,28 @@ describe('appearance preferences', () => {
     expect(preferences.getSources()).toEqual({ codex: false, claude: true })
     expect(await readFile(file, 'utf8')).toBe(contents)
   })
+  it('defaults the session range, saves a valid one and ignores an invalid saved one', async () => {
+    const folder = await fixture()
+    const preferences = await openPreferences(folder, vi.fn())
+    expect(preferences.getSessionRange()).toEqual({ days: 7, maxPerTool: 50 })
+    await Promise.all([
+      preferences.setSessionRange({ days: 90, maxPerTool: 200 }),
+      preferences.setTheme('dark')
+    ])
+    const reopened = await openPreferences(folder, vi.fn())
+    expect(reopened.getSessionRange()).toEqual({ days: 90, maxPerTool: 200 })
+    expect(await reopened.getTheme()).toBe('dark')
+
+    const file = join(folder, 'preferences.json')
+    await writeFile(
+      file,
+      JSON.stringify({ version: 1, theme: 'dark', sessionRange: { days: 8, maxPerTool: 50 } })
+    )
+    expect((await openPreferences(folder, vi.fn())).getSessionRange()).toEqual({
+      days: 7,
+      maxPerTool: 50
+    })
+  })
   it('loads older theme-only preferences and keeps theme and zoom through interleaved saves', async () => {
     const folder = await fixture()
     const file = join(folder, 'preferences.json')
@@ -72,7 +94,8 @@ describe('appearance preferences', () => {
       version: 1,
       theme: 'light',
       zoomPercent: 130,
-      sources: { codex: true, claude: true }
+      sources: { codex: true, claude: true },
+      sessionRange: { days: 7, maxPerTool: 50 }
     })
     const reopened = await openPreferences(folder, vi.fn(), vi.fn())
     expect(reopened.getZoom()).toBe(130)
@@ -132,7 +155,8 @@ describe('appearance preferences', () => {
         version: 1,
         theme,
         zoomPercent: 100,
-        sources: { codex: true, claude: true }
+        sources: { codex: true, claude: true },
+        sessionRange: { days: 7, maxPerTool: 50 }
       })
     }
     expect(await readFile(state, 'utf8')).toBe('synthetic session state')

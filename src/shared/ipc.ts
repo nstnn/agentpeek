@@ -3,6 +3,8 @@ export const IPC = {
   getTheme: 'agentpeek:get-theme',
   setTheme: 'agentpeek:set-theme',
   setSourceEnabled: 'agentpeek:set-source-enabled',
+  setSessionRange: 'agentpeek:set-session-range',
+  loadOlderSessions: 'agentpeek:load-older-sessions',
   getSnapshot: 'agentpeek:get-snapshot',
   snapshot: 'agentpeek:snapshot',
   getMessages: 'agentpeek:get-messages',

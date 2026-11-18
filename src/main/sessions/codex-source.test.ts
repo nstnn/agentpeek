@@ -424,6 +424,23 @@ describe('catalog', () => {
     }
   })
 
+  it('follows the listing range it is given and reports when older rollouts were left out', async () => {
+    const recent = syntheticId(0x4000)
+    const old = syntheticId(0x4001)
+    await writeRollout(recent, finishedThread(recent, NOW - DAY), NOW - DAY)
+    await writeRollout(old, finishedThread(old, NOW - 20 * DAY), NOW - 20 * DAY)
+    let range = { windowMs: 7 * DAY, maxPerTool: 50 }
+    const source = createSource({ range: () => range })
+    expect(ids(await source.catalog())).toEqual([recent])
+    expect(source.olderAvailable()).toBe(true)
+    range = { windowMs: 30 * DAY, maxPerTool: 50 }
+    expect(ids(await source.catalog())).toEqual([recent, old])
+    expect(source.olderAvailable()).toBe(false)
+    range = { windowMs: 30 * DAY, maxPerTool: 1 }
+    expect(ids(await source.catalog())).toEqual([recent])
+    expect(source.olderAvailable()).toBe(true)
+  })
+
   it('drops a thread once its last activity is more than 7 days old', async () => {
     const path = await writeRollout(USER, finishedThread(USER, NOW - 2 * DAY), NOW - 2 * DAY)
     const source = createSource()

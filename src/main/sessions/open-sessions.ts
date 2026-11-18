@@ -7,7 +7,7 @@ import { createFileWatcher, type ChangeListener, type SessionWatcher } from './f
 import { createSessionsService, type SessionsService } from './service'
 import { openStateStore } from './state-store'
 import { sessionFolderWatches } from './watch-folders'
-import type { SourcePreferences } from '../../shared/preferences'
+import type { SessionRange, SourcePreferences } from '../../shared/preferences'
 
 // Puts the sessions service together from the real parts. The main process (TASK-011) calls this
 // once, then `start()`; tests and fixture mode swap in their own process checks.
@@ -20,6 +20,7 @@ export interface OpenSessionsOptions {
   /** True when `home` holds synthetic data, for the "Fixture data" banner. */
   fixture: boolean
   enabledSources?: SourcePreferences
+  sessionRange?: SessionRange
   onSnapshot: (snapshot: SessionsSnapshot) => void
   /** Whether the Codex app is running. The real check by default. */
   isCodexAppRunning?: () => Promise<boolean>
@@ -36,7 +37,10 @@ export async function openSessionsService(options: OpenSessionsOptions): Promise
   const store = await openStateStore({ folder: options.stateFolder, now })
   // One access gate for the sources and the watcher.
   const gate = createAccessGate(home)
-  return createSessionsService({
+  // The sources read the range only while listing, which the service starts after it exists.
+  let service: SessionsService | null = null
+  const range = () => service!.listingRange()
+  service = createSessionsService({
     sources: [
       createCodexSource({
         home,
@@ -46,6 +50,7 @@ export async function openSessionsService(options: OpenSessionsOptions): Promise
             .filter((key) => key.tool === 'codex')
             .map((key) => key.id),
         gate,
+        range,
         isAppRunning: options.isCodexAppRunning,
         now,
         fixture: options.fixture
@@ -53,6 +58,7 @@ export async function openSessionsService(options: OpenSessionsOptions): Promise
       createClaudeSource({
         home,
         gate,
+        range,
         probe: options.probe,
         now,
         pinnedIds: () =>
@@ -69,6 +75,8 @@ export async function openSessionsService(options: OpenSessionsOptions): Promise
     onSnapshot: options.onSnapshot,
     fixture: options.fixture,
     enabledSources: options.enabledSources,
+    sessionRange: options.sessionRange,
     now
   })
+  return service
 }
