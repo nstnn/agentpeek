@@ -422,7 +422,20 @@ export function createSessionsStore(api: AgentPeekApi) {
       store.closePane('second')
     },
     closePane(this: void, pane: PaneId) {
-      if (!state.secondarySelection) return
+      if (!state.secondarySelection) {
+        // A single detail closes to the empty placeholder; nothing stays selected.
+        if (pane !== 'main' || !state.selection) return
+        emit({
+          selection: null,
+          listSelection: null,
+          activePane: null,
+          returnPane: 'main',
+          detailOpen: false,
+          actionError: null
+        })
+        sendDetailOpen(false)
+        return
+      }
       const selection = pane === 'main' ? state.secondarySelection : state.selection
       emit({
         selection,

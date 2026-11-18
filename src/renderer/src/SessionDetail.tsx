@@ -85,6 +85,7 @@ export function SessionDetail({
   paneLabel,
   showTitle = true,
   leadingControl,
+  trailingControl,
   canAutoRead,
   missing,
   monitoringOff = false,
@@ -105,6 +106,7 @@ export function SessionDetail({
   paneLabel?: string
   showTitle?: boolean
   leadingControl?: ReactNode
+  trailingControl?: ReactNode
   canAutoRead: () => boolean
   missing: boolean
   monitoringOff?: boolean
@@ -278,6 +280,7 @@ export function SessionDetail({
           <div className="detail-heading">
             {leadingControl}
             <DetailTitle title={sessionTitle(session)} />
+            {trailingControl}
           </div>
         )}
         {remoteAlias !== null && (
