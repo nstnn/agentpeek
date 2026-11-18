@@ -158,6 +158,7 @@ async function catalog(home, sessionId, title, at) {
     ),
     [
       JSON.stringify({
+        sessionId: `local_${sessionId}`,
         cliSessionId: sessionId,
         title,
         cwd: CWD,

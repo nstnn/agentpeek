@@ -90,6 +90,8 @@ export interface SessionReply {
 /** Everything a source reports about one session. */
 export interface SessionFacts {
   key: SessionKey
+  /** Claude Code only: Claude.app's own session ID (`local_<id>`), when Claude.app lists it. */
+  appSessionId?: string
   summary: SessionSummary
   turn: TurnFacts
   lastReply: SessionReply | null
@@ -141,6 +143,8 @@ export interface Session {
   /** A saved pin whose source file is currently unavailable. No conversation is retained. */
   unavailable?: true
   key: SessionKey
+  /** Claude Code only: Claude.app's own session ID, for opening the session there. */
+  appSessionId?: string
   summary: SessionSummary
   activity: SessionActivity
   attention: SessionAttention

@@ -312,7 +312,11 @@ export function SessionDetail({
             type="button"
             disabled={missing}
             title={
-              tool === 'codex' ? 'Open this session in Codex' : 'Bring the Claude app to the front'
+              tool === 'codex'
+                ? 'Open this session in Codex'
+                : session.appSessionId
+                  ? 'Open this session in Claude'
+                  : 'Bring the Claude app to the front'
             }
             onClick={() =>
               void action(() => api.openTool(session.key), `Couldn't open ${toolName(tool)}.`)

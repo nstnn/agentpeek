@@ -37,6 +37,7 @@ describe('parseCatalogFile', () => {
       kind: 'entry',
       entry: {
         cliSessionId: SESSION,
+        appSessionId: 'local_synthetic',
         title: 'Synthetic session',
         cwd: '/Users/synthetic/projects/demo',
         isArchived: false,
@@ -66,6 +67,7 @@ describe('parseCatalogFile', () => {
       kind: 'entry',
       entry: {
         cliSessionId: SESSION,
+        appSessionId: null,
         title: null,
         cwd: null,
         isArchived: false,
@@ -73,6 +75,14 @@ describe('parseCatalogFile', () => {
       }
     })
   })
+
+  it.each([undefined, 42, '', 'local_', 'synthetic', 'local_../new', 'local_x?prompt=y'])(
+    "keeps Claude.app's session ID only in its local_ form: %s",
+    (sessionId) => {
+      const text = JSON.stringify({ sessionId, cliSessionId: SESSION })
+      expect(parseCatalogFile(text)).toMatchObject({ entry: { appSessionId: null } })
+    }
+  )
 
   it('does not recognize a file without a CLI session ID', () => {
     expect(parseCatalogFile(JSON.stringify({ title: 'Synthetic' }))).toEqual({

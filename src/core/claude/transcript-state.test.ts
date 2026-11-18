@@ -269,6 +269,7 @@ describe('claudeSessionFacts', () => {
       sessionId: syntheticId(1),
       catalog: {
         cliSessionId: syntheticId(1),
+        appSessionId: null,
         title: 'Catalog title',
         cwd: '/Users/synthetic/catalog',
         isArchived: false,
@@ -301,6 +302,12 @@ describe('claudeSessionFacts', () => {
       turn: { kind: 'claude', registry: null },
       lastReply: null
     })
+  })
+
+  it("carries Claude.app's session ID from the catalog, and none without one", () => {
+    const catalog = { ...input().catalog!, appSessionId: 'local_synthetic' }
+    expect(claudeSessionFacts(input({ catalog })).appSessionId).toBe('local_synthetic')
+    expect(claudeSessionFacts(input({ catalog: null }))).not.toHaveProperty('appSessionId')
   })
 
   it('takes the title from the catalog, then the registry, then the custom title', () => {

@@ -76,6 +76,7 @@ export function createSnapshot(input: SnapshotInput): SessionsSnapshot {
 function frozenSession(session: Session): Session {
   return Object.freeze({
     key: Object.freeze({ ...session.key }),
+    ...(session.appSessionId ? { appSessionId: session.appSessionId } : {}),
     summary: Object.freeze({ ...session.summary }),
     activity: Object.freeze({ ...session.activity }),
     attention: Object.freeze({ ...session.attention }),

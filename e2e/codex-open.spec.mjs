@@ -130,6 +130,19 @@ test('Open Codex hands off the exact detail, active pane and context thread', as
     await open.click()
     await expect(page.getByRole('status')).toHaveText("Couldn't open Codex.")
     await save('detail-actions-handoff-failure')
+
+    // A Claude.app session opens through Claude.app's own link with its catalog `local_` ID.
+    await application.evaluate(() => {
+      globalThis.codexOpenAudit.reject = false
+    })
+    await page.getByRole('treeitem', { name: /^Fixture Claude stopped,/ }).click()
+    const openClaude = page.getByRole('button', { name: 'Open Claude', exact: true })
+    await expect(openClaude).toHaveAttribute('title', 'Open this session in Claude')
+    await openClaude.click()
+    await expect
+      .poll(async () => (await handoffs()).at(-1))
+      .toBe(`claude://code/continue?session=local_${IDS.stopped}`)
+    await save('detail-actions-open-claude')
     evidence.handoffs = await handoffs()
     const child = application.process()
     await application.close()

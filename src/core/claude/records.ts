@@ -28,6 +28,12 @@ export interface ClaudeCatalogEntry {
    * file's own name holds a different ID that only Claude.app uses (TASK-003).
    */
   cliSessionId: string
+  /**
+   * Claude.app's own ID for the session (`local_<id>`, the catalog's `sessionId` and file name),
+   * or null when it is missing or not in that form. Only the Open action uses it, to reach this
+   * session in Claude.app.
+   */
+  appSessionId: string | null
   /** The session's title in Claude.app, or null. */
   title: string | null
   cwd: string | null
@@ -160,12 +166,23 @@ export function parseCatalogFile(text: string): CatalogFileResult {
     kind: 'entry',
     entry: {
       cliSessionId,
+      appSessionId: claudeAppSessionIdOrNull(value.sessionId),
       title: trimmedOrNull(value.title),
       cwd: stringOrNull(value.cwd),
       isArchived: value.isArchived === true,
       lastActivityAt: epochMsOrNull(value.lastActivityAt)
     }
   }
+}
+
+/**
+ * The form of Claude.app's session IDs that its `claude://code/continue?session=` link accepts:
+ * `local_` and a UUID-like run of letters, digits, and hyphens.
+ */
+export const CLAUDE_APP_SESSION_ID = /^local_[A-Za-z0-9-]{1,64}$/
+
+function claudeAppSessionIdOrNull(value: unknown): string | null {
+  return typeof value === 'string' && CLAUDE_APP_SESSION_ID.test(value) ? value : null
 }
 
 /** Reads a registry file. */

@@ -52,6 +52,36 @@ describe('system actions', () => {
       expect(ports.execFile).not.toHaveBeenCalled()
     }
   )
+  it("opens the exact Claude.app session through Claude.app's own link", async () => {
+    ports.openExternal.mockResolvedValue(undefined)
+    const key = { tool: 'claude', id: 'synthetic-session' } as const
+    expect(await systemActions.openTool(key, 'local_synthetic-1')).toBe(true)
+    expect(ports.openExternal).toHaveBeenCalledExactlyOnceWith(
+      'claude://code/continue?session=local_synthetic-1'
+    )
+    expect(ports.execFile).not.toHaveBeenCalled()
+  })
+  it('opens Claude.app itself when its session link cannot be opened', async () => {
+    ports.openExternal.mockRejectedValue(new Error('Synthetic error'))
+    ports.execFile.mockImplementation((_file, _args, _options, callback) => callback(null))
+    const key = { tool: 'claude', id: 'synthetic-session' } as const
+    expect(await systemActions.openTool(key, 'local_synthetic-1')).toBe(true)
+    expect(ports.execFile).toHaveBeenCalledWith(
+      '/usr/bin/open',
+      ['-b', 'com.anthropic.claudefordesktop'],
+      { timeout: 5000 },
+      expect.any(Function)
+    )
+  })
+  it.each(['new', 'local_', 'local_../new', 'local_x?prompt=y', 'local_x&session=last'])(
+    'never puts an invalid Claude.app session ID in a link: %s',
+    async (appSessionId) => {
+      ports.execFile.mockImplementation((_file, _args, _options, callback) => callback(null))
+      const key = { tool: 'claude', id: 'synthetic-session' } as const
+      expect(await systemActions.openTool(key, appSessionId)).toBe(true)
+      expect(ports.openExternal).not.toHaveBeenCalled()
+    }
+  )
   it('reports an unavailable tool without propagating its error text', async () => {
     ports.execFile.mockImplementation((_file, _args, _options, callback) =>
       callback(new Error('Synthetic error'))

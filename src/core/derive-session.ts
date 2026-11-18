@@ -30,6 +30,7 @@ export function deriveSession(input: DeriveSessionInput): Session {
   })
   return {
     key: facts.key,
+    ...(facts.appSessionId ? { appSessionId: facts.appSessionId } : {}),
     summary: facts.summary,
     activity,
     attention,
