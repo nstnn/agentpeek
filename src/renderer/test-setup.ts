@@ -35,3 +35,19 @@ Object.defineProperties(HTMLDialogElement.prototype, {
     }
   }
 })
+
+// jsdom hides [popover] elements but has no popover API; showing one only needs to make it visible.
+Object.defineProperties(HTMLElement.prototype, {
+  showPopover: {
+    configurable: true,
+    value: function (this: HTMLElement) {
+      this.style.display = 'block'
+    }
+  },
+  hidePopover: {
+    configurable: true,
+    value: function (this: HTMLElement) {
+      this.style.removeProperty('display')
+    }
+  }
+})

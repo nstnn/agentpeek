@@ -18,6 +18,7 @@ import {
 import { AGENT_TOOLS, type AgentTool } from '../../core/tools'
 import { healthCopy, rangeDays, toolName } from './session-display'
 import { RemoteViewSettings } from './RemoteViewSettings'
+import { SettingsSelect } from './SettingsSelect'
 
 const LABELS = { system: 'System', light: 'Light', dark: 'Dark' }
 
@@ -297,42 +298,32 @@ function SessionHistorySettings({
     <section className="settings-body settings-sources" aria-labelledby={`${id}-title`}>
       <h2 id={`${id}-title`}>Session history</h2>
       <div className="settings-source">
-        <label htmlFor={`${id}-days`}>Show sessions active in the last</label>
-        <select
-          id={`${id}-days`}
-          className="settings-select"
-          value={saved?.days ?? ''}
-          disabled={!saved}
-          aria-disabled={saving}
-          onChange={(event) => {
-            if (saved) void save({ ...saved, days: Number(event.target.value) })
+        <span id={`${id}-days`} className="settings-select-label">
+          Show sessions active in the last
+        </span>
+        <SettingsSelect
+          labelId={`${id}-days`}
+          value={saved?.days ?? null}
+          options={SESSION_DAYS.map((days) => ({ value: days, label: rangeDays(days) }))}
+          disabled={!saved || saving}
+          onChange={(days) => {
+            if (saved) void save({ ...saved, days })
           }}
-        >
-          {SESSION_DAYS.map((days) => (
-            <option key={days} value={days}>
-              {rangeDays(days)}
-            </option>
-          ))}
-        </select>
+        />
       </div>
       <div className="settings-source">
-        <label htmlFor={`${id}-count`}>At most, per tool</label>
-        <select
-          id={`${id}-count`}
-          className="settings-select"
-          value={saved?.maxPerTool ?? ''}
-          disabled={!saved}
-          aria-disabled={saving}
-          onChange={(event) => {
-            if (saved) void save({ ...saved, maxPerTool: Number(event.target.value) })
+        <span id={`${id}-count`} className="settings-select-label">
+          At most, per tool
+        </span>
+        <SettingsSelect
+          labelId={`${id}-count`}
+          value={saved?.maxPerTool ?? null}
+          options={SESSIONS_PER_TOOL.map((count) => ({ value: count, label: `${count} sessions` }))}
+          disabled={!saved || saving}
+          onChange={(maxPerTool) => {
+            if (saved) void save({ ...saved, maxPerTool })
           }}
-        >
-          {SESSIONS_PER_TOOL.map((count) => (
-            <option key={count} value={count}>
-              {count} sessions
-            </option>
-          ))}
-        </select>
+        />
       </div>
       <p className="settings-hint" aria-live="polite">
         {saving
