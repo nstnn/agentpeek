@@ -634,6 +634,23 @@ describe('catalog', () => {
     expect(opened).not.toContain(old)
   })
 
+  it('follows the listing range it is given and reports when older sessions were left out', async () => {
+    await writeCatalog({ cliSessionId: S1, lastActivityAt: NOW - DAY }, NOW - DAY)
+    await writeTranscript(S1, finishedSession(R1, NOW - DAY), NOW - DAY)
+    await writeCatalog({ cliSessionId: S2, lastActivityAt: NOW - 20 * DAY }, NOW - 20 * DAY)
+    await writeTranscript(S2, finishedSession(R2, NOW - 20 * DAY), NOW - 20 * DAY)
+    let range = { windowMs: 7 * DAY, maxPerTool: 50 }
+    const source = createSource({ range: () => range })
+    expect(ids(await source.catalog())).toEqual([S1])
+    expect(source.olderAvailable()).toBe(true)
+    range = { windowMs: 30 * DAY, maxPerTool: 50 }
+    expect(ids(await source.catalog())).toEqual([S1, S2])
+    expect(source.olderAvailable()).toBe(false)
+    range = { windowMs: 30 * DAY, maxPerTool: 1 }
+    expect(ids(await source.catalog())).toEqual([S1])
+    expect(source.olderAvailable()).toBe(true)
+  })
+
   it('drops a session once its last activity is more than 7 days old', async () => {
     await writeCatalog({ cliSessionId: S1, lastActivityAt: T0 })
     await writeTranscript(S1, finishedSession(R1))

@@ -14,6 +14,7 @@ import type { ChangeListener, SessionWatcher } from './file-watcher'
 import {
   createSessionsService,
   LIVENESS_INTERVAL_MS,
+  MAX_RANGE_DOUBLINGS,
   SNAPSHOT_INTERVAL_MS,
   type SessionsService,
   STOP_SAVE_LIMIT_MS
@@ -101,6 +102,8 @@ interface FakeSource {
   readHealth: ToolHealth
   /** What `watchedFiles()` returns. */
   watched: string[]
+  /** What `olderAvailable()` returns. */
+  older: boolean
   catalog: ReturnType<typeof vi.fn<SessionSource['catalog']>>
   refresh: ReturnType<typeof vi.fn<SessionSource['refresh']>>
   recentMessages: ReturnType<typeof vi.fn<SessionSource['recentMessages']>>
@@ -112,6 +115,7 @@ function fakeSource(tool: AgentTool): FakeSource {
     facts: [],
     readHealth: CONNECTED,
     watched: [],
+    older: false,
     catalog: vi.fn(() => {
       log.push(`${tool}:catalog`)
       return read()
@@ -133,7 +137,8 @@ function fakeSource(tool: AgentTool): FakeSource {
     refresh: fake.refresh,
     recentMessages: fake.recentMessages,
     health: () => health,
-    watchedFiles: () => [...fake.watched]
+    watchedFiles: () => [...fake.watched],
+    olderAvailable: () => fake.older
   }
   return fake
 }
@@ -1036,5 +1041,73 @@ describe('source monitoring switches', () => {
     await settle()
     expect(running.snapshot().sessions.map((s) => s.key.id)).toEqual([id(1)])
     await expect(messages).resolves.toEqual({ kind: 'not-found' })
+  })
+})
+
+describe('session range', () => {
+  const DAY = 24 * HOUR
+
+  it('lists the default range, then reports when a source left out older sessions', async () => {
+    const running = await started()
+    await settle()
+    expect(running.listingRange()).toEqual({ windowMs: 7 * DAY, maxPerTool: 50 })
+    expect(latest().range).toEqual({
+      savedDays: 7,
+      savedMaxPerTool: 50,
+      loadedDays: 7,
+      loadedMaxPerTool: 50,
+      olderAvailable: false
+    })
+    codex.older = true
+    await running.reconcile()
+    await settle()
+    expect(latest().range.olderAvailable).toBe(true)
+  })
+
+  it('doubles the range for Load Older, lists again, and resets on a saved change', async () => {
+    const running = await started()
+    await settle()
+    log = []
+    await running.loadOlder()
+    await settle()
+    expect(log).toEqual(expect.arrayContaining(['codex:catalog', 'claude:catalog']))
+    expect(running.listingRange()).toEqual({ windowMs: 14 * DAY, maxPerTool: 100 })
+    expect(latest().range).toMatchObject({ loadedDays: 14, loadedMaxPerTool: 100, savedDays: 7 })
+
+    log = []
+    await running.setSessionRange({ days: 30, maxPerTool: 200 })
+    await settle()
+    expect(log).toEqual(expect.arrayContaining(['codex:catalog', 'claude:catalog']))
+    expect(running.listingRange()).toEqual({ windowMs: 30 * DAY, maxPerTool: 200 })
+    expect(latest().range).toMatchObject({
+      savedDays: 30,
+      savedMaxPerTool: 200,
+      loadedDays: 30,
+      loadedMaxPerTool: 200
+    })
+  })
+
+  it('stops offering Load Older after the last doubling', async () => {
+    codex.older = true
+    const running = await started()
+    for (let n = 0; n < MAX_RANGE_DOUBLINGS; n++) await running.loadOlder()
+    await settle()
+    expect(latest().range).toMatchObject({ loadedDays: 7 * 2 ** MAX_RANGE_DOUBLINGS })
+    expect(latest().range.olderAvailable).toBe(false)
+    log = []
+    await running.loadOlder()
+    expect(log).toEqual([])
+  })
+
+  it('counts replies older than the forgotten read markers as read', async () => {
+    store = fakeStore({ baselines: { codex: NOW - 200 * DAY, claude: NOW - 200 * DAY } })
+    codex.facts = [
+      codexFacts(1, { lastReply: reply('old', NOW - 100 * DAY) }),
+      codexFacts(2, { lastReply: reply('recent', NOW - 10 * DAY) })
+    ]
+    await started()
+    await settle()
+    expect(sessionIn(latest(), codexFacts(1).key)?.attention.newReply).toBe(false)
+    expect(sessionIn(latest(), codexFacts(2).key)?.attention.newReply).toBe(true)
   })
 })

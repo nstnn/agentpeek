@@ -18,6 +18,8 @@ describe('preload API', () => {
         'getTheme',
         'setTheme',
         'setSourceEnabled',
+        'setSessionRange',
+        'loadOlderSessions',
         'getSnapshot',
         'onSnapshot',
         'getMessages',

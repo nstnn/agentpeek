@@ -504,6 +504,14 @@ button[aria-disabled='true'] {
 .settings-source label {
   font-weight: 500;
 }
+.settings-select {
+  flex: none;
+  min-width: 120px;
+  font: inherit;
+}
+.settings-select[aria-disabled='true'] {
+  opacity: 0.6;
+}
 .settings-source-status {
   margin: 3px 0 0;
   color: var(--secondary);
@@ -1149,6 +1157,18 @@ button[aria-disabled='true'] {
   padding: 7px 14px;
   color: var(--secondary);
   font-size: 10.5px;
+}
+.footnote p {
+  margin: 0;
+}
+.footnote .load-older {
+  margin-top: 6px;
+}
+.footnote .load-older[aria-disabled='true'] {
+  opacity: 0.6;
+}
+.footnote-error {
+  color: var(--red);
 }
 @media (max-width: 999px) {
   .detail-placeholder {

@@ -1,8 +1,11 @@
 import { mkdir, open, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
+  DEFAULT_SESSION_RANGE,
   DEFAULT_SOURCES,
+  type SessionRange,
   type SourcePreferences,
+  isSessionRange,
   isTheme,
   isZoomPercent,
   MAX_ZOOM,
@@ -23,6 +26,7 @@ export async function openPreferences(
   let theme: Theme = 'system'
   let zoomPercent = 100
   let sources: SourcePreferences = { ...DEFAULT_SOURCES }
+  let sessionRange: SessionRange = { ...DEFAULT_SESSION_RANGE }
   try {
     const handle = await open(file, 'r')
     try {
@@ -38,6 +42,11 @@ export async function openPreferences(
               for (const tool of ['codex', 'claude'] as const)
                 if (typeof saved[tool] === 'boolean') sources[tool] = saved[tool]
             }
+            if (isSessionRange(preferences.sessionRange))
+              sessionRange = {
+                days: preferences.sessionRange.days,
+                maxPerTool: preferences.sessionRange.maxPerTool
+              }
           }
         }
       }
@@ -50,22 +59,30 @@ export async function openPreferences(
   applyTheme(theme)
   applyZoom(zoomPercent)
   let pending = Promise.resolve()
-  function save(
-    change: () => { theme: Theme; zoomPercent: number; sources: SourcePreferences }
-  ): Promise<void> {
+  type Saved = {
+    theme: Theme
+    zoomPercent: number
+    sources: SourcePreferences
+    sessionRange: SessionRange
+  }
+  const current = (): Saved => ({ theme, zoomPercent, sources, sessionRange })
+  function save(change: (previous: Saved) => Saved): Promise<void> {
     const saving = pending.then(async () => {
-      const previous = { theme, zoomPercent, sources }
-      const next = change()
+      const previous = current()
+      const next = change(previous)
       if (
         next.theme === theme &&
         next.zoomPercent === zoomPercent &&
         next.sources.codex === sources.codex &&
-        next.sources.claude === sources.claude
+        next.sources.claude === sources.claude &&
+        next.sessionRange.days === sessionRange.days &&
+        next.sessionRange.maxPerTool === sessionRange.maxPerTool
       )
         return
       theme = next.theme
       zoomPercent = next.zoomPercent
       sources = next.sources
+      sessionRange = next.sessionRange
       if (theme !== previous.theme) applyTheme(theme)
       if (zoomPercent !== previous.zoomPercent) applyZoom(zoomPercent)
       try {
@@ -74,7 +91,7 @@ export async function openPreferences(
         const handle = await open(temporary, 'wx', 0o600)
         try {
           await handle.writeFile(
-            `${JSON.stringify({ version: 1, theme, zoomPercent, sources })}\n`,
+            `${JSON.stringify({ version: 1, theme, zoomPercent, sources, sessionRange })}\n`,
             'utf8'
           )
           await handle.sync()
@@ -86,6 +103,7 @@ export async function openPreferences(
         theme = previous.theme
         zoomPercent = previous.zoomPercent
         sources = previous.sources
+        sessionRange = previous.sessionRange
         if (next.theme !== theme) applyTheme(theme)
         if (next.zoomPercent !== zoomPercent) applyZoom(zoomPercent)
         await rm(temporary, { force: true }).catch(() => undefined)
@@ -101,21 +119,26 @@ export async function openPreferences(
       return theme
     },
     setTheme(this: void, next: Theme): Promise<void> {
-      return save(() => ({ theme: next, zoomPercent, sources }))
+      return save((saved) => ({ ...saved, theme: next }))
     },
     getSources(this: void): SourcePreferences {
       return { ...sources }
     },
     setSourceEnabled(this: void, tool: AgentTool, enabled: boolean): Promise<void> {
-      return save(() => ({ theme, zoomPercent, sources: { ...sources, [tool]: enabled } }))
+      return save((saved) => ({ ...saved, sources: { ...saved.sources, [tool]: enabled } }))
+    },
+    getSessionRange(this: void): SessionRange {
+      return { ...sessionRange }
+    },
+    setSessionRange(this: void, next: SessionRange): Promise<void> {
+      return save((saved) => ({ ...saved, sessionRange: { ...next } }))
     },
     getZoom(this: void): number {
       return zoomPercent
     },
     changeZoom(this: void, action: ZoomAction): Promise<void> {
-      return save(() => ({
-        theme,
-        sources,
+      return save((saved) => ({
+        ...saved,
         zoomPercent:
           action === 'reset'
             ? 100

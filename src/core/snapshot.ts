@@ -20,6 +20,26 @@ export type LocalStateStatus =
   | { kind: 'available' }
   | { kind: 'unavailable'; reason: 'newer-version' | 'unreadable' | 'unwritable' }
 
+/**
+ * The session range (REQ-002): the saved Settings choice, what is loaded now (the saved range,
+ * doubled once per Load Older Sessions), and whether a source left out older sessions.
+ */
+export interface SessionRangeStatus {
+  readonly savedDays: number
+  readonly savedMaxPerTool: number
+  readonly loadedDays: number
+  readonly loadedMaxPerTool: number
+  readonly olderAvailable: boolean
+}
+
+export const DEFAULT_RANGE_STATUS: SessionRangeStatus = {
+  savedDays: 7,
+  savedMaxPerTool: 50,
+  loadedDays: 7,
+  loadedMaxPerTool: 50,
+  olderAvailable: false
+}
+
 export interface SessionsSnapshot {
   /** Every listed session of both tools, newest activity first. */
   readonly sessions: readonly Session[]
@@ -41,6 +61,8 @@ export interface SessionsSnapshot {
   readonly fixture: boolean
   /** When the snapshot was made: the "as of" time. */
   readonly takenAt: number
+  /** Which sessions are listed, for All Sessions and Settings > Session history. */
+  readonly range: SessionRangeStatus
 }
 
 export interface SnapshotInput {
@@ -50,6 +72,7 @@ export interface SnapshotInput {
   firstLaunch: boolean
   fixture: boolean
   takenAt: number
+  range?: SessionRangeStatus
 }
 
 /**
@@ -68,7 +91,8 @@ export function createSnapshot(input: SnapshotInput): SessionsSnapshot {
     localState: Object.freeze({ ...input.localState }),
     firstLaunch: input.firstLaunch,
     fixture: input.fixture,
-    takenAt: input.takenAt
+    takenAt: input.takenAt,
+    range: Object.freeze({ ...(input.range ?? DEFAULT_RANGE_STATUS) })
   })
 }
 

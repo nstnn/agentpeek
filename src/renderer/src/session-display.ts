@@ -18,6 +18,12 @@ export const GROUP_NAMES: Record<GroupId, string> = {
   pinned: 'Pinned',
   all: 'All Sessions'
 }
+/** "7 days", "1 year", "2 years": the loaded range in words. */
+export function rangeDays(days: number): string {
+  if (days % 365 === 0) return days === 365 ? '1 year' : `${days / 365} years`
+  return days === 1 ? '1 day' : `${days} days`
+}
+
 export const toolName = (tool: AgentTool): string => (tool === 'codex' ? 'Codex' : 'Claude Code')
 export const toolHome = (tool: AgentTool): string => (tool === 'codex' ? '~/.codex' : '~/.claude')
 export const sessionTitle = (session: Session): string =>

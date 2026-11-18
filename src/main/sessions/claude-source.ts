@@ -38,8 +38,8 @@ import {
 import { type ProcessProbe, processProbe } from './claude-process'
 import { type JsonlCursor, readLastLines, readNewLines } from './jsonl-reader'
 import {
-  MAX_SESSIONS_PER_TOOL,
-  RECENT_SESSION_WINDOW_MS,
+  DEFAULT_LISTING_RANGE,
+  type ListingRange,
   type RecentMessages,
   type SessionSource
 } from './session-source'
@@ -52,7 +52,7 @@ import { createQueue, isMissing } from './source-support'
 //   session in the runtime registry, which also covers a running CLI session. Both name a session by
 //   its CLI session ID, which is also its transcript's file name. A session is listed only once its
 //   transcript exists: Claude.app's short-lived helper processes have registry files but never a
-//   transcript (TASK-003). The 50 newest sessions active in the last 7 days are kept, plus every
+//   transcript (TASK-003). The newest sessions within the listing range are kept, plus every
 //   session whose registry says busy or waiting.
 // - Activity comes from the registry (`busy`, `waiting`, `idle`), with a liveness check on the
 //   registry's process. Replies, errors, and the custom title come from the transcript: its tail
@@ -64,6 +64,8 @@ import { createQueue, isMissing } from './source-support'
 export interface ClaudeSourceOptions {
   /** Saved pin IDs, exempt from recent-session limits. */
   pinnedIds?: () => readonly string[]
+  /** The listing range, read at each listing. The default range when absent. */
+  range?: () => ListingRange
   /** The home folder: the user's, or `AGENTPEEK_HOME` in fixture mode. */
   home: string
   /** The access gate for `home`. Tests pass one that records what it opens. */
@@ -135,7 +137,7 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
   const probe = options.probe ?? processProbe
   const now = options.now ?? Date.now
 
-  /** Catalog files modified in the last 7 days, by path. */
+  /** Catalog files modified within the listing range, by path. */
   const catalogFiles = new Map<string, CachedFile<CatalogFileResult>>()
   /** Registry files, by path. */
   const registryFiles = new Map<string, CachedFile<RegistryFileResult>>()
@@ -149,9 +151,13 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
   let registryReadable = true
   let health: ToolHealth = { state: 'checking' }
   let lastReadAt: number | null = null
+  /** Whether the last listing left out sessions because of the range. */
+  let older = false
   const serialized = createQueue()
+  const cutoffNow = () => now() - (options.range?.() ?? DEFAULT_LISTING_RANGE).windowMs
 
   async function reconcile(): Promise<SessionFacts[]> {
+    older = false
     const startedAt = now()
     const [registry, catalog, projects] = await Promise.all([
       listFolder(() => listRegistryFiles(paths)),
@@ -246,12 +252,13 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
   }
 
   async function updateCatalog(files: readonly ListedFile[]): Promise<void> {
-    const cutoff = now() - RECENT_SESSION_WINDOW_MS
+    const cutoff = cutoffNow()
     const present = new Set<string>()
     for (const file of files) {
       // Claude.app rewrites a catalog file whenever its session's activity time changes, so an
-      // older file holds a session last active more than 7 days ago (107 of 107 files, TASK-008).
+      // older file holds a session last active before the range (107 of 107 files, TASK-008).
       // Such a session is still listed while its registry says busy or waiting.
+      if (file.modifiedAt < cutoff) older = true
       if (file.modifiedAt < cutoff && !options.pinnedIds?.().length) continue
       present.add(file.path)
       if (catalogFiles.get(file.path)?.signature !== file.signature) {
@@ -342,7 +349,8 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
    * `readTracked`, it also reads what was added to the transcripts already listed.
    */
   async function select(all: ReadonlyMap<string, Candidate>, readTracked: boolean): Promise<void> {
-    const cutoff = now() - RECENT_SESSION_WINDOW_MS
+    const { windowMs, maxPerTool } = options.range?.() ?? DEFAULT_LISTING_RANGE
+    const cutoff = now() - windowMs
     const found: { candidate: Candidate; transcript: ListedFile; activeAt: number }[] = []
     for (const candidate of all.values()) {
       const transcript = await locateTranscript(candidate)
@@ -359,12 +367,10 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
     const kept = new Map<string, TrackedTranscript>()
     for (const { candidate, transcript, activeAt } of found) {
       const open = isOpen(candidate.registry)
-      if (
-        !pins.has(candidate.id) &&
-        !open &&
-        (recentCount >= MAX_SESSIONS_PER_TOOL || activeAt < cutoff)
-      )
+      if (!pins.has(candidate.id) && !open && (recentCount >= maxPerTool || activeAt < cutoff)) {
+        older = true
         continue
+      }
       let entry = tracked.get(candidate.id)
       if (entry?.path !== transcript.path) {
         entry = newTranscript(transcript.path)
@@ -381,7 +387,10 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
         transcript: entry.state,
         transcriptModifiedAt: entry.modifiedAt
       })
-      if (!pins.has(candidate.id) && !open && lastActivityAt < cutoff) continue
+      if (!pins.has(candidate.id) && !open && lastActivityAt < cutoff) {
+        older = true
+        continue
+      }
       if (!pins.has(candidate.id)) recentCount++
       kept.set(candidate.id, entry)
     }
@@ -461,7 +470,7 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
   }
 
   function facts(all: ReadonlyMap<string, Candidate>): SessionFacts[] {
-    const cutoff = now() - RECENT_SESSION_WINDOW_MS
+    const cutoff = cutoffNow()
     const list: SessionFacts[] = []
     for (const [id, transcript] of tracked) {
       const candidate = all.get(id)
@@ -577,7 +586,8 @@ export function createClaudeSource(options: ClaudeSourceOptions): SessionSource 
     },
     health: () => health,
     // Claude Code closes its files after each write, so folder watches see every change.
-    watchedFiles: () => []
+    watchedFiles: () => [],
+    olderAvailable: () => older
   }
 }
 
