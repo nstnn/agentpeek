@@ -61,6 +61,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
   const navigation = useRef<HTMLElement>(null)
   const focusRevealedList = useRef(false)
   const previousSecond = useRef<string | null>(null)
+  const previousMain = useRef<string | null>(null)
   const previousPlacement = useRef(0)
   const previousLayout = useRef({
     reading: false,
@@ -158,13 +159,14 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
   const secondKey = state.secondarySelection
     ? sessionKeyToString(state.secondarySelection.session.key)
     : null
+  const mainKey = state.selection ? sessionKeyToString(state.selection.session.key) : null
   useLayoutEffect(() => {
     const placed = previousPlacement.current !== state.placementVersion
     if (state.settingsOpen || state.searchOpen) return
     const previous = previousLayout.current
     const active = document.activeElement as HTMLElement | null
     const hiddenFocus = !!active?.closest('[hidden]')
-    const closed = previousSecond.current && !secondKey
+    const closed = (previousSecond.current && !secondKey) || (previousMain.current && !mainKey)
     const target = state.activePane === 'second' ? secondPane.current : mainPane.current
     const focusList = () =>
       (
@@ -195,6 +197,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
       else focusList()
     }
     previousSecond.current = secondKey
+    previousMain.current = mainKey
     previousPlacement.current = state.placementVersion
     previousLayout.current = {
       reading,
@@ -206,6 +209,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     }
   }, [
     secondKey,
+    mainKey,
     secondVisible,
     state.activePane,
     state.placementVersion,
@@ -725,6 +729,19 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                       paneLabel={split ? label : undefined}
                       showTitle={!split}
                       leadingControl={!split && !navigationVisible ? sessionsToggle : undefined}
+                      trailingControl={
+                        split ? undefined : (
+                          <button
+                            type="button"
+                            className="pane-close"
+                            aria-label="Close Session"
+                            title="Close Session"
+                            onClick={() => store.closePane('main')}
+                          >
+                            <span aria-hidden="true">×</span>
+                          </button>
+                        )
+                      }
                       canAutoRead={() =>
                         store.canAutoRead(pane, selected.key, state.targetGeneration)
                       }

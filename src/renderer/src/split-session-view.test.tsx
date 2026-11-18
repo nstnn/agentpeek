@@ -47,6 +47,29 @@ const unread = (id: string, error = false): Session =>
   })
 
 describe('roomy split session composition', () => {
+  it('closes the only open session back to the empty detail', async () => {
+    const f = mount()
+    await choose('a')
+    const detail = screen.getByRole('complementary', { name: 'Session detail' })
+    const close = within(detail).getByRole('button', { name: 'Close Session' })
+    expect(close.textContent).toBe('×')
+    await userEvent.click(close)
+    expect(f.store.getSnapshot()).toMatchObject({
+      selection: null,
+      listSelection: null,
+      activePane: null
+    })
+    expect(within(detail).getByRole('heading', { name: 'No session selected' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Close Session' })).toBeNull()
+    expect(f.api.setSelection).toHaveBeenLastCalledWith(null, { secondPaneOpen: false })
+    expect(document.activeElement?.closest('.list-scroll, nav, .tool-filter')).toBeTruthy()
+
+    await choose('b')
+    expect(within(detail).getByRole('button', { name: 'Close Session' })).toBeTruthy()
+    act(() => f.command({ type: 'open-secondary', key: session('c').key }))
+    expect(screen.queryByRole('button', { name: 'Close Session' })).toBeNull()
+  })
+
   it.each(['a', 'b'])(
     'closes Left and keeps Right session %s with its transcript, scroll, disclosures and focus',
     async (id) => {
