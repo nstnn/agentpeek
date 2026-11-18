@@ -501,16 +501,88 @@ button[aria-disabled='true'] {
 .settings-source + .settings-source {
   border-top: 1px solid var(--sep);
 }
-.settings-source label {
+.settings-source label,
+.settings-select-label {
   font-weight: 500;
 }
-.settings-select {
+.settings-select-field {
   flex: none;
-  min-width: 120px;
-  font: inherit;
+  anchor-scope: --settings-select;
+}
+.settings-select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 136px;
+  height: 28px;
+  padding: 0 7px 0 10px;
+  border: 1px solid var(--sep);
+  border-radius: 7px;
+  background: var(--fill);
+  color: var(--text);
+  white-space: nowrap;
+  user-select: none;
+  anchor-name: --settings-select;
+}
+.settings-select:hover:not([aria-disabled='true']),
+.settings-select[aria-expanded='true'] {
+  border-color: color-mix(in srgb, var(--secondary) 55%, transparent);
+}
+.settings-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .settings-select[aria-disabled='true'] {
   opacity: 0.6;
+}
+.settings-select-chevron {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--secondary);
+}
+.settings-select-list {
+  position: fixed;
+  position-anchor: --settings-select;
+  inset: auto;
+  top: calc(anchor(bottom) + 4px);
+  right: anchor(right);
+  min-width: anchor-size(width);
+  position-try-fallbacks: flip-block;
+  margin: 0;
+  padding: 4px;
+  overflow: auto;
+  border: 1px solid var(--sep);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  box-shadow:
+    0 10px 30px #0003,
+    0 1px 3px #0002;
+  user-select: none;
+}
+.settings-select-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 5px 6px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+.settings-select-option[aria-selected='true'] {
+  background: var(--accent);
+  color: #fff;
+}
+.settings-select-check {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  visibility: hidden;
+}
+.settings-select-option[data-current='true'] .settings-select-check {
+  visibility: visible;
 }
 .settings-source-status {
   margin: 3px 0 0;

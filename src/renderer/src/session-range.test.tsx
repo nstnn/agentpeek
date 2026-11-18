@@ -80,30 +80,48 @@ describe('session range', () => {
     const f = mount({ savedDays: 30, loadedDays: 60, loadedMaxPerTool: 100 })
     act(() => f.command('settings'))
     const dialog = await screen.findByRole('dialog', { name: 'Settings' })
-    const days = within(dialog).getByRole<HTMLSelectElement>('combobox', {
-      name: 'Show sessions active in the last'
-    })
-    const count = within(dialog).getByRole<HTMLSelectElement>('combobox', {
-      name: 'At most, per tool'
-    })
-    expect(days.value).toBe('30')
-    expect(count.value).toBe('50')
-    expect([...days.options].map((option) => option.text)).toEqual([
-      '7 days',
-      '30 days',
-      '90 days',
-      '1 year'
-    ])
-    await userEvent.selectOptions(days, '365')
+    const days = within(dialog).getByRole('combobox', { name: 'Show sessions active in the last' })
+    const count = within(dialog).getByRole('combobox', { name: 'At most, per tool' })
+    expect(days.textContent).toBe('30 days')
+    expect(count.textContent).toBe('50 sessions')
+    expect(days.getAttribute('aria-expanded')).toBe('false')
+
+    await userEvent.click(days)
+    const list = screen.getByRole('listbox', { name: 'Show sessions active in the last' })
+    expect(
+      within(list)
+        .getAllByRole('option')
+        .map((option) => option.textContent)
+    ).toEqual(['7 days', '30 days', '90 days', '1 year'])
+    expect(days.getAttribute('aria-expanded')).toBe('true')
+    expect(within(list).getByRole('option', { selected: true }).textContent).toBe('30 days')
+    await userEvent.click(within(list).getByRole('option', { name: '1 year' }))
     expect(f.api.setSessionRange).toHaveBeenLastCalledWith({ days: 365, maxPerTool: 50 })
-    await userEvent.selectOptions(count, '500')
+    expect(screen.queryByRole('listbox')).toBeNull()
+
+    // Keyboard: open, move, choose; Escape closes only the list.
+    count.focus()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(screen.getByRole('listbox')).toBeTruthy()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('listbox')).toBeNull()
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeTruthy()
+    await userEvent.keyboard('{Enter}{End}{Enter}')
     expect(f.api.setSessionRange).toHaveBeenLastCalledWith({ days: 30, maxPerTool: 500 })
+    await waitFor(() => expect(count.getAttribute('aria-disabled')).toBeNull())
+
+    // Typing a character while closed picks the next match, like a native pop-up menu.
+    days.focus()
+    await userEvent.keyboard('9')
+    expect(f.api.setSessionRange).toHaveBeenLastCalledWith({ days: 90, maxPerTool: 50 })
+    await waitFor(() => expect(days.getAttribute('aria-disabled')).toBeNull())
 
     f.api.setSessionRange.mockRejectedValueOnce(new Error('synthetic'))
-    await userEvent.selectOptions(count, '200')
+    await userEvent.click(count)
+    await userEvent.click(screen.getByRole('option', { name: '200 sessions' }))
     expect((await within(dialog).findByRole('alert')).textContent).toBe(
       "Couldn't save session history. Try again."
     )
-    expect(count.value).toBe('50')
+    expect(count.textContent).toBe('50 sessions')
   })
 })
