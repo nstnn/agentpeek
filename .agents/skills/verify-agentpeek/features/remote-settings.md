@@ -1,6 +1,6 @@
 # Remote View settings
 
-Settings has a Remote View section below Sources. It holds the Remote View switch with a status line, the Connection fields (Tailscale login, Mac address, port) with explicit Save and Cancel, the Shared projects list with Add Project…, the Share session titles switch, the Share recent messages switch, a plain list of what leaves the Mac, and a "Set up Tailscale" disclosure with the owner's steps and a Copy button for the `tailscale serve` command. Remote View is off on a fresh install and its switch stays disabled until a login and Mac address are saved. AgentPeek never runs, reads or configures Tailscale; the steps are text to copy.
+Settings has a Remote View section below Sources and Session history. It holds the Remote View switch with a status line, the Connection fields (Tailscale login, Mac address, port) with explicit Save and Cancel, the Shared projects list with Add Project…, the Share session titles switch, the Share recent messages switch, a plain list of what leaves the Mac, and a "Set up Tailscale" disclosure with the owner's steps and a Copy button for the `tailscale serve` command. Remote View is off on a fresh install and its switch stays disabled until a login and Mac address are saved. AgentPeek never runs, reads or configures Tailscale; the steps are text to copy.
 
 ## Sub-features
 
@@ -24,7 +24,7 @@ Settings has a Remote View section below Sources. It holds the Remote View switc
 
 ## How to get to it (user POV)
 
-- Open Settings (sidebar Settings button, rail gear, AgentPeek > Settings… or Command-comma) and scroll to Remote View below Sources.
+- Open Settings (sidebar Settings button, rail gear, AgentPeek > Settings… or Command-comma) and scroll to Remote View below Sources and Session history.
 - Type in Tailscale login, Mac address and Port, then Save (or press Return in a field) or Cancel.
 - Click the Remote View switch, Add Project… and a folder in its list, Remove beside a shared folder, the Share session titles switch and the Share recent messages switch.
 - If a privacy or OFF save failed, click "Retry saving Remote View settings"; the warning stays until the effective settings are saved.
@@ -56,7 +56,7 @@ Preconditions:
 
 ## Gotchas
 
-- Settings scrolls; the Remote View section is below Sources and may need `scroll_to`-style focus (Tab) before a screenshot shows it. After scrolling to the setup steps, the Remote View switch can sit under the dialog's sticky header, right behind Close Settings; `click` reports `recentered` when it had to scroll a covered control into view. Before that guard (TASK-026), such a click closed Settings instead.
+- Settings scrolls; the Remote View section is below Sources and Session history and may need `scroll_to`-style focus (Tab) before a screenshot shows it. After scrolling to the setup steps, the Remote View switch can sit under the dialog's sticky header, right behind Close Settings; `click` reports `recentered` when it had to scroll a covered control into view. Before that guard (TASK-026), such a click closed Settings instead.
 - Pending operations are polled after dialog reopen. Unsaved settings warnings come from main-process state and survive dialog dismissal. Successful retries save the entire effective configuration, including any unsaved OFF or narrower policy.
 - The status line, the sidebar label and the alias follow main's pushed status (TASK-042); a viewer page opened with `curl` is counted as soon as its stream opens.
 - `type` inserts at the caret: select a field's text first (`key Meta+A`) to replace the port.

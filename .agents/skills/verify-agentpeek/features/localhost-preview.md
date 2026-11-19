@@ -1,6 +1,6 @@
 # Localhost preview (development only)
 
-With a development switch and synthetic fixture data, AgentPeek also serves its Remote View status on a page at `http://127.0.0.1:<port>/` on this Mac, and keeps it current. Without the switch, or on real data, it opens no network socket at all. The page is a disposable thin-slice viewer (TASK-038): project groups with counts, rows with alias, tool, activity, attention flags and last-activity time, and a Live / Reconnecting / Disconnected indicator.
+With a development switch and synthetic fixture data, AgentPeek also serves its Remote View status on a page at `http://127.0.0.1:<port>/` on this Mac, and keeps it current. Without the switch, or on real data, the preview opens no network socket. The separate Remote View listener follows its own saved setting (see [Remote View listener](./remote-listener.md)); keep Remote View off when checking that only the debug ports listen. The page is a disposable thin-slice viewer (TASK-038): project groups with counts, rows with alias, tool, activity, attention flags and last-activity time, and a Live / Reconnecting / Disconnected indicator.
 
 ## Sub-features
 
