@@ -35,6 +35,12 @@ describe('system actions', () => {
     )
     expect(ports.openExternal).not.toHaveBeenCalled()
   })
+  it('opens nothing for an Antigravity conversation', async () => {
+    const id = '00000000-0000-4000-8000-000000000001'
+    expect(await systemActions.openTool({ tool: 'antigravity', id })).toBe(false)
+    expect(ports.execFile).not.toHaveBeenCalled()
+    expect(ports.openExternal).not.toHaveBeenCalled()
+  })
   it('opens the exact Codex thread without starting a resume process', async () => {
     const id = '00000000-0000-4000-8000-000000000001'
     ports.openExternal.mockResolvedValue(undefined)

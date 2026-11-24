@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   assistantLine,
   catalogJson,
+  CWD,
   CWD_FOLDER,
   promptLine,
   registryJson
@@ -29,8 +30,18 @@ import {
   taskCompleteLine,
   taskStartedLine
 } from '../../core/codex/test-records'
+import {
+  annotationText,
+  conversationId,
+  finalReplyLine,
+  toolRequestLine,
+  userInputLine
+} from '../../core/antigravity/test-records'
+import { projectRemoteStatus } from '../../core/remote/status-projection'
+import { sourceTurnedOff } from '../../core/remote/share-policy'
 import type { Session, SessionKey } from '../../core/session'
 import type { SessionsSnapshot } from '../../core/snapshot'
+import { annotationPath, antigravityPaths, transcriptPath } from './antigravity-files'
 import { claudePaths } from './claude-files'
 import { codexPaths } from './codex-files'
 import type { ChangeListener, SessionWatcher } from './file-watcher'
@@ -56,6 +67,7 @@ let home: string
 let stateFolder: string
 let clock: number
 let alive: boolean
+let antigravityRunning: boolean
 let snapshots: SessionsSnapshot[]
 let service: SessionsService | null
 /** Where the fake watcher sends changed paths. */
@@ -68,6 +80,7 @@ beforeEach(async () => {
   stateFolder = join(root, 'AgentPeek')
   clock = NOW
   alive = true
+  antigravityRunning = true
   snapshots = []
   service = null
   emit = () => undefined
@@ -101,6 +114,7 @@ async function start(options: { realWatcher?: boolean } = {}): Promise<SessionsS
     fixture: true,
     onSnapshot: (snapshot) => snapshots.push(snapshot),
     isCodexAppRunning: () => Promise.resolve(true),
+    isAntigravityAppRunning: () => Promise.resolve(antigravityRunning),
     probe: { isAlive: () => Promise.resolve(alive) },
     createWatcher: options.realWatcher === true ? undefined : fakeWatcher,
     now: () => clock
@@ -191,6 +205,33 @@ async function waitFor(check: (snapshot: SessionsSnapshot) => void): Promise<Ses
 
 const CODEX_KEY: SessionKey = { tool: 'codex', id: CODEX_ID }
 const CLAUDE_KEY: SessionKey = { tool: 'claude', id: CLAUDE_ID }
+const ANTIGRAVITY_ID = conversationId(0xa9)
+const ANTIGRAVITY_KEY: SessionKey = { tool: 'antigravity', id: ANTIGRAVITY_ID }
+
+function antigravityTranscript(): string {
+  return transcriptPath(antigravityPaths(home), ANTIGRAVITY_ID)
+}
+
+/** An Antigravity conversation whose turn asked for a tool two minutes ago and is still open. */
+async function writeAntigravityConversation(at = NOW - 2 * MINUTE): Promise<string> {
+  const path = antigravityTranscript()
+  await writeLines(
+    path,
+    [
+      userInputLine({ step: 0, at: at - SECOND, text: 'Synthetic question' }),
+      toolRequestLine({ step: 1, at, tools: ['run_command'] })
+    ],
+    at
+  )
+  return path
+}
+
+/** Appends a final reply to the Antigravity conversation, as Antigravity does: open, append, close. */
+async function finishAntigravityTurn(step: number, at: number): Promise<void> {
+  const path = antigravityTranscript()
+  await appendFile(path, `${finalReplyLine({ step, at, text: 'Synthetic answer' })}\n`)
+  await setModified(path, at)
+}
 
 describe('with the real sources and store', () => {
   it('finds sessions that were running before it opened, in the first read', async () => {
@@ -307,6 +348,157 @@ describe('with the real sources and store', () => {
   })
 })
 
+describe('with the real Antigravity source', () => {
+  it('lists an open Antigravity turn as Running only while the app runs, next to the other tools', async () => {
+    await writeRunningThread()
+    await writeClaudeSession()
+    await writeAntigravityConversation()
+    await mkdir(antigravityPaths(home).annotations, { recursive: true })
+    await writeFile(
+      annotationPath(antigravityPaths(home), ANTIGRAVITY_ID),
+      annotationText('Fixture title')
+    )
+    await start()
+    const snapshot = await waitFor((latest) => {
+      expect(latest.health.codex.state).toBe('connected')
+      expect(latest.health.claude.state).toBe('connected')
+      expect(latest.health.antigravity.state).toBe('connected')
+    })
+    expect(find(snapshot, ANTIGRAVITY_KEY)).toMatchObject({
+      activity: { state: 'running' },
+      summary: { title: 'Fixture title', workspacePath: null, toolVersion: null },
+      attention: { waiting: false, newReply: false, error: false }
+    })
+    expect(snapshot.groupCounts.running).toBe(3)
+    // No Antigravity file needs its own watch.
+    expect(watchedFiles).toEqual([rolloutPath(CODEX_ID)])
+
+    antigravityRunning = false
+    clock += 10 * SECOND
+    await service!.reconcile()
+    await waitFor((latest) =>
+      expect(find(latest, ANTIGRAVITY_KEY)?.activity).toEqual({
+        state: 'unknown',
+        reason: 'app-not-running'
+      })
+    )
+  })
+
+  it('shows an open Antigravity turn as Unknown after 15 quiet minutes, at the next liveness check', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    await writeAntigravityConversation()
+    await start()
+    await waitFor((latest) => expect(find(latest, ANTIGRAVITY_KEY)?.activity.state).toBe('running'))
+    clock = NOW + 13 * MINUTE
+    vi.advanceTimersByTime(LIVENESS_INTERVAL_MS)
+    await waitFor((latest) =>
+      expect(find(latest, ANTIGRAVITY_KEY)?.activity).toEqual({ state: 'unknown', reason: 'quiet' })
+    )
+  })
+
+  it('counts a reply as new only after the first read, keeps it read, and ignores a replay', async () => {
+    await writeAntigravityConversation(NOW - 5 * MINUTE)
+    await finishAntigravityTurn(2, NOW - 4 * MINUTE)
+    const running = await start()
+    // The reply finished before AgentPeek first read Antigravity: it counts as read.
+    const first = await waitFor((latest) =>
+      expect(find(latest, ANTIGRAVITY_KEY)?.activity.state).toBe('idle')
+    )
+    expect(find(first, ANTIGRAVITY_KEY)?.attention.newReply).toBe(false)
+
+    clock = NOW + MINUTE
+    await appendFile(
+      antigravityTranscript(),
+      `${userInputLine({ step: 3, at: NOW + 30 * SECOND, text: 'Next' })}\n`
+    )
+    await finishAntigravityTurn(4, NOW + MINUTE)
+    emit('antigravity', [antigravityTranscript()])
+    await waitFor((latest) => expect(find(latest, ANTIGRAVITY_KEY)?.attention.newReply).toBe(true))
+    expect(running.markRead(ANTIGRAVITY_KEY)).toBe(true)
+    await waitFor((latest) => expect(find(latest, ANTIGRAVITY_KEY)?.attention.newReply).toBe(false))
+
+    // A duplicated line rewrites nothing: the same reply stays read.
+    await appendFile(
+      antigravityTranscript(),
+      `${finalReplyLine({ step: 4, at: NOW + MINUTE, text: 'Synthetic answer' })}\n`
+    )
+    clock += SECOND
+    emit('antigravity', [antigravityTranscript()])
+    await running.reconcile()
+    const after = await waitFor((latest) =>
+      expect(find(latest, ANTIGRAVITY_KEY)?.activity.state).toBe('idle')
+    )
+    expect(find(after, ANTIGRAVITY_KEY)?.attention.newReply).toBe(false)
+  })
+
+  it('stops reading Antigravity while it is off and keeps its pin across launches', async () => {
+    await writeAntigravityConversation()
+    const first = await start()
+    await waitFor((latest) => expect(find(latest, ANTIGRAVITY_KEY)).toBeDefined())
+    expect(first.setPinned(ANTIGRAVITY_KEY, true)).toBe(true)
+    await first.setSourceEnabled('antigravity', false)
+    const off = await waitFor((latest) =>
+      expect(latest.health.antigravity).toEqual({ state: 'off' })
+    )
+    expect(find(off, ANTIGRAVITY_KEY)).toBeUndefined()
+    // A change reported while off finds nothing to read.
+    await finishAntigravityTurn(2, NOW)
+    emit('antigravity', [antigravityTranscript()])
+    expect(await first.recentMessages(ANTIGRAVITY_KEY, 20)).toEqual({ kind: 'not-found' })
+    await first.stop()
+
+    const saved = parseStateFile(await readFile(join(stateFolder, STATE_FILE_NAME), 'utf8'))
+    if (saved.kind !== 'state') throw new Error('Expected saved state')
+    expect(saved.data.sessions.map((entry) => [entry.tool, entry.id, entry.pinned])).toEqual([
+      ['antigravity', ANTIGRAVITY_ID, true]
+    ])
+    expect(JSON.stringify(saved)).not.toContain('Synthetic')
+
+    // Ten days later the conversation is outside the 7-day range: only its pin lists it.
+    snapshots = []
+    clock = NOW + 10 * DAY
+    const second = await start()
+    const snapshot = await waitFor((latest) =>
+      expect(find(latest, ANTIGRAVITY_KEY)?.activity.state).toBe('idle')
+    )
+    expect(find(snapshot, ANTIGRAVITY_KEY)?.unavailable).toBeUndefined()
+    expect(find(snapshot, ANTIGRAVITY_KEY)?.pinned).toBe(true)
+    const messages = await second.recentMessages(ANTIGRAVITY_KEY, 20)
+    expect(messages.kind).toBe('messages')
+  })
+
+  it('keeps Antigravity out of a Remote View projection of a three-source snapshot', async () => {
+    await writeRunningThread()
+    await writeClaudeSession()
+    await writeAntigravityConversation()
+    await start()
+    const snapshot = await waitFor((latest) => {
+      expect(find(latest, CODEX_KEY)).toBeDefined()
+      expect(find(latest, CLAUDE_KEY)).toBeDefined()
+      expect(find(latest, ANTIGRAVITY_KEY)).toBeDefined()
+    })
+    const minted: SessionKey[] = []
+    const status = projectRemoteStatus(snapshot, {
+      sharedWorkspaces: [CWD],
+      shareTitles: true,
+      mintId: (key) => {
+        minted.push(key)
+        return `opaque-${minted.length}`
+      }
+    })
+    expect(status.projects.flatMap((project) => project.sessions)).toHaveLength(2)
+    expect(Object.keys(status.sources).sort()).toEqual(['claude', 'codex'])
+    expect(minted.every((key) => key.tool !== 'antigravity')).toBe(true)
+    expect(JSON.stringify(status)).not.toContain(ANTIGRAVITY_ID)
+    expect(JSON.stringify(status)).not.toContain('antigravity')
+
+    // Turning only Antigravity off is not a source change for Remote View.
+    await service!.setSourceEnabled('antigravity', false)
+    const off = await waitFor((latest) => expect(latest.health.antigravity.state).toBe('off'))
+    expect(sourceTurnedOff(snapshot, off)).toBe(false)
+  })
+})
+
 describe('with the real watcher', () => {
   it('sees a Codex append that only the rollout’s own file watch reports', async () => {
     const rollout = await writeRunningThread()
@@ -346,6 +538,35 @@ describe('with the real watcher', () => {
       },
       { timeout: 3000, interval: 250 }
     )
+  })
+})
+
+describe('with the real watcher and Antigravity', () => {
+  it('sees a new conversation and its reply through the brain folder watch', async () => {
+    await mkdir(antigravityPaths(home).brain, { recursive: true })
+    await mkdir(antigravityPaths(home).annotations, { recursive: true })
+    await start({ realWatcher: true })
+    await waitFor((latest) => expect(latest.health.antigravity.state).toBe('connected'))
+
+    // A new conversation folder appears after the watch started.
+    await writeAntigravityConversation(NOW)
+    await waitFor((latest) => expect(find(latest, ANTIGRAVITY_KEY)?.activity.state).toBe('running'))
+
+    // macOS may take a moment to deliver events for a new folder, so the step is appended again
+    // (a replayed step is ignored) until a snapshot shows the reply.
+    let step = 2
+    const shown = (): boolean => {
+      const latest = snapshots.at(-1)
+      return latest !== undefined && find(latest, ANTIGRAVITY_KEY)?.attention.newReply === true
+    }
+    await vi.waitFor(
+      async () => {
+        if (!shown()) await finishAntigravityTurn(step++, NOW + SECOND)
+        expect(shown()).toBe(true)
+      },
+      { timeout: 3000, interval: 250 }
+    )
+    expect(find(snapshots.at(-1)!, ANTIGRAVITY_KEY)?.activity.state).toBe('idle')
   })
 })
 

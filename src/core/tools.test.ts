@@ -9,7 +9,7 @@ describe('isAgentTool', () => {
   })
 
   it('rejects other values', () => {
-    for (const value of ['antigravity', 'Codex', '', undefined, null, 1, {}]) {
+    for (const value of ['Antigravity', 'gemini', 'Codex', '', undefined, null, 1, {}]) {
       expect(isAgentTool(value)).toBe(false)
     }
   })

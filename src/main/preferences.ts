@@ -13,7 +13,7 @@ import {
   type Theme,
   type ZoomAction
 } from '../shared/preferences'
-import type { AgentTool } from '../core/tools'
+import { AGENT_TOOLS, type AgentTool } from '../core/tools'
 
 /** App preferences are separate from session state and never contain tool data. */
 export async function openPreferences(
@@ -39,7 +39,8 @@ export async function openPreferences(
             if (isZoomPercent(preferences.zoomPercent)) zoomPercent = preferences.zoomPercent
             if (typeof preferences.sources === 'object' && preferences.sources !== null) {
               const saved = preferences.sources as Record<string, unknown>
-              for (const tool of ['codex', 'claude'] as const)
+              // A file saved before a source existed keeps that source's default.
+              for (const tool of AGENT_TOOLS)
                 if (typeof saved[tool] === 'boolean') sources[tool] = saved[tool]
             }
             if (isSessionRange(preferences.sessionRange))
@@ -73,8 +74,7 @@ export async function openPreferences(
       if (
         next.theme === theme &&
         next.zoomPercent === zoomPercent &&
-        next.sources.codex === sources.codex &&
-        next.sources.claude === sources.claude &&
+        AGENT_TOOLS.every((tool) => next.sources[tool] === sources[tool]) &&
         next.sessionRange.days === sessionRange.days &&
         next.sessionRange.maxPerTool === sessionRange.maxPerTool
       )

@@ -69,7 +69,8 @@ async function setup(probe = false, messages?: RecentMessages) {
         ],
         health: {
           codex: { state: 'connected', lastReadAt: 1 },
-          claude: { state: 'not-installed' }
+          claude: { state: 'not-installed' },
+          antigravity: { state: 'not-installed' }
         },
         localState: { kind: 'available' },
         firstLaunch: false,

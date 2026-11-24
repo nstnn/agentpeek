@@ -34,7 +34,11 @@ function session(
 function input(sessions: Session[]): SnapshotInput {
   return {
     sessions,
-    health: { codex: { state: 'checking' }, claude: { state: 'not-installed' } },
+    health: {
+      codex: { state: 'checking' },
+      claude: { state: 'not-installed' },
+      antigravity: { state: 'not-installed' }
+    },
     localState: { kind: 'available' },
     firstLaunch: false,
     fixture: true,
@@ -91,7 +95,8 @@ describe('createSnapshot', () => {
   it('is a frozen copy at every level, so a published snapshot never changes', () => {
     const health: SnapshotInput['health'] = {
       codex: { state: 'connected', lastReadAt: 1 },
-      claude: { state: 'checking' }
+      claude: { state: 'checking' },
+      antigravity: { state: 'not-installed' }
     }
     const localState: LocalStateStatus = { kind: 'unavailable', reason: 'unwritable' }
     const original: Session = {

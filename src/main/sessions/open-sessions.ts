@@ -1,5 +1,6 @@
 import type { SessionsSnapshot } from '../../core/snapshot'
 import { createAccessGate } from './access'
+import { createAntigravitySource } from './antigravity-source'
 import { createClaudeSource } from './claude-source'
 import type { ProcessProbe } from './claude-process'
 import { createCodexSource } from './codex-source'
@@ -24,6 +25,8 @@ export interface OpenSessionsOptions {
   onSnapshot: (snapshot: SessionsSnapshot) => void
   /** Whether the Codex app is running. The real check by default. */
   isCodexAppRunning?: () => Promise<boolean>
+  /** Whether Antigravity Desktop is running. The real check by default. */
+  isAntigravityAppRunning?: () => Promise<boolean>
   /** The liveness check for Claude Code processes. The real check by default. */
   probe?: ProcessProbe
   /** The real `fs.watch` watcher by default. */
@@ -65,6 +68,18 @@ export async function openSessionsService(options: OpenSessionsOptions): Promise
           store
             .pinnedKeys()
             .filter((key) => key.tool === 'claude')
+            .map((key) => key.id)
+      }),
+      createAntigravitySource({
+        home,
+        gate,
+        range,
+        isAppRunning: options.isAntigravityAppRunning,
+        now,
+        pinnedIds: () =>
+          store
+            .pinnedKeys()
+            .filter((key) => key.tool === 'antigravity')
             .map((key) => key.id)
       })
     ],

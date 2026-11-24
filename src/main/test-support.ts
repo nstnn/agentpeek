@@ -25,7 +25,11 @@ export function testSession(change: Partial<Session> = {}): Session {
 export function testService(sessions: Session[] = [testSession()]) {
   const snapshot = createSnapshot({
     sessions,
-    health: { codex: { state: 'connected', lastReadAt: 1 }, claude: { state: 'not-installed' } },
+    health: {
+      codex: { state: 'connected', lastReadAt: 1 },
+      claude: { state: 'not-installed' },
+      antigravity: { state: 'not-installed' }
+    },
     localState: { kind: 'available' },
     firstLaunch: true,
     fixture: true,

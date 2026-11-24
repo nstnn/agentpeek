@@ -44,7 +44,11 @@ function snapshot(step = 0, count = 2, title = 'Synthetic session'): SessionsSna
         }
       })
     ),
-    health: { codex: { state: 'connected', lastReadAt: 1 }, claude: { state: 'not-installed' } },
+    health: {
+      codex: { state: 'connected', lastReadAt: 1 },
+      claude: { state: 'not-installed' },
+      antigravity: { state: 'not-installed' }
+    },
     localState: { kind: 'available' },
     firstLaunch: false,
     fixture: true,

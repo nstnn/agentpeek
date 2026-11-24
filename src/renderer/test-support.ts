@@ -27,7 +27,8 @@ export function snapshot(sessions: Session[] = [], change: Partial<AppSnapshot> 
       sessions,
       health: {
         codex: { state: 'connected', lastReadAt: NOW },
-        claude: { state: 'connected', lastReadAt: NOW }
+        claude: { state: 'connected', lastReadAt: NOW },
+        antigravity: { state: 'not-installed' }
       },
       localState: { kind: 'available' },
       firstLaunch: false,

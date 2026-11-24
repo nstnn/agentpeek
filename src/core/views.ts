@@ -49,7 +49,12 @@ export function buildView(
   filter: ToolFilter
 ): ViewContents {
   const inView = sessionsInView(sessions, view)
-  const toolCounts: Record<ToolFilter, number> = { all: inView.length, codex: 0, claude: 0 }
+  const toolCounts: Record<ToolFilter, number> = {
+    all: inView.length,
+    codex: 0,
+    claude: 0,
+    antigravity: 0
+  }
   for (const session of inView) toolCounts[session.key.tool] += 1
 
   const shown = filter === 'all' ? inView : inView.filter((session) => session.key.tool === filter)

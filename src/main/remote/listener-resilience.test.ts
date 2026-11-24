@@ -20,7 +20,11 @@ const snapshot = (step: number, title = 'Synthetic session') =>
         }
       })
     ),
-    health: { codex: { state: 'connected', lastReadAt: 1 }, claude: { state: 'not-installed' } },
+    health: {
+      codex: { state: 'connected', lastReadAt: 1 },
+      claude: { state: 'not-installed' },
+      antigravity: { state: 'not-installed' }
+    },
     localState: { kind: 'available' },
     firstLaunch: false,
     fixture: true,

@@ -28,6 +28,7 @@ import {
 } from './http-test-support'
 import { startRemoteListener, type RemoteListener, type RemoteListenerOptions } from './listener'
 import { createRemoteView, type RemoteView } from './remote-view'
+import type { RemoteSessionKey } from '../../core/remote/status-projection'
 import { createSessionIdMinter } from './session-ids'
 
 // TASK-034: adversarial cases for protocol v2 recent messages on the Mac, written apart from the
@@ -37,10 +38,12 @@ import { createSessionIdMinter } from './session-ids'
 const SENTINEL = 'SENTINEL-M2-TEXT'
 const SHARED = '/Users/synthetic/projects/shared-demo'
 const SECRET = new Uint8Array(32).fill(3)
-const mint = createSessionIdMinter(SECRET)
+const minter = createSessionIdMinter(SECRET)
+// Test keys are Codex or Claude Code. The real minter still throws for any other tool.
+const mint = (key: SessionKey): string => minter(key as RemoteSessionKey)
 
-const A: SessionKey = { tool: 'codex', id: 'raw-adversarial-a' }
-const B: SessionKey = { tool: 'claude', id: 'raw-adversarial-b' }
+const A: RemoteSessionKey = { tool: 'codex', id: 'raw-adversarial-a' }
+const B: RemoteSessionKey = { tool: 'claude', id: 'raw-adversarial-b' }
 
 const textOf = (key: SessionKey) => `${SENTINEL} reply for ${key.id}`
 const messagesOf = (key: SessionKey): RecentMessages => ({
@@ -59,7 +62,8 @@ function snapshot(takenAt = 1): SessionsSnapshot {
     sessions: [session(A), session(B)],
     health: {
       codex: { state: 'connected', lastReadAt: 1 },
-      claude: { state: 'connected', lastReadAt: 1 }
+      claude: { state: 'connected', lastReadAt: 1 },
+      antigravity: { state: 'not-installed' }
     },
     localState: { kind: 'available' },
     firstLaunch: false,

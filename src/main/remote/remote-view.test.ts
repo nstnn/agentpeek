@@ -19,7 +19,11 @@ import * as settingsStore from './settings'
 const SHARED = '/Users/synthetic/projects/shared-demo'
 const snapshot = createSnapshot({
   sessions: [testSession({ summary: { ...testSession().summary, workspacePath: SHARED } })],
-  health: { codex: { state: 'connected', lastReadAt: 1 }, claude: { state: 'not-installed' } },
+  health: {
+    codex: { state: 'connected', lastReadAt: 1 },
+    claude: { state: 'not-installed' },
+    antigravity: { state: 'not-installed' }
+  },
   localState: { kind: 'available' },
   firstLaunch: false,
   fixture: true,
@@ -308,7 +312,8 @@ const listing = (sessions: Session[], takenAt = 2, codex: 'connected' | 'off' = 
     sessions,
     health: {
       codex: codex === 'off' ? { state: 'off' } : { state: 'connected', lastReadAt: takenAt },
-      claude: { state: 'not-installed' }
+      claude: { state: 'not-installed' },
+      antigravity: { state: 'not-installed' }
     },
     localState: { kind: 'available' },
     firstLaunch: false,
@@ -970,7 +975,7 @@ describe('Remote View recent-messages policy (TASK-032)', () => {
 })
 
 describe('Remote View ineligible source isolation (CONSTRAINT-004)', () => {
-  const ANTIGRAVITY = 'antigravity' as unknown as AgentTool
+  const ANTIGRAVITY: AgentTool = 'antigravity'
   const AG_ONLY = '/Users/synthetic/projects/antigravity-only'
 
   function agRow(id: string, workspacePath: string | null): Session {
@@ -996,7 +1001,8 @@ describe('Remote View ineligible source isolation (CONSTRAINT-004)', () => {
       sessions,
       health: {
         codex: { state: 'connected', lastReadAt: codexReadAt },
-        claude: { state: 'not-installed' }
+        claude: { state: 'not-installed' },
+        antigravity: { state: 'not-installed' }
       },
       localState: { kind: 'available' },
       firstLaunch: false,
@@ -1008,7 +1014,7 @@ describe('Remote View ineligible source isolation (CONSTRAINT-004)', () => {
       health: {
         ...base.health,
         antigravity: agHealth
-      } as SessionsSnapshot['health']
+      }
     }
   }
 

@@ -148,7 +148,7 @@ describe('Remote View alias in the session detail', () => {
 
   it('does not ask for an ineligible tool even while Remote View is on', () => {
     const f = fakeApi(snapshot())
-    const ANTIGRAVITY = 'antigravity' as unknown as AgentTool
+    const ANTIGRAVITY: AgentTool = 'antigravity'
     function Probe() {
       const value = useRemoteAlias(f.api, { tool: ANTIGRAVITY, id: 'ag-1' }, on(), 1)
       return <span data-testid="probe">{value ?? 'none'}</span>

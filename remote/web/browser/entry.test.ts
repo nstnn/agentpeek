@@ -42,7 +42,11 @@ const sessions = (folders: string[]): Session[] =>
 const snapshotOf = (folders: string[], list = sessions(folders)) =>
   createSnapshot({
     sessions: list,
-    health: { codex: { state: 'connected', lastReadAt: 1 }, claude: { state: 'not-installed' } },
+    health: {
+      codex: { state: 'connected', lastReadAt: 1 },
+      claude: { state: 'not-installed' },
+      antigravity: { state: 'not-installed' }
+    },
     localState: { kind: 'available' },
     firstLaunch: false,
     fixture: true,

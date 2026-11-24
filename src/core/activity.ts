@@ -1,4 +1,5 @@
 import type {
+  AntigravityTurnFacts,
   ClaudeTurnFacts,
   CodexTurnFacts,
   SessionActivity,
@@ -8,6 +9,13 @@ import type {
 
 /** A Codex turn with no rollout write for this long is no longer trusted as Running (TASK-003). */
 export const CODEX_QUIET_LIMIT_MS = 30 * 60 * 1000
+
+/**
+ * An open-looking Antigravity turn with no transcript write for this long is no longer trusted as
+ * Running (DECISION-004). Antigravity writes each step when it completes, so long tool runs are
+ * silent; a killed turn leaves no record and shows Running until this limit (TASK-001).
+ */
+export const ANTIGRAVITY_QUIET_LIMIT_MS = 15 * 60 * 1000
 
 export interface ActivityInput {
   turn: TurnFacts
@@ -27,6 +35,8 @@ export function deriveActivity(input: ActivityInput): SessionActivity {
       return claudeActivity(turn, input.previous)
     case 'codex':
       return codexActivity(turn, input.lastActivityAt, input.now)
+    case 'antigravity':
+      return antigravityActivity(turn, input.lastActivityAt, input.now)
     case 'unreadable':
     case 'unsupported':
       return unknown(turn.kind)
@@ -66,6 +76,25 @@ function codexActivity(turn: CodexTurnFacts, lastActivityAt: number, now: number
       // Codex has no registry, so an open turn is trusted only while its app runs and keeps writing.
       if (!turn.appRunning) return unknown('app-not-running')
       if (now - lastActivityAt >= CODEX_QUIET_LIMIT_MS) return unknown('quiet')
+      return { state: 'running' }
+  }
+}
+
+function antigravityActivity(
+  turn: AntigravityTurnFacts,
+  lastActivityAt: number,
+  now: number
+): SessionActivity {
+  switch (turn.lastTurnStep) {
+    case null:
+      return unknown('unreadable')
+    case 'ended':
+      return { state: 'idle' }
+    case 'open':
+      // Like Codex: no registry, so an open turn is Running only while the app runs and writes.
+      // Antigravity has no verified waiting or turn-level error signal, so neither is claimed.
+      if (!turn.appRunning) return unknown('app-not-running')
+      if (now - lastActivityAt >= ANTIGRAVITY_QUIET_LIMIT_MS) return unknown('quiet')
       return { state: 'running' }
   }
 }

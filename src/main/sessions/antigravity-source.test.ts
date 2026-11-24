@@ -32,8 +32,11 @@ import { annotationPath, antigravityPaths, transcriptPath } from './antigravity-
 import {
   type AntigravityReader,
   type AntigravityReaderOptions,
-  createAntigravityReader
+  type AntigravitySourceOptions,
+  createAntigravityReader,
+  createAntigravitySource
 } from './antigravity-source'
+import type { SessionSource } from './session-source'
 
 // Synthetic files only, in a temporary folder that stands in for the home folder. The clock is
 // fixed one hour after the synthetic records start.
@@ -695,5 +698,198 @@ describe('privacy', () => {
       expect(spy).not.toHaveBeenCalled()
       spy.mockRestore()
     }
+  })
+})
+
+describe('createAntigravitySource (TASK-005)', () => {
+  let appChecks: number
+  let appRunning: boolean
+
+  beforeEach(() => {
+    appChecks = 0
+    appRunning = true
+  })
+
+  function createSource(options: Partial<AntigravitySourceOptions> = {}): SessionSource {
+    return createAntigravitySource({
+      home,
+      gate,
+      now: () => clock,
+      isAppRunning: () => {
+        appChecks++
+        return Promise.resolve(appRunning)
+      },
+      ...options
+    })
+  }
+
+  function openTurn(at = NOW - 2 * MINUTE): string[] {
+    return [
+      userInputLine({ step: 0, at, text: 'Synthetic question' }),
+      toolRequestLine({ step: 1, at: at + SECOND, tools: ['run_command'] })
+    ]
+  }
+
+  it('reports Antigravity facts under the conversation ID, with no watched files', async () => {
+    await writeTranscript(1, finishedTurn('Synthetic question', NOW - 5 * MINUTE), NOW - MINUTE)
+    await writeAnnotation(1, annotationText('Synthetic title'))
+    const source = createSource()
+    expect(source.tool).toBe('antigravity')
+    const [facts] = await source.catalog()
+    expect(facts).toEqual({
+      key: { tool: 'antigravity', id: conversationId(1) },
+      summary: {
+        title: 'Synthetic title',
+        workspacePath: null,
+        lastActivityAt: NOW - MINUTE,
+        toolVersion: null
+      },
+      turn: { kind: 'antigravity', lastTurnStep: 'ended', appRunning: true },
+      lastReply: {
+        cursor: `3:${new Date(NOW - 5 * MINUTE + 3 * SECOND).toISOString()}`,
+        completedAt: NOW - 5 * MINUTE + 3 * SECOND,
+        isError: false,
+        errorCode: null,
+        newerTurnStarted: false
+      }
+    })
+    expect(source.watchedFiles()).toEqual([])
+    expect(source.health()).toEqual({ state: 'connected', lastReadAt: NOW })
+    // Nothing was open, so the app was never checked.
+    expect(appChecks).toBe(0)
+  })
+
+  it('checks the app only for an open turn, and reuses the answer for a few seconds', async () => {
+    await writeTranscript(1, openTurn())
+    const source = createSource()
+    appRunning = false
+    const [facts] = await source.catalog()
+    expect(facts?.turn).toEqual({ kind: 'antigravity', lastTurnStep: 'open', appRunning: false })
+    expect(appChecks).toBe(1)
+    appRunning = true
+    clock += SECOND
+    await source.refresh([])
+    expect(appChecks).toBe(1)
+    clock += 5 * SECOND
+    const [later] = await source.refresh([])
+    expect(appChecks).toBe(2)
+    expect(later?.turn).toEqual({ kind: 'antigravity', lastTurnStep: 'open', appRunning: true })
+  })
+
+  it('treats a failed app check as running, which the quiet limit still bounds', async () => {
+    await writeTranscript(1, openTurn())
+    const source = createSource({ isAppRunning: () => Promise.reject(new Error('lsappinfo')) })
+    const [facts] = await source.catalog()
+    expect(facts?.turn).toEqual({ kind: 'antigravity', lastTurnStep: 'open', appRunning: true })
+  })
+
+  it('maps an unreadable transcript to unreadable turn facts without a reply', async () => {
+    await writeTranscript(1, finishedTurn('Synthetic question', NOW - 5 * MINUTE), NOW - MINUTE)
+    const source = createSource()
+    expect((await source.catalog())[0]?.lastReply).not.toBeNull()
+    // The same file can no longer be opened: the row stays, unreadable, with no reply.
+    const path = transcriptPath(paths, conversationId(1))
+    await chmod(path, 0o000)
+    try {
+      const [facts] = await source.refresh([path])
+      expect(facts?.turn).toEqual({ kind: 'unreadable' })
+      expect(facts?.lastReply).toBeNull()
+    } finally {
+      await chmod(path, 0o644)
+    }
+  })
+
+  it('refreshes a changed path, a replaced file, and a resumed older conversation', async () => {
+    const path = await writeTranscript(1, openTurn(NOW - 3 * MINUTE), NOW - 3 * MINUTE)
+    // An older conversation, outside the 7-day range until it is resumed.
+    const old = await writeTranscript(2, finishedTurn('Old', NOW - 9 * DAY), NOW - 9 * DAY)
+    const source = createSource()
+    expect((await source.catalog()).map((facts) => facts.key.id)).toEqual([conversationId(1)])
+    expect(source.olderAvailable()).toBe(true)
+
+    // An append finishes the open turn.
+    await appendFile(path, `${finalReplyLine({ step: 2, at: NOW - MINUTE, text: 'Done' })}\n`)
+    await utimes(path, (NOW - MINUTE) / 1000, (NOW - MINUTE) / 1000)
+    const [appended] = await source.refresh([path])
+    expect(appended?.turn).toEqual({ kind: 'antigravity', lastTurnStep: 'ended', appRunning: true })
+    const cursor = appended?.lastReply?.cursor
+    expect(cursor).toEqual(expect.any(String))
+
+    // A replacement (a new inode) with a new open turn.
+    const replacement = `${path}.synthetic-new`
+    await writeFile(
+      replacement,
+      [...openTurn(NOW - 3 * MINUTE), userInputLine({ step: 3, at: NOW, text: 'Again' })]
+        .map((line) => `${line}\n`)
+        .join('')
+    )
+    await rename(replacement, path)
+    const [replaced] = await source.refresh([path])
+    expect(replaced?.turn).toEqual({ kind: 'antigravity', lastTurnStep: 'open', appRunning: true })
+
+    // The older conversation is resumed: its next step brings it into the range.
+    await appendFile(old, `${userInputLine({ step: 4, at: NOW, text: 'Resume' })}\n`)
+    await utimes(old, NOW / 1000, NOW / 1000)
+    const resumed = await source.refresh([old])
+    expect(resumed.map((facts) => facts.key.id).sort()).toEqual(
+      [conversationId(1), conversationId(2)].sort()
+    )
+    const resumedFacts = resumed.find((facts) => facts.key.id === conversationId(2))
+    expect(resumedFacts?.turn).toEqual({
+      kind: 'antigravity',
+      lastTurnStep: 'open',
+      appRunning: true
+    })
+    // The resumed conversation's earlier reply was seen in Antigravity: a newer turn started.
+    expect(resumedFacts?.lastReply?.newerTurnStarted).toBe(true)
+  })
+
+  it('finishes reads in the order they were asked for, even when an app check is slow', async () => {
+    const path = await writeTranscript(1, openTurn())
+    let release: (running: boolean) => void = () => undefined
+    let calls = 0
+    const source = createSource({
+      isAppRunning: () => {
+        calls++
+        // The first check hangs until released; later ones answer at once.
+        return calls === 1
+          ? new Promise<boolean>((resolve) => {
+              release = resolve
+            })
+          : Promise.resolve(true)
+      }
+    })
+    const order: string[] = []
+    const first = source.catalog().then(() => order.push('catalog'))
+    await vi.waitFor(() => expect(calls).toBe(1))
+    await appendFile(path, `${finalReplyLine({ step: 2, at: NOW, text: 'Done' })}\n`)
+    const second = source.refresh([path]).then((facts) => {
+      order.push('refresh')
+      return facts
+    })
+    // The refresh waits for the catalog's app check instead of overtaking it.
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(order).toEqual([])
+    release(false)
+    await first
+    const latest = await second
+    expect(order).toEqual(['catalog', 'refresh'])
+    expect(latest[0]?.turn).toEqual({
+      kind: 'antigravity',
+      lastTurnStep: 'ended',
+      appRunning: false
+    })
+  })
+
+  it('answers detail only for Antigravity keys of listed conversations', async () => {
+    await writeTranscript(1, finishedTurn('Synthetic question', NOW - 5 * MINUTE), NOW - MINUTE)
+    const source = createSource()
+    await source.catalog()
+    const id = conversationId(1)
+    expect((await source.recentMessages({ tool: 'antigravity', id }, 20)).kind).toBe('messages')
+    expect(await source.recentMessages({ tool: 'codex', id }, 20)).toEqual({ kind: 'not-found' })
+    expect(await source.recentMessages({ tool: 'antigravity', id: conversationId(9) }, 20)).toEqual(
+      { kind: 'not-found' }
+    )
   })
 })

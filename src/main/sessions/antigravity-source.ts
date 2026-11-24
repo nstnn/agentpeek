@@ -3,6 +3,7 @@ import {
   parseRecord,
   type AntigravityRecord
 } from '../../core/antigravity/records'
+import { type AntigravityFileStatus, antigravitySessionFacts } from '../../core/antigravity/facts'
 import { antigravityMessages } from '../../core/antigravity/messages'
 import {
   type AntigravityTurnState,
@@ -10,8 +11,15 @@ import {
   foldAntigravityRecords
 } from '../../core/antigravity/turn-state'
 import type { ToolHealth } from '../../core/health'
-import type { RecentMessages, SessionReply, SessionSummary } from '../../core/session'
+import type {
+  RecentMessages,
+  SessionFacts,
+  SessionKey,
+  SessionReply,
+  SessionSummary
+} from '../../core/session'
 import { type AccessGate, createAccessGate } from './access'
+import { isAntigravityAppRunning } from './app-running'
 import {
   annotationPath,
   antigravityPaths,
@@ -24,13 +32,13 @@ import {
 } from './antigravity-files'
 import { statFile } from './claude-files'
 import { readFirstLine, readLastLines } from './jsonl-reader'
-import { DEFAULT_LISTING_RANGE, type ListingRange } from './session-source'
+import { DEFAULT_LISTING_RANGE, type ListingRange, type SessionSource } from './session-source'
 import { readSmallFile } from './small-file-reader'
 import { createQueue, isMissing } from './source-support'
 
-// The Antigravity Desktop reader (TASK-004). It lists the user's local Antigravity conversations
-// and reports normalized facts; TASK-005 registers it as a session source and maps the facts to
-// activity and attention.
+// The Antigravity Desktop source. The reader (TASK-004) lists the user's local Antigravity
+// conversations and reports normalized facts; `createAntigravitySource` (TASK-005) wraps it as a
+// session source, adds whether the app runs, and maps the facts to the session model.
 // - Which conversations: at each reconcile, a metadata-only listing of `brain/` finds the
 //   transcripts and their modification times. The newest in the listing range (7 days by default)
 //   are classified with bounded reads. A user prompt is required and an initial system message
@@ -58,13 +66,7 @@ export interface AntigravityReaderOptions {
   now?: () => number
 }
 
-/**
- * How the last read of a transcript went:
- * - `read`: it was read;
- * - `unreadable`: it could not be read (no permission, refused by the access gate, a read error);
- * - `unsupported`: it was read, but no step had the fields AgentPeek knows.
- */
-export type AntigravityFileStatus = 'read' | 'unreadable' | 'unsupported'
+export type { AntigravityFileStatus } from '../../core/antigravity/facts'
 
 /** What the reader reports about one conversation. No message text. */
 export interface AntigravityConversationFacts {
@@ -513,4 +515,61 @@ function newestFirst(a: TrackedConversation, b: TrackedConversation): number {
     lastActivityAt(b) - lastActivityAt(a) ||
     a.file.conversationId.localeCompare(b.file.conversationId)
   )
+}
+
+export interface AntigravitySourceOptions extends AntigravityReaderOptions {
+  /** Whether Antigravity Desktop is running. Tests and fixture mode pass their own. */
+  isAppRunning?: () => Promise<boolean>
+}
+
+/** How long one answer of the app check is reused, as for Codex. */
+const APP_CHECK_MAX_AGE_MS = 5000
+
+/**
+ * The Antigravity session source (TASK-005). An open-looking turn is Running only while
+ * `com.google.antigravity` runs and the transcript was written within the quiet limit; the
+ * activity rule in src/core applies that (DECISION-004). Antigravity closes its transcript after
+ * each append, so the folder watch on `brain/` sees every change and no file needs its own watch.
+ */
+export function createAntigravitySource(options: AntigravitySourceOptions): SessionSource {
+  const reader = createAntigravityReader(options)
+  const isAppRunning = options.isAppRunning ?? isAntigravityAppRunning
+  const now = options.now ?? Date.now
+  let appCheck: { at: number; running: boolean } | null = null
+  // The app check runs after the reader, so the whole read is queued here as well: the service
+  // relies on reads of one source finishing in the order they were asked for.
+  const serialized = createQueue()
+
+  /** Checks the app only when a listed conversation has an open turn: only then does it matter. */
+  async function checkApp(conversations: readonly AntigravityConversationFacts[]): Promise<void> {
+    if (!conversations.some((conversation) => conversation.lastTurnStep === 'open')) return
+    const at = now()
+    if (appCheck !== null && at - appCheck.at < APP_CHECK_MAX_AGE_MS) return
+    const running = await isAppRunning().catch(() => true)
+    appCheck = { at, running }
+  }
+
+  function read(task: () => Promise<AntigravityConversationFacts[]>): Promise<SessionFacts[]> {
+    return serialized(async () => {
+      const conversations = await task()
+      await checkApp(conversations)
+      const appRunning = appCheck?.running ?? true
+      return conversations.map((conversation) =>
+        antigravitySessionFacts({ ...conversation, appRunning })
+      )
+    })
+  }
+
+  return {
+    tool: 'antigravity',
+    catalog: () => read(() => reader.catalog()),
+    refresh: (changedPaths) => read(() => reader.refresh(changedPaths)),
+    recentMessages: (key: SessionKey, limit: number) =>
+      key.tool === 'antigravity'
+        ? reader.recentMessages(key.id, limit)
+        : Promise.resolve({ kind: 'not-found' }),
+    health: () => reader.health(),
+    olderAvailable: () => reader.olderAvailable(),
+    watchedFiles: () => []
+  }
 }

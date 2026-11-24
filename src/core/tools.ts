@@ -1,5 +1,5 @@
 /** The coding agents AgentPeek reads from. */
-export const AGENT_TOOLS = ['codex', 'claude'] as const
+export const AGENT_TOOLS = ['codex', 'claude', 'antigravity'] as const
 
 export type AgentTool = (typeof AGENT_TOOLS)[number]
 

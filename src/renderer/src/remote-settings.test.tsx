@@ -381,7 +381,7 @@ describe('candidateFolders', () => {
   })
 
   it('excludes Antigravity-only and off-source folders while keeping mixed folders (CONSTRAINT-004)', () => {
-    const ANTIGRAVITY = 'antigravity' as unknown as AgentTool
+    const ANTIGRAVITY: AgentTool = 'antigravity'
     const listed = snapshot(
       [
         session('ag-only', {
@@ -404,7 +404,8 @@ describe('candidateFolders', () => {
       {
         health: {
           codex: { state: 'connected', lastReadAt: 1 },
-          claude: { state: 'off' }
+          claude: { state: 'off' },
+          antigravity: { state: 'not-installed' }
         }
       }
     )
