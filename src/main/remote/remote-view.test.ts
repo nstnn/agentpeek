@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { REMOTE_LIMITS, type RemoteFrame, type StatusFrame } from '../../core/remote/protocol'
+import type { ToolHealth } from '../../core/health'
 import type { RecentMessages, Session } from '../../core/session'
+import type { AgentTool } from '../../core/tools'
 import type { RemoteListener, RemoteListenerStart } from './listener'
 import { createSnapshot, type SessionsSnapshot } from '../../core/snapshot'
 import { testSession } from '../test-support'
@@ -964,6 +966,108 @@ describe('Remote View recent-messages policy (TASK-032)', () => {
     await view.close()
     expect(view.sharesMessages()).toBe(false)
     expect(view.setShareMessages(true)).toEqual({ ok: false, error: 'cancelled' })
+  })
+})
+
+describe('Remote View ineligible source isolation (CONSTRAINT-004)', () => {
+  const ANTIGRAVITY = 'antigravity' as unknown as AgentTool
+  const AG_ONLY = '/Users/synthetic/projects/antigravity-only'
+
+  function agRow(id: string, workspacePath: string | null): Session {
+    return testSession({
+      key: { tool: ANTIGRAVITY, id: `SENTINEL-AG-${id}` },
+      summary: {
+        title: `SENTINEL-AG-TITLE ${id}`,
+        workspacePath,
+        lastActivityAt: 99,
+        toolVersion: '2.34.0'
+      },
+      activity: { state: 'running' }
+    })
+  }
+
+  function mixedListing(
+    sessions: Session[],
+    agHealth: ToolHealth,
+    takenAt = 2,
+    codexReadAt = 2
+  ): SessionsSnapshot {
+    const base = createSnapshot({
+      sessions,
+      health: {
+        codex: { state: 'connected', lastReadAt: codexReadAt },
+        claude: { state: 'not-installed' }
+      },
+      localState: { kind: 'available' },
+      firstLaunch: false,
+      fixture: true,
+      takenAt
+    })
+    return {
+      ...base,
+      health: {
+        ...base.health,
+        antigravity: agHealth
+      } as SessionsSnapshot['health']
+    }
+  }
+
+  it('rejects an Antigravity-only workspace and projects only eligible rows from a mixed workspace', async () => {
+    const mixed = mixedListing(
+      [row('cx', SHARED), agRow('mixed', SHARED), agRow('only', AG_ONLY)],
+      { state: 'connected', lastReadAt: 2 }
+    )
+    const { port, view } = await setup({ enabled: true, sharedWorkspaces: [] }, () => mixed)
+    expect(await view.shareWorkspace(AG_ONLY)).toEqual({
+      ok: false,
+      error: 'unknown-workspace'
+    })
+    expect(await view.shareWorkspace(SHARED)).toEqual({ ok: true })
+    expect(view.aliasFor({ tool: ANTIGRAVITY, id: 'SENTINEL-AG-mixed' })).toBeNull()
+    expect(view.aliasFor({ tool: 'codex', id: 'SENTINEL-RAW-cx' })).toBe('Session 1')
+
+    const viewer = subscribe(port)
+    await expect.poll(() => viewer.frames.length).toBe(1)
+    const frame = statusFrames(viewer.frames)[0]!
+    expect(Object.keys(frame.status.sources)).toEqual(['codex', 'claude'])
+    expect(frame.status.projects).toHaveLength(1)
+    expect(frame.status.projects[0]!.sessions.map((s) => s.tool)).toEqual(['codex'])
+    expect(viewer.raw.join('')).not.toMatch(/antigravity|SENTINEL-AG/)
+    viewer.disconnect()
+  })
+
+  it('does not bump generation, send frames, or resync when Antigravity turns off or changes', async () => {
+    let latest = mixedListing(
+      [row('cx', SHARED), agRow('mixed', SHARED)],
+      { state: 'connected', lastReadAt: 2 },
+      2
+    )
+    const { port, view } = await setup({ enabled: true }, () => latest)
+    const viewer = subscribe(port)
+    await expect.poll(() => viewer.frames.length).toBe(1)
+    const first = statusFrames(viewer.frames)[0]!
+
+    // Turning Antigravity off and changing its sessions must not bump generation or emit frames.
+    latest = mixedListing([row('cx', SHARED)], { state: 'off' }, 3)
+    view.publish(latest)
+    latest = mixedListing(
+      [row('cx', SHARED), agRow('restarted', SHARED)],
+      { state: 'connected', lastReadAt: 4 },
+      4
+    )
+    view.publish(latest)
+    await wait(REMOTE_LIMITS.minStatusIntervalMs + 100)
+    expect(viewer.frames).toHaveLength(1)
+
+    const secondViewer = subscribe(port)
+    await expect.poll(() => secondViewer.frames.length).toBe(1)
+    expect(statusFrames(secondViewer.frames)[0]).toMatchObject({
+      generation: first.generation,
+      snapshotId: first.snapshotId,
+      observedAt: first.observedAt
+    })
+    viewer.disconnect()
+    secondViewer.disconnect()
   })
 })
 

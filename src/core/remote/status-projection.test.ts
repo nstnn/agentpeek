@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import type { ToolHealth } from '../health'
 import type { Session, SessionActivity, SessionAttention } from '../session'
 import { createSnapshot, type SessionsSnapshot } from '../snapshot'
 import type { AgentTool } from '../tools'
@@ -352,5 +353,107 @@ describe('projectRemoteStatus budgets', () => {
     expect(projectRemoteStatus(snapshot(sessions), policy())).toEqual(
       projectRemoteStatus(snapshot([...sessions].reverse()), policy())
     )
+  })
+})
+
+describe('projectRemoteStatus source eligibility (CONSTRAINT-004)', () => {
+  const ANTIGRAVITY = 'antigravity' as unknown as AgentTool
+  const AG_SENTINELS = {
+    title: 'SENTINEL-AG-TITLE',
+    rawId: 'SENTINEL-AG-RAW-ID',
+    version: 'SENTINEL-AG-VERSION'
+  }
+
+  function mixedSnapshot(sessions: Session[], agHealth: ToolHealth): SessionsSnapshot {
+    const base = snapshot(sessions)
+    return {
+      ...base,
+      health: {
+        ...base.health,
+        antigravity: agHealth
+      } as SessionsSnapshot['health']
+    }
+  }
+
+  function agSession(id: string, workspace: string | null, minute = 10): Session {
+    return {
+      key: { tool: ANTIGRAVITY, id: `${AG_SENTINELS.rawId}-${id}` },
+      summary: {
+        title: `${AG_SENTINELS.title} ${id}`,
+        workspacePath: workspace,
+        lastActivityAt: minute * 60_000,
+        toolVersion: AG_SENTINELS.version
+      },
+      activity: { state: 'running' },
+      attention: { waiting: false, newReply: true, error: false },
+      lastReply: {
+        cursor: 'SENTINEL-AG-CURSOR',
+        completedAt: 1,
+        isError: false,
+        errorCode: null,
+        newerTurnStarted: false
+      },
+      pinned: false
+    }
+  }
+
+  it('projects only eligible rows in a mixed shared workspace without minting ineligible IDs or leaking health', () => {
+    const spyMint = vi.fn(mintId)
+    const app = `${SENTINELS.path}/app`
+    const agOnly = `${SENTINELS.path}/ag-only`
+    const mixed = mixedSnapshot(
+      [
+        session('cx', { tool: 'codex', workspace: app, minute: 2 }),
+        session('cl', { tool: 'claude', workspace: app, minute: 3 }),
+        agSession('mixed', app, 9),
+        agSession('only', agOnly, 10)
+      ],
+      { state: 'connected', lastReadAt: 99 }
+    )
+    const status = projectRemoteStatus(
+      mixed,
+      policy({ sharedWorkspaces: [app, agOnly], shareTitles: false, mintId: spyMint })
+    )
+
+    expect(Object.keys(status.sources)).toEqual(['codex', 'claude'])
+    expect(status.projects).toHaveLength(2)
+    const agProject = status.projects.find((p) => p.label === 'ag-only')
+    const appProject = status.projects.find((p) => p.label === 'app')
+    expect(agProject?.sessions).toEqual([])
+    expect(appProject?.sessions.map((row) => row.tool)).toEqual(['claude', 'codex'])
+    expect(appProject?.sessions.map((row) => row.title).sort()).toEqual(['Session 1', 'Session 2'])
+    expect(spyMint).toHaveBeenCalledTimes(2)
+    expect(spyMint.mock.calls.every(([key]) => key.tool === 'codex' || key.tool === 'claude')).toBe(
+      true
+    )
+    const text = JSON.stringify(status)
+    expect(text).not.toContain('antigravity')
+    expect(leaks(status, Object.values(AG_SENTINELS))).toEqual([])
+  })
+
+  it('does not leak ineligible titles with shareTitles on or count ineligible rows toward budgets', () => {
+    const spyMint = vi.fn(mintId)
+    const count = REMOTE_STATUS_LIMITS.maxProjects + 1
+    const folders = Array.from({ length: count }, (_, i) => `/w/p${String(i).padStart(3, '0')}`)
+    const eligible = Array.from({ length: REMOTE_STATUS_LIMITS.maxSessions }, (_, i) =>
+      session(`e${i}`, { workspace: folders[0], minute: i })
+    )
+    const mixed = mixedSnapshot(
+      [
+        ...eligible,
+        agSession('newest-in-shared', folders[0]!, REMOTE_STATUS_LIMITS.maxSessions + 50),
+        agSession('in-omitted-project', folders[count - 1]!, 1)
+      ],
+      { state: 'no-access', lastReadAt: null }
+    )
+    const status = projectRemoteStatus(
+      mixed,
+      policy({ sharedWorkspaces: folders, shareTitles: true, mintId: spyMint })
+    )
+    expect(status.projects[0]?.sessions).toHaveLength(REMOTE_STATUS_LIMITS.maxSessions)
+    expect(status.omitted).toEqual({ projects: 1, sessions: 0 })
+    expect(spyMint).toHaveBeenCalledTimes(REMOTE_STATUS_LIMITS.maxSessions)
+    expect(JSON.stringify(status)).not.toContain('antigravity')
+    expect(leaks(status, Object.values(AG_SENTINELS))).toEqual([])
   })
 })

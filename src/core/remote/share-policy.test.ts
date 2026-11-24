@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest'
+import type { ToolHealth } from '../health'
 import type { Session } from '../session'
 import { createSnapshot, type SessionsSnapshot } from '../snapshot'
+import type { AgentTool } from '../tools'
 import {
   isListedWorkspace,
+  isRemoteTool,
   isShareableWorkspace,
   narrowsSharing,
   normalizeWorkspace,
+  REMOTE_TOOLS,
   sourceTurnedOff,
   type RemoteSharing
 } from './share-policy'
@@ -97,5 +101,74 @@ describe('policy narrowing', () => {
     expect(sourceTurnedOff(off, on)).toBe(false)
     expect(sourceTurnedOff(off, off)).toBe(false)
     expect(sourceTurnedOff(on, on)).toBe(false)
+  })
+})
+
+describe('remote source eligibility (CONSTRAINT-004)', () => {
+  const ANTIGRAVITY = 'antigravity' as unknown as AgentTool
+  const AG_ONLY = '/Users/synthetic/projects/antigravity-only'
+
+  function withIneligibleHealth(
+    base: SessionsSnapshot,
+    extra: Record<string, ToolHealth>
+  ): SessionsSnapshot {
+    return {
+      ...base,
+      health: { ...base.health, ...extra }
+    }
+  }
+
+  function makeSession(tool: AgentTool, id: string, workspacePath: string | null): Session {
+    return {
+      key: { tool, id },
+      summary: { title: null, workspacePath, lastActivityAt: 1, toolVersion: null },
+      activity: { state: 'idle' },
+      attention: { waiting: false, newReply: false, error: false },
+      lastReply: null,
+      pinned: false
+    }
+  }
+
+  it('keeps the remote allowlist strictly to Codex and Claude Code', () => {
+    expect(REMOTE_TOOLS).toEqual(['codex', 'claude'])
+    expect(isRemoteTool('codex')).toBe(true)
+    expect(isRemoteTool('claude')).toBe(true)
+    for (const value of ['antigravity', 'cursor', '', null, undefined, 42]) {
+      expect(isRemoteTool(value), String(value)).toBe(false)
+    }
+  })
+
+  it('rejects an Antigravity-only workspace and allows a mixed workspace only via eligible sources', () => {
+    const mixed = createSnapshot({
+      sessions: [
+        makeSession(ANTIGRAVITY, 'ag-only', AG_ONLY),
+        makeSession(ANTIGRAVITY, 'ag-mixed', APP),
+        makeSession('codex', 'cx-mixed', APP)
+      ],
+      health: {
+        codex: { state: 'connected', lastReadAt: 1 },
+        claude: { state: 'not-installed' }
+      },
+      localState: { kind: 'available' },
+      firstLaunch: false,
+      fixture: true,
+      takenAt: 1
+    })
+    expect(isListedWorkspace(mixed, AG_ONLY)).toBe(false)
+    expect(isListedWorkspace(mixed, APP)).toBe(true)
+
+    const codexOff = { ...mixed, health: { ...mixed.health, codex: { state: 'off' as const } } }
+    expect(isListedWorkspace(codexOff, APP)).toBe(false)
+  })
+
+  it('ignores an ineligible source turning off in sourceTurnedOff', () => {
+    const agOn = withIneligibleHealth(snapshot([APP]), {
+      antigravity: { state: 'connected', lastReadAt: 1 }
+    })
+    const agOff = withIneligibleHealth(snapshot([APP]), {
+      antigravity: { state: 'off' }
+    })
+    expect(sourceTurnedOff(agOn, agOff)).toBe(false)
+    expect(sourceTurnedOff(agOff, agOn)).toBe(false)
   })
 })

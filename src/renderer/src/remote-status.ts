@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { isRemoteTool } from '../../core/remote/share-policy'
 import type { SessionKey } from '../../core/session'
 import type { AgentPeekApi } from '../../shared/api'
 import type { RemoteStatusView } from '../../shared/remote-settings'
@@ -113,7 +114,7 @@ export function useRemoteAlias(
   const [alias, setAlias] = useState<{ status: RemoteStatusView; alias: string | null } | null>(
     null
   )
-  const applies = showsAliases(status)
+  const applies = showsAliases(status) && isRemoteTool(key.tool)
   const { tool, id } = key
   useEffect(() => {
     if (!applies || status === null) return

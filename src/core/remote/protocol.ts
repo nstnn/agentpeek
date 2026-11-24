@@ -1,4 +1,4 @@
-import { AGENT_TOOLS, type AgentTool } from '../tools'
+import { isRemoteTool, REMOTE_TOOLS, type RemoteTool } from './share-policy'
 import {
   REMOTE_STATUS_LIMITS,
   type RemoteProject,
@@ -439,8 +439,8 @@ function isStatus(value: unknown): boolean {
 }
 
 function isSources(value: unknown): boolean {
-  if (!isRecord(value) || !hasKeys(value, AGENT_TOOLS)) return false
-  return AGENT_TOOLS.every((tool: AgentTool) => {
+  if (!isRecord(value) || !hasKeys(value, REMOTE_TOOLS)) return false
+  return REMOTE_TOOLS.every((tool: RemoteTool) => {
     const health = value[tool]
     if (!isRecord(health)) return false
     if ((HEALTH_STATES as readonly unknown[]).includes(health.state))
@@ -475,7 +475,7 @@ function isSession(value: unknown): boolean {
   return (
     typeof value.id === 'string' &&
     SESSION_ID.test(value.id) &&
-    (AGENT_TOOLS as readonly unknown[]).includes(value.tool) &&
+    isRemoteTool(value.tool) &&
     isText(value.title) &&
     isActivity(activity) &&
     isRecord(attention) &&

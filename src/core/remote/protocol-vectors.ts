@@ -399,6 +399,21 @@ export const DECODE_VECTORS: readonly DecodeVector[] = [
     expected: 'malformed'
   },
   {
+    name: 'ineligible desktop tool (antigravity)',
+    event: 'status',
+    data: rowWith((session) => (session.tool = 'antigravity')),
+    expected: 'malformed'
+  },
+  {
+    name: 'ineligible source in health map (antigravity)',
+    event: 'status',
+    data: statusWith((frame) => {
+      const status = frame.status as { sources: Record<string, unknown> }
+      status.sources.antigravity = { state: 'connected', lastReadAt: 1_800_000_000_000 }
+    }),
+    expected: 'malformed'
+  },
+  {
     name: 'negative generation',
     event: 'status',
     data: statusWith((frame) => (frame.generation = -1)),
