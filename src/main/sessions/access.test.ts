@@ -257,6 +257,14 @@ describe('createAccessGate', () => {
       ['.gemini', 'antigravity', 'annotations', 'title.pbtxt']
     ],
     [
+      'an Antigravity title with another extension',
+      ['.gemini', 'antigravity', 'annotations', `${CONVERSATION}.pbtxx`]
+    ],
+    [
+      'an Antigravity JSON file named by a conversation ID',
+      ['.gemini', 'antigravity', 'annotations', `${CONVERSATION}.json`]
+    ],
+    [
       'an Antigravity title in a subfolder',
       ['.gemini', 'antigravity', 'annotations', 'x', `${CONVERSATION}.pbtxt`]
     ],
