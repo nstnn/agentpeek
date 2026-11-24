@@ -50,6 +50,11 @@ async function expectRefused(path: string, reason: RefusalReason): Promise<void>
   expect(open).not.toHaveBeenCalled()
 }
 
+// A synthetic Antigravity conversation ID and its transcript's place in its folder.
+const CONVERSATION = '0f8e2c4a-1b3d-4e5f-8a9b-0c1d2e3f4a5b'
+const TRANSCRIPT = ['.system_generated', 'logs', 'transcript.jsonl'] as const
+const BRAIN = ['.gemini', 'antigravity', 'brain'] as const
+
 const ALLOWED_FILES = [
   ['the Codex index', ['.codex', 'session_index.jsonl']],
   ['a Codex rollout', ['.codex', 'sessions', '2026', '01', '15', 'rollout-2026-01-15-t1.jsonl']],
@@ -66,7 +71,9 @@ const ALLOWED_FILES = [
       'account-1',
       'local_session-1.json'
     ]
-  ]
+  ],
+  ['an Antigravity transcript', [...BRAIN, CONVERSATION, ...TRANSCRIPT]],
+  ['an Antigravity title', ['.gemini', 'antigravity', 'annotations', `${CONVERSATION}.pbtxt`]]
 ] as const
 
 describe('createAccessGate', () => {
@@ -212,6 +219,54 @@ describe('createAccessGate', () => {
         'account-1',
         'local_1.json.tmp'
       ]
+    ],
+    [
+      'the full Antigravity transcript',
+      [...BRAIN, CONVERSATION, ...TRANSCRIPT.slice(0, 2), 'transcript_full.jsonl']
+    ],
+    [
+      'an Antigravity transcript chunk',
+      [...BRAIN, CONVERSATION, ...TRANSCRIPT.slice(0, 2), 'chunks', 'transcript', '0.jsonl']
+    ],
+    ['an Antigravity artifact', [...BRAIN, CONVERSATION, 'task.md']],
+    ['an Antigravity artifact metadata file', [...BRAIN, CONVERSATION, 'task.md.metadata.json']],
+    ['a transcript in a non-conversation folder', [...BRAIN, 'tempmediaStorage', ...TRANSCRIPT]],
+    ['a transcript under an uppercase ID', [...BRAIN, CONVERSATION.toUpperCase(), ...TRANSCRIPT]],
+    ['a transcript under a malformed ID', [...BRAIN, CONVERSATION.slice(0, -1), ...TRANSCRIPT]],
+    ['a transcript under an ID with a suffix', [...BRAIN, `${CONVERSATION}x`, ...TRANSCRIPT]],
+    [
+      'a transcript outside .system_generated',
+      [...BRAIN, CONVERSATION, 'logs', 'transcript.jsonl']
+    ],
+    ['a transcript one folder too deep', [...BRAIN, CONVERSATION, 'nested', ...TRANSCRIPT]],
+    ['a transcript at the brain root', [...BRAIN, 'transcript.jsonl']],
+    [
+      'an Antigravity conversation store',
+      ['.gemini', 'antigravity', 'conversations', `${CONVERSATION}.db`]
+    ],
+    [
+      'an Antigravity legacy store',
+      ['.gemini', 'antigravity', 'conversations', `${CONVERSATION}.pb`]
+    ],
+    [
+      'an Antigravity presence lock',
+      ['.gemini', 'antigravity', 'presence', `${CONVERSATION}.lock`]
+    ],
+    [
+      'an Antigravity title with a malformed ID',
+      ['.gemini', 'antigravity', 'annotations', 'title.pbtxt']
+    ],
+    [
+      'an Antigravity title in a subfolder',
+      ['.gemini', 'antigravity', 'annotations', 'x', `${CONVERSATION}.pbtxt`]
+    ],
+    ['a Gemini OAuth file', ['.gemini', 'oauth_creds.json']],
+    ['Gemini settings', ['.gemini', 'settings.json']],
+    ['a Gemini CLI chat', ['.gemini', 'tmp', 'project-hash', 'chats', 'session-1.json']],
+    ['an Antigravity IDE folder', ['.antigravity', 'brain', CONVERSATION, ...TRANSCRIPT]],
+    [
+      'a hidden folder a wildcard would need',
+      ['.codex', 'sessions', '.system_generated', 'rollout-t1.jsonl']
     ]
   ])('refuses %s', async (_, names) => {
     const path = await createFile(homePath(...names))
@@ -270,6 +325,49 @@ describe('createAccessGate', () => {
       await realpath(join(realFolder, 'sessions', '12345.json'))
     )
     await expectRefused(homePath('.claude', 'sessions', '12345.abcdef.key'), 'credential')
+  })
+
+  it('refuses an Antigravity conversation folder that is a symlink out of brain', async () => {
+    await createFile(join(root, 'elsewhere', ...TRANSCRIPT))
+    await mkdir(homePath(...BRAIN), { recursive: true })
+    await symlink(join(root, 'elsewhere'), homePath(...BRAIN, CONVERSATION))
+    await expectRefused(homePath(...BRAIN, CONVERSATION, ...TRANSCRIPT), 'symlink-escape')
+  })
+
+  it('refuses an Antigravity transcript that is a symlink to another file', async () => {
+    const secret = await createFile(homePath('.gemini', 'oauth_creds.json'), 'secret')
+    const link = homePath(...BRAIN, CONVERSATION, ...TRANSCRIPT)
+    await mkdir(dirname(link), { recursive: true })
+    await symlink(secret, link)
+    await expectRefused(link, 'symlink-escape')
+  })
+
+  it('follows a redirected ~/.gemini and confines reads to its real brain folder', async () => {
+    const realGemini = join(root, 'dotfiles', 'gemini')
+    const transcript = await createFile(
+      join(realGemini, 'antigravity', 'brain', CONVERSATION, ...TRANSCRIPT)
+    )
+    await createFile(join(realGemini, 'antigravity', 'conversations', `${CONVERSATION}.db`))
+    await symlink(realGemini, homePath('.gemini'))
+    const gate = createAccessGate(home)
+
+    await expect(gate.resolve(homePath(...BRAIN, CONVERSATION, ...TRANSCRIPT))).resolves.toBe(
+      await realpath(transcript)
+    )
+    await expectRefused(
+      homePath('.gemini', 'antigravity', 'conversations', `${CONVERSATION}.db`),
+      'not-allowed'
+    )
+  })
+
+  it('refuses a transcript path that is a folder or a named pipe', async () => {
+    const path = homePath(...BRAIN, CONVERSATION, ...TRANSCRIPT)
+    await mkdir(path, { recursive: true })
+    await expect(createAccessGate(home).open(path)).rejects.toMatchObject({ reason: 'not-a-file' })
+    const title = homePath('.gemini', 'antigravity', 'annotations', `${CONVERSATION}.pbtxt`)
+    await mkdir(dirname(title), { recursive: true })
+    execFileSync('/usr/bin/mkfifo', [title])
+    await expect(createAccessGate(home).open(title)).rejects.toMatchObject({ reason: 'not-a-file' })
   })
 
   it('refuses a folder with an allowed name after opening it', async () => {
