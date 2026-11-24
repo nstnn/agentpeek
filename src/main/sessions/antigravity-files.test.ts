@@ -9,6 +9,7 @@ import {
   classifyAntigravityPath,
   isConversationId,
   listTranscripts,
+  statTranscript,
   transcriptPath
 } from './antigravity-files'
 
@@ -145,4 +146,32 @@ describe('listTranscripts', () => {
   it('lets a missing brain folder reach the caller', async () => {
     await expect(listTranscripts(antigravityPaths(home))).rejects.toMatchObject({ code: 'ENOENT' })
   })
+})
+
+describe('statTranscript', () => {
+  it('stats one transcript with the listing checks', async () => {
+    const paths = antigravityPaths(home)
+    await createFile(transcriptPath(paths, FIRST))
+    const [listed] = await listTranscripts(paths)
+    expect(await statTranscript(paths, FIRST)).toEqual(listed)
+    expect(await statTranscript(paths, SECOND)).toBeNull()
+    for (const id of ['../..', FIRST.toUpperCase(), 'tempmediaStorage', '']) {
+      expect(await statTranscript(paths, id)).toBeNull()
+    }
+  })
+
+  it.each([[[]], [['.system_generated']], [['.system_generated', 'logs']]])(
+    'does not follow a symlinked folder at depth %j',
+    async (names) => {
+      const paths = antigravityPaths(home)
+      const outside = join(root, 'elsewhere')
+      await createFile(
+        join(outside, ...['.system_generated', 'logs'].slice(names.length), 'transcript.jsonl')
+      )
+      const link = join(paths.brain, FIRST, ...names)
+      await mkdir(dirname(link), { recursive: true })
+      await symlink(outside, link)
+      expect(await statTranscript(paths, FIRST)).toBeNull()
+    }
+  )
 })
