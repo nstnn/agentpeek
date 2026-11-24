@@ -29,7 +29,11 @@ describe('empty states and health', () => {
     async (_name, health, title) => {
       const fake = mount(
         snapshot([session('pin', { key: { tool: 'claude', id: 'pin' }, pinned: true })], {
-          health: { codex: health, claude: { state: 'connected', lastReadAt: NOW } }
+          health: {
+            codex: health,
+            claude: { state: 'connected', lastReadAt: NOW },
+            antigravity: { state: 'not-installed' }
+          }
         })
       )
       await screen.findByRole('option')
@@ -227,7 +231,8 @@ describe('empty states and health', () => {
       snapshot([], {
         health: {
           codex: { state: 'no-access', lastReadAt: NOW },
-          claude: { state: 'unsupported', toolVersion: '2.3.0' }
+          claude: { state: 'unsupported', toolVersion: '2.3.0' },
+          antigravity: { state: 'not-installed' }
         },
         localState: { kind: 'unavailable', reason: 'newer-version' }
       })

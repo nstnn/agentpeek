@@ -11,7 +11,10 @@ import type { SkillMention } from './skill-names'
 /** Identifies one session: the tool plus the tool's own session ID. */
 export interface SessionKey {
   tool: AgentTool
-  /** Codex: the thread ID. Claude Code: the CLI session ID (`cliSessionId` / `sessionId`). */
+  /**
+   * Codex: the thread ID. Claude Code: the CLI session ID (`cliSessionId` / `sessionId`).
+   * Antigravity: the conversation ID (the `brain/<uuid>` folder name).
+   */
   id: string
 }
 
@@ -36,7 +39,8 @@ export interface SessionSummary {
  * What the session's source found out about its current turn, already normalized.
  * `deriveActivity` maps it to one activity state with the rules in "State mapping (TASK-003)".
  */
-export type TurnFacts = ClaudeTurnFacts | CodexTurnFacts | UnreadableTurnFacts
+export type TurnFacts =
+  ClaudeTurnFacts | CodexTurnFacts | AntigravityTurnFacts | UnreadableTurnFacts
 
 export interface ClaudeTurnFacts {
   kind: 'claude'
@@ -61,6 +65,18 @@ export interface CodexTurnFacts {
    */
   lastTurnEvent: 'started' | 'ended' | null
   /** Whether the Codex app (ChatGPT.app) is running. */
+  appRunning: boolean
+}
+
+export interface AntigravityTurnFacts {
+  kind: 'antigravity'
+  /**
+   * Whether the transcript's last turn step leaves the turn open (a prompt, a step that asked for
+   * tools, a tool result) or ends it (a final reply, a cancellation), or null when the bounded read
+   * found no turn step (TASK-004).
+   */
+  lastTurnStep: 'open' | 'ended' | null
+  /** Whether Antigravity Desktop (`com.google.antigravity`) is running. */
   appRunning: boolean
 }
 
@@ -118,8 +134,9 @@ export const EMPTY_LOCAL_STATE: SessionLocalState = {
 /**
  * Why a session's activity is Unknown. Each reason has its own label in the interface.
  * - `process-ended`: Claude Code's process for an open turn ended without finishing the turn.
- * - `app-not-running`: a Codex turn looks open, but the Codex app is not running.
- * - `quiet`: a Codex turn looks open, but nothing was written for 30 minutes.
+ * - `app-not-running`: a Codex or Antigravity turn looks open, but its app is not running.
+ * - `quiet`: a Codex or Antigravity turn looks open, but nothing was written for its quiet limit
+ *   (30 minutes for Codex, 15 for Antigravity).
  * - `unreadable`: the session's file is missing or unreadable, or AgentPeek found no turn event in it.
  * - `unsupported`: the session's file is in a format AgentPeek does not recognize.
  */

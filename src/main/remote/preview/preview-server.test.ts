@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { readdir, readFile } from 'node:fs/promises'
+import { readdir, readFile, stat } from 'node:fs/promises'
 import { request, type IncomingHttpHeaders, type IncomingMessage } from 'node:http'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -33,7 +33,8 @@ function snapshot(sessions: Session[], takenAt = 1): SessionsSnapshot {
     sessions,
     health: {
       codex: { state: 'connected', lastReadAt: 1 },
-      claude: { state: 'not-installed' }
+      claude: { state: 'not-installed' },
+      antigravity: { state: 'not-installed' }
     },
     localState: { kind: 'available' },
     firstLaunch: false,
@@ -301,6 +302,7 @@ describe('preview on the synthetic fixture home', () => {
       fixture: true,
       onSnapshot: (next) => server?.publish(next),
       isCodexAppRunning: () => Promise.resolve(true),
+      isAntigravityAppRunning: () => Promise.resolve(true),
       probe: { isAlive: () => Promise.resolve(true) }
     })
     try {
@@ -308,6 +310,20 @@ describe('preview on the synthetic fixture home', () => {
       await expect
         .poll(() => service.snapshot().sessions.length, { timeout: 10_000 })
         .toBeGreaterThan(0)
+      // The first-start baselines are saved shortly after the first reads. Wait for that save, so
+      // the comparison covers only what the viewer could change.
+      await expect
+        .poll(
+          () =>
+            stat(join(fixture.userData, 'state.json')).then(
+              () => true,
+              () => false
+            ),
+          {
+            timeout: 10_000
+          }
+        )
+        .toBe(true)
       const marks = () =>
         service.snapshot().sessions.map((session) => [session.attention, session.pinned])
       const before = {

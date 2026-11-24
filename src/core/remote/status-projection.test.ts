@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ToolHealth } from '../health'
-import type { Session, SessionActivity, SessionAttention } from '../session'
+import type { Session, SessionActivity, SessionAttention, SessionKey } from '../session'
 import { createSnapshot, type SessionsSnapshot } from '../snapshot'
 import type { AgentTool } from '../tools'
 import {
@@ -27,7 +27,8 @@ const SENTINELS = {
 const NO_ATTENTION: SessionAttention = { waiting: false, newReply: false, error: false }
 
 /** A stand-in minter for the pure module: deterministic and free of the raw ID. */
-const mintId: SessionIdMinter = (key) => {
+// Tests also mint IDs for plain session keys; the projection itself passes only remote keys.
+const mintId: SessionIdMinter & ((key: SessionKey) => string) = (key: SessionKey) => {
   let hash = 0
   for (const char of `${key.tool}:${key.id}`) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
   return `opaque-${hash.toString(16).padStart(8, '0')}`
@@ -70,7 +71,8 @@ function snapshot(sessions: Session[]): SessionsSnapshot {
     sessions,
     health: {
       codex: { state: 'connected', lastReadAt: 7 },
-      claude: { state: 'unsupported', toolVersion: SENTINELS.version }
+      claude: { state: 'unsupported', toolVersion: SENTINELS.version },
+      antigravity: { state: 'not-installed' }
     },
     localState: { kind: 'available' },
     firstLaunch: false,
@@ -357,7 +359,7 @@ describe('projectRemoteStatus budgets', () => {
 })
 
 describe('projectRemoteStatus source eligibility (CONSTRAINT-004)', () => {
-  const ANTIGRAVITY = 'antigravity' as unknown as AgentTool
+  const ANTIGRAVITY: AgentTool = 'antigravity'
   const AG_SENTINELS = {
     title: 'SENTINEL-AG-TITLE',
     rawId: 'SENTINEL-AG-RAW-ID',
@@ -371,7 +373,7 @@ describe('projectRemoteStatus source eligibility (CONSTRAINT-004)', () => {
       health: {
         ...base.health,
         antigravity: agHealth
-      } as SessionsSnapshot['health']
+      }
     }
   }
 

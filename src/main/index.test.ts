@@ -38,7 +38,9 @@ function setup() {
   const preferences = {
     getTheme: vi.fn<Preferences['getTheme']>().mockResolvedValue('system'),
     setTheme: vi.fn<Preferences['setTheme']>().mockResolvedValue(undefined),
-    getSources: vi.fn<Preferences['getSources']>().mockReturnValue({ codex: true, claude: true }),
+    getSources: vi
+      .fn<Preferences['getSources']>()
+      .mockReturnValue({ codex: true, claude: true, antigravity: true }),
     setSourceEnabled: vi.fn<Preferences['setSourceEnabled']>().mockResolvedValue(undefined),
     getSessionRange: vi
       .fn<Preferences['getSessionRange']>()

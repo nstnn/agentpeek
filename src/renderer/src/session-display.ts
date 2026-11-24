@@ -24,8 +24,18 @@ export function rangeDays(days: number): string {
   return days === 1 ? '1 day' : `${days} days`
 }
 
-export const toolName = (tool: AgentTool): string => (tool === 'codex' ? 'Codex' : 'Claude Code')
-export const toolHome = (tool: AgentTool): string => (tool === 'codex' ? '~/.codex' : '~/.claude')
+const TOOL_NAMES: Readonly<Record<AgentTool, string>> = {
+  codex: 'Codex',
+  claude: 'Claude Code',
+  antigravity: 'Antigravity'
+}
+const TOOL_HOMES: Readonly<Record<AgentTool, string>> = {
+  codex: '~/.codex',
+  claude: '~/.claude',
+  antigravity: '~/.gemini/antigravity'
+}
+export const toolName = (tool: AgentTool): string => TOOL_NAMES[tool]
+export const toolHome = (tool: AgentTool): string => TOOL_HOMES[tool]
 export const sessionTitle = (session: Session): string =>
   session.summary.title ||
   `${session.unavailable ? `Unavailable ${session.pinned ? 'pinned ' : ''}session` : 'Untitled session'} · ${session.key.id.slice(0, 6)}`

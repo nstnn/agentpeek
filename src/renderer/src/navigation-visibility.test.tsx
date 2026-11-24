@@ -233,7 +233,8 @@ describe('independent navigation visibility', () => {
         snapshot([f.a, f.b], {
           health: {
             codex: { state: 'no-access', lastReadAt: null },
-            claude: { state: 'connected', lastReadAt: NOW }
+            claude: { state: 'connected', lastReadAt: NOW },
+            antigravity: { state: 'not-installed' }
           }
         })
       )

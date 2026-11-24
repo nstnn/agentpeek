@@ -14,7 +14,11 @@ describe('renderer subscription lifetime', () => {
     store.select(a, displayedGroups(store.getSnapshot()))
     fake.push(
       snapshot([b], {
-        health: { codex: { state: 'off' }, claude: { state: 'connected', lastReadAt: NOW } }
+        health: {
+          codex: { state: 'off' },
+          claude: { state: 'connected', lastReadAt: NOW },
+          antigravity: { state: 'not-installed' }
+        }
       })
     )
     expect(store.getSnapshot().listSelection).toBeNull()
@@ -238,7 +242,8 @@ describe('two detail slots', () => {
     expect(buildView(state.snapshot!.sessions, state.view, state.filter).toolCounts).toEqual({
       all: 2,
       codex: 1,
-      claude: 1
+      claude: 1,
+      antigravity: 0
     })
     f.off()
   })

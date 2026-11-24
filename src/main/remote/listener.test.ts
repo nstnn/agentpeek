@@ -30,7 +30,11 @@ const SENTINELS = {
 function snapshot(sessions: Session[], takenAt = 1): SessionsSnapshot {
   return createSnapshot({
     sessions,
-    health: { codex: { state: 'connected', lastReadAt: 1 }, claude: { state: 'not-installed' } },
+    health: {
+      codex: { state: 'connected', lastReadAt: 1 },
+      claude: { state: 'not-installed' },
+      antigravity: { state: 'not-installed' }
+    },
     localState: { kind: 'available' },
     firstLaunch: false,
     fixture: true,
@@ -459,7 +463,7 @@ describe('remote listener close', () => {
 })
 
 describe('remote listener ineligible source isolation (CONSTRAINT-004)', () => {
-  const ANTIGRAVITY = 'antigravity' as unknown as AgentTool
+  const ANTIGRAVITY: AgentTool = 'antigravity'
   const AG_KEY = { tool: ANTIGRAVITY, id: 'SENTINEL-AG-ID' }
 
   function mixedSnapshot(
@@ -473,7 +477,7 @@ describe('remote listener ineligible source isolation (CONSTRAINT-004)', () => {
       health: {
         ...base.health,
         antigravity: agHealth
-      } as SessionsSnapshot['health']
+      }
     }
   }
 

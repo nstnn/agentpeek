@@ -83,7 +83,8 @@ describe('Settings', () => {
         snapshot(enabled ? [f.a, f.b] : [], {
           health: {
             codex: enabled ? { state: 'connected', lastReadAt: NOW } : { state: 'off' },
-            claude: { state: 'not-installed' }
+            claude: { state: 'not-installed' },
+            antigravity: { state: 'not-installed' }
           }
         })
       )
@@ -114,7 +115,15 @@ describe('Settings', () => {
     const f = mount()
     await userEvent.click(await screen.findByRole('option', { name: /Synthetic a/ }))
     act(() =>
-      f.push(snapshot([], { health: { codex: { state: 'off' }, claude: { state: 'off' } } }))
+      f.push(
+        snapshot([], {
+          health: {
+            codex: { state: 'off' },
+            claude: { state: 'off' },
+            antigravity: { state: 'off' }
+          }
+        })
+      )
     )
     const list = within(screen.getByRole('main', { name: 'Sessions' }))
     expect(list.getByRole('heading', { name: 'Monitoring is off' })).toBeTruthy()
@@ -124,13 +133,24 @@ describe('Settings', () => {
     )
     act(() =>
       f.push(
-        snapshot([], { health: { codex: { state: 'off' }, claude: { state: 'not-installed' } } })
+        snapshot([], {
+          health: {
+            codex: { state: 'off' },
+            claude: { state: 'not-installed' },
+            antigravity: { state: 'connected', lastReadAt: NOW }
+          }
+        })
       )
     )
     expect(
       screen.getByRole('switch', { name: 'Monitor Claude Code' }).getAttribute('aria-checked')
     ).toBe('true')
     expect(screen.getByText('Not installed')).toBeTruthy()
+    // The third source has its own switch, never another tool's label.
+    expect(
+      screen.getByRole('switch', { name: 'Monitor Antigravity' }).getAttribute('aria-checked')
+    ).toBe('true')
+    expect(screen.getAllByRole('switch', { name: /^Monitor / })).toHaveLength(3)
   })
   it('restores the selection on save failure and can load settings again after a failed read', async () => {
     const f = mount()

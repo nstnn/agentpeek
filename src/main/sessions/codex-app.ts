@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { isBundleRunning } from './app-running'
 
 /**
  * The Codex app: ChatGPT.app on this Mac (TASK-002). The one rollout with `originator`
@@ -7,24 +7,10 @@ import { execFile } from 'node:child_process'
  */
 export const CODEX_BUNDLE_ID = 'com.openai.codex'
 
-const LSAPPINFO = '/usr/bin/lsappinfo'
-
 /**
- * Whether the Codex app is running (TASK-002): `lsappinfo` prints a line starting with `ASN:` when
- * it is, and nothing when it is not. It runs without a shell, with fixed arguments.
- *
- * If the check itself fails, this answers true. AgentPeek then trusts an open turn, which the
- * 30-minute quiet rule still limits, instead of claiming that Codex is not running.
+ * Whether the Codex app is running. If the check itself fails, this answers true, and the 30-minute
+ * quiet rule still limits an open turn (see `isBundleRunning`).
  */
 export function isCodexAppRunning(): Promise<boolean> {
-  return new Promise((resolve) => {
-    execFile(
-      LSAPPINFO,
-      ['find', `bundleid=${CODEX_BUNDLE_ID}`],
-      { timeout: 2000 },
-      (error, stdout) => {
-        resolve(error !== null || stdout.trimStart().startsWith('ASN:'))
-      }
-    )
-  })
+  return isBundleRunning(CODEX_BUNDLE_ID)
 }

@@ -14,6 +14,7 @@ import type { AgentTool } from '../../core/tools'
 import { testSession } from '../test-support'
 import { freePort, HOST, OWNER_HEADERS, OWNER, send, subscribe } from './http-test-support'
 import { startRemoteListener, type RemoteListener, type RemoteListenerOptions } from './listener'
+import type { RemoteSessionKey } from '../../core/remote/status-projection'
 import { createSessionIdMinter } from './session-ids'
 
 // Protocol v2 recent messages on the listener (TASK-032). Synthetic data only; SENTINEL text marks
@@ -22,11 +23,13 @@ import { createSessionIdMinter } from './session-ids'
 const SHARED = '/Users/synthetic/projects/shared-demo'
 const UNSHARED = '/Users/sentinel-user/private-root'
 const SECRET = new Uint8Array(32).fill(7)
-const mint = createSessionIdMinter(SECRET)
+const minter = createSessionIdMinter(SECRET)
+// Test keys are Codex or Claude Code. The real minter still throws for any other tool.
+const mint = (key: SessionKey): string => minter(key as RemoteSessionKey)
 
-const CODEX: SessionKey = { tool: 'codex', id: 'SENTINEL-RAW-ID' }
-const CLAUDE: SessionKey = { tool: 'claude', id: 'SENTINEL-RAW-ID-2' }
-const HIDDEN: SessionKey = { tool: 'codex', id: 'SENTINEL-RAW-ID-3' }
+const CODEX: RemoteSessionKey = { tool: 'codex', id: 'SENTINEL-RAW-ID' }
+const CLAUDE: RemoteSessionKey = { tool: 'claude', id: 'SENTINEL-RAW-ID-2' }
+const HIDDEN: RemoteSessionKey = { tool: 'codex', id: 'SENTINEL-RAW-ID-3' }
 
 const TEXT = {
   prompt: 'Synthetic prompt about the demo',
@@ -67,6 +70,7 @@ function snapshot(
     health: {
       codex: { state: 'connected', lastReadAt: 1 },
       claude: { state: 'connected', lastReadAt: 1 },
+      antigravity: { state: 'not-installed' },
       ...health
     },
     localState: { kind: 'available' },
@@ -371,7 +375,7 @@ describe('recent-messages policy changes during the read', () => {
   })
 
   it('refuses a forged opaque ID for an ineligible Antigravity session in a mixed shared workspace without reading', async () => {
-    const ANTIGRAVITY = 'antigravity' as unknown as AgentTool
+    const ANTIGRAVITY: AgentTool = 'antigravity'
     const AG_KEY: SessionKey = { tool: ANTIGRAVITY, id: 'SENTINEL-AG-RAW-ID' }
     const forgedId = createHmac('sha256', Buffer.from(SECRET))
       .update(sessionKeyToString(AG_KEY))
@@ -385,7 +389,7 @@ describe('recent-messages policy changes during the read', () => {
       health: {
         ...base.health,
         antigravity: { state: 'connected', lastReadAt: 1 }
-      } as SessionsSnapshot['health']
+      }
     }
     const reader = answering()
     const h = await start(reader, { snapshot: mixed })
@@ -397,7 +401,7 @@ describe('recent-messages policy changes during the read', () => {
   })
 
   it('completes an eligible read even when Antigravity-only changes arrive during the read', async () => {
-    const ANTIGRAVITY = 'antigravity' as unknown as AgentTool
+    const ANTIGRAVITY: AgentTool = 'antigravity'
     const AG_KEY: SessionKey = { tool: ANTIGRAVITY, id: 'SENTINEL-AG-MID-READ' }
     const gate = gatedReader()
     const h = await start(gate.reader)
@@ -410,7 +414,7 @@ describe('recent-messages policy changes during the read', () => {
       health: {
         ...base.health,
         antigravity: { state: 'off' }
-      } as SessionsSnapshot['health']
+      }
     }
     h.listener.publish(h.policy.snapshot)
     gate.release()

@@ -18,7 +18,7 @@ describe('appearance preferences', () => {
   it('defaults sources on, saves each independently alongside appearance and restores on reopen', async () => {
     const folder = await fixture()
     const preferences = await openPreferences(folder, vi.fn())
-    expect(preferences.getSources()).toEqual({ codex: true, claude: true })
+    expect(preferences.getSources()).toEqual({ codex: true, claude: true, antigravity: true })
     await Promise.all([
       preferences.setSourceEnabled('codex', false),
       preferences.setTheme('dark'),
@@ -26,17 +26,18 @@ describe('appearance preferences', () => {
       preferences.changeZoom('in')
     ])
     const reopened = await openPreferences(folder, vi.fn())
-    expect(reopened.getSources()).toEqual({ codex: false, claude: false })
+    expect(reopened.getSources()).toEqual({ codex: false, claude: false, antigravity: true })
     expect(await reopened.getTheme()).toBe('dark')
     expect(reopened.getZoom()).toBe(110)
     await mkdir(join(folder, 'preferences.json.tmp'))
     await expect(preferences.setSourceEnabled('codex', true)).rejects.toThrow()
-    expect(preferences.getSources()).toEqual({ codex: false, claude: false })
+    expect(preferences.getSources()).toEqual({ codex: false, claude: false, antigravity: true })
     await rm(join(folder, 'preferences.json.tmp'), { recursive: true })
     await preferences.setSourceEnabled('codex', true)
     expect((await openPreferences(folder, vi.fn())).getSources()).toEqual({
       codex: true,
-      claude: false
+      claude: false,
+      antigravity: true
     })
   })
   it('loads valid source flags independently and leaves invalid preferences untouched', async () => {
@@ -49,8 +50,35 @@ describe('appearance preferences', () => {
     })
     await writeFile(file, contents)
     const preferences = await openPreferences(folder, vi.fn())
-    expect(preferences.getSources()).toEqual({ codex: false, claude: true })
+    expect(preferences.getSources()).toEqual({ codex: false, claude: true, antigravity: true })
     expect(await readFile(file, 'utf8')).toBe(contents)
+  })
+  it('keeps choices saved before Antigravity existed and turns Antigravity on by default', async () => {
+    const folder = await fixture()
+    const file = join(folder, 'preferences.json')
+    const contents = JSON.stringify({
+      version: 1,
+      theme: 'light',
+      zoomPercent: 100,
+      sources: { codex: false, claude: true },
+      sessionRange: { days: 30, maxPerTool: 100 }
+    })
+    await writeFile(file, contents)
+    const preferences = await openPreferences(folder, vi.fn())
+    expect(preferences.getSources()).toEqual({ codex: false, claude: true, antigravity: true })
+    expect(preferences.getSessionRange()).toEqual({ days: 30, maxPerTool: 100 })
+    // Loading never rewrites the old file.
+    expect(await readFile(file, 'utf8')).toBe(contents)
+    await preferences.setSourceEnabled('antigravity', false)
+    const reopened = await openPreferences(folder, vi.fn())
+    expect(reopened.getSources()).toEqual({ codex: false, claude: true, antigravity: false })
+    expect(await reopened.getTheme()).toBe('light')
+    // Turning it off again is not a change and writes nothing.
+    const saved = await readFile(file, 'utf8')
+    await reopened.setSourceEnabled('antigravity', false)
+    expect(await readFile(file, 'utf8')).toBe(saved)
+    await writeFile(file, JSON.stringify({ version: 1, sources: { antigravity: 'off' } }))
+    expect((await openPreferences(folder, vi.fn())).getSources().antigravity).toBe(true)
   })
   it('defaults the session range, saves a valid one and ignores an invalid saved one', async () => {
     const folder = await fixture()
@@ -94,7 +122,7 @@ describe('appearance preferences', () => {
       version: 1,
       theme: 'light',
       zoomPercent: 130,
-      sources: { codex: true, claude: true },
+      sources: { codex: true, claude: true, antigravity: true },
       sessionRange: { days: 7, maxPerTool: 50 }
     })
     const reopened = await openPreferences(folder, vi.fn(), vi.fn())
@@ -155,7 +183,7 @@ describe('appearance preferences', () => {
         version: 1,
         theme,
         zoomPercent: 100,
-        sources: { codex: true, claude: true },
+        sources: { codex: true, claude: true, antigravity: true },
         sessionRange: { days: 7, maxPerTool: 50 }
       })
     }

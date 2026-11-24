@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { CODEX_QUIET_LIMIT_MS, deriveActivity, looksOpen } from './activity'
+import {
+  ANTIGRAVITY_QUIET_LIMIT_MS,
+  CODEX_QUIET_LIMIT_MS,
+  deriveActivity,
+  looksOpen
+} from './activity'
 import type { ClaudeRegistryFacts, SessionActivity, TurnFacts } from './session'
 
 // Synthetic times only. The clock is passed in, so every test controls "now".
@@ -133,6 +138,63 @@ describe('deriveActivity for Codex', () => {
 
   it('shows a rollout without any turn event in its tail as Unknown', () => {
     expect(activity(codex(null))).toEqual({ state: 'unknown', reason: 'unreadable' })
+  })
+})
+
+function antigravity(lastTurnStep: 'open' | 'ended' | null, appRunning = true): TurnFacts {
+  return { kind: 'antigravity', lastTurnStep, appRunning }
+}
+
+describe('deriveActivity for Antigravity (DECISION-004)', () => {
+  it('shows an open turn as Running while the app runs and the transcript keeps changing', () => {
+    expect(activity(antigravity('open'))).toEqual({ state: 'running' })
+  })
+
+  it('shows an open turn as Unknown when Antigravity is not running', () => {
+    expect(activity(antigravity('open', false))).toEqual({
+      state: 'unknown',
+      reason: 'app-not-running'
+    })
+  })
+
+  it('shows an open turn as Unknown after 15 quiet minutes, not 30', () => {
+    expect(ANTIGRAVITY_QUIET_LIMIT_MS).toBe(15 * MINUTE)
+    const open = antigravity('open')
+    expect(activity(open, { lastActivityAt: NOW - ANTIGRAVITY_QUIET_LIMIT_MS + 1 })).toEqual({
+      state: 'running'
+    })
+    expect(activity(open, { lastActivityAt: NOW - ANTIGRAVITY_QUIET_LIMIT_MS })).toEqual({
+      state: 'unknown',
+      reason: 'quiet'
+    })
+    // The Codex limit does not apply: 20 quiet minutes is already Unknown.
+    expect(activity(open, { lastActivityAt: NOW - 20 * MINUTE })).toEqual({
+      state: 'unknown',
+      reason: 'quiet'
+    })
+  })
+
+  it('reports a stopped app before a quiet transcript', () => {
+    expect(activity(antigravity('open', false), { lastActivityAt: NOW - 60 * MINUTE })).toEqual({
+      state: 'unknown',
+      reason: 'app-not-running'
+    })
+  })
+
+  it('shows an ended turn as Idle, even when the app is not running or the file is old', () => {
+    expect(activity(antigravity('ended'))).toEqual({ state: 'idle' })
+    expect(activity(antigravity('ended', false), { lastActivityAt: NOW - 60 * MINUTE })).toEqual({
+      state: 'idle'
+    })
+  })
+
+  it('shows a transcript without a turn step as Unknown, and never claims Waiting', () => {
+    expect(activity(antigravity(null))).toEqual({ state: 'unknown', reason: 'unreadable' })
+    for (const turn of [antigravity('open'), antigravity('ended'), antigravity(null)]) {
+      for (const previous of [{ state: 'waiting', waitingFor: null } as const, undefined]) {
+        expect(activity(turn, { previous }).state).not.toBe('waiting')
+      }
+    }
   })
 })
 

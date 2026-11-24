@@ -35,7 +35,8 @@ const denied = snapshot([other], {
   takenAt: NOW + 60_000,
   health: {
     codex: { state: 'no-access', lastReadAt: NOW },
-    claude: { state: 'connected', lastReadAt: NOW }
+    claude: { state: 'connected', lastReadAt: NOW },
+    antigravity: { state: 'not-installed' }
   }
 })
 

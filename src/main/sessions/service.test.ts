@@ -23,6 +23,7 @@ import type { RecentMessages, SessionSource } from './session-source'
 import { isStoredId } from './state-file'
 import type { StateStore } from './state-store'
 import type { SkillContent } from '../../core/skills'
+import type { SourcePreferences } from '../../shared/preferences'
 
 // The service with fake sources, a fake watcher, and a fake store, on fake timers. Every ID, path,
 // and time is synthetic. The real parts are put together in open-sessions.test.ts.
@@ -85,7 +86,27 @@ function claudeFacts(n: number, change: Partial<SessionFacts> = {}): SessionFact
   }
 }
 
+function antigravityFacts(n: number, change: Partial<SessionFacts> = {}): SessionFacts {
+  return {
+    key: { tool: 'antigravity', id: id(n) },
+    summary: {
+      title: null,
+      workspacePath: null,
+      lastActivityAt: NOW - MINUTE,
+      toolVersion: null
+    },
+    turn: { kind: 'antigravity', lastTurnStep: 'ended', appRunning: true },
+    lastReply: null,
+    ...change
+  }
+}
+
+function transcript(n: number): string {
+  return `/Users/synthetic/.gemini/antigravity/brain/${id(n)}/.system_generated/logs/transcript.jsonl`
+}
+
 const RUNNING_CODEX = { kind: 'codex', lastTurnEvent: 'started', appRunning: true } as const
+const OPEN_ANTIGRAVITY = { kind: 'antigravity', lastTurnStep: 'open', appRunning: true } as const
 const BUSY_CLAUDE = {
   kind: 'claude',
   registry: { status: 'busy', waitingFor: null, ownerAlive: true }
@@ -231,6 +252,7 @@ function fakeStore(
 
 let codex: FakeSource
 let claude: FakeSource
+let antigravity: FakeSource
 let store: FakeStore
 let watcher: FakeWatcher | null
 let snapshots: SessionsSnapshot[]
@@ -241,7 +263,10 @@ beforeEach(() => {
   log = []
   codex = fakeSource('codex')
   claude = fakeSource('claude')
-  store = fakeStore({ baselines: { codex: NOW - HOUR, claude: NOW - HOUR } })
+  antigravity = fakeSource('antigravity')
+  store = fakeStore({
+    baselines: { codex: NOW - HOUR, claude: NOW - HOUR, antigravity: NOW - HOUR }
+  })
   watcher = null
   snapshots = []
   service = null
@@ -253,10 +278,10 @@ afterEach(async () => {
 })
 
 function create(
-  options: { fixture?: boolean; enabledSources?: { codex: boolean; claude: boolean } } = {}
+  options: { fixture?: boolean; enabledSources?: SourcePreferences } = {}
 ): SessionsService {
   service = createSessionsService({
-    sources: [codex.source, claude.source],
+    sources: [codex.source, claude.source, antigravity.source],
     store,
     createWatcher: (onChange) => {
       watcher = fakeWatcher(onChange)
@@ -271,7 +296,7 @@ function create(
 }
 
 async function started(
-  options: { fixture?: boolean; enabledSources?: { codex: boolean; claude: boolean } } = {}
+  options: { fixture?: boolean; enabledSources?: SourcePreferences } = {}
 ): Promise<SessionsService> {
   const running = create(options)
   await running.start()
@@ -351,9 +376,14 @@ describe('start', () => {
     await started()
     await settle()
 
-    expect(log.slice(0, 3)).toEqual(['watchFolders', 'codex:catalog', 'claude:catalog'])
+    expect(log.slice(0, 4)).toEqual([
+      'watchFolders',
+      'codex:catalog',
+      'claude:catalog',
+      'antigravity:catalog'
+    ])
     const snapshot = latest()
-    expect(snapshot.health).toEqual({ codex: CONNECTED, claude: CONNECTED })
+    expect(snapshot.health).toEqual({ codex: CONNECTED, claude: CONNECTED, antigravity: CONNECTED })
     expect(snapshot.sessions.map((session) => session.activity.state).sort()).toEqual([
       'idle',
       'running',
@@ -384,7 +414,11 @@ describe('start', () => {
   it('starts the file watches each source names', async () => {
     codex.watched = [rollout(1), rollout(2)]
     await started()
-    expect(theWatcher().files).toEqual({ codex: [rollout(1), rollout(2)], claude: [] })
+    expect(theWatcher().files).toEqual({
+      codex: [rollout(1), rollout(2)],
+      claude: [],
+      antigravity: []
+    })
   })
 
   it('runs once, however often it is called', async () => {
@@ -454,7 +488,8 @@ describe('one tool failing', () => {
     await settle()
     expect(latest().health).toEqual({
       codex: { state: 'no-access', lastReadAt: null },
-      claude: CONNECTED
+      claude: CONNECTED,
+      antigravity: CONNECTED
     })
     expect(latest().sessions.map((session) => session.activity.state)).toEqual(['running'])
   })
@@ -466,7 +501,8 @@ describe('one tool failing', () => {
     await settle()
     expect(latest().health).toEqual({
       codex: { state: 'no-access', lastReadAt: null },
-      claude: CONNECTED
+      claude: CONNECTED,
+      antigravity: CONNECTED
     })
     expect(latest().sessions).toHaveLength(1)
   })
@@ -496,8 +532,10 @@ describe('reconcile', () => {
       'watchFolders',
       'codex:catalog',
       'claude:catalog',
+      'antigravity:catalog',
       'codex:watchFiles:0',
-      'claude:watchFiles:0'
+      'claude:watchFiles:0',
+      'antigravity:watchFiles:0'
     ])
   })
 
@@ -619,7 +657,7 @@ describe('snapshots', () => {
 
   it('keeps publishing after the receiver throws', async () => {
     service = createSessionsService({
-      sources: [codex.source, claude.source],
+      sources: [codex.source, claude.source, antigravity.source],
       store,
       createWatcher: (onChange) => {
         watcher = fakeWatcher(onChange)
@@ -672,6 +710,7 @@ describe('the first-start baseline', () => {
     await settle()
     expect(store.setBaseline).toHaveBeenCalledWith('codex', NOW)
     expect(store.setBaseline).toHaveBeenCalledWith('claude', NOW)
+    expect(store.setBaseline).toHaveBeenCalledWith('antigravity', NOW)
     expect(latest().firstLaunch).toBe(true)
     expect(latest().needsAttention).toBe(0)
 
@@ -680,7 +719,7 @@ describe('the first-start baseline', () => {
     theWatcher().emit('codex', [rollout(1)])
     await settle()
     expect(latest().needsAttention).toBe(1)
-    expect(store.setBaseline).toHaveBeenCalledTimes(2)
+    expect(store.setBaseline).toHaveBeenCalledTimes(3)
   })
 
   it('keeps a saved baseline, so a reply that finished while AgentPeek was closed is new', async () => {
@@ -976,7 +1015,9 @@ describe('source monitoring switches', () => {
     expect(JSON.stringify(running.snapshot())).not.toContain('Synthetic transient content')
   })
   it('skips saved-off sources at startup and every later refresh', async () => {
-    const running = await started({ enabledSources: { codex: false, claude: true } })
+    const running = await started({
+      enabledSources: { codex: false, claude: true, antigravity: true }
+    })
     await settle()
     expect(running.snapshot().health.codex).toEqual({ state: 'off' })
     expect(codex.catalog).not.toHaveBeenCalled()
@@ -1041,6 +1082,73 @@ describe('source monitoring switches', () => {
     await settle()
     expect(running.snapshot().sessions.map((s) => s.key.id)).toEqual([id(1)])
     await expect(messages).resolves.toEqual({ kind: 'not-found' })
+  })
+  it('turns Antigravity off and on without touching the other sources or keeping late results', async () => {
+    codex.facts = [codexFacts(1)]
+    claude.facts = [claudeFacts(2)]
+    antigravity.facts = [antigravityFacts(3, { lastReply: reply('3:synthetic', NOW) })]
+    const running = await started()
+    await settle()
+    expect(
+      latest()
+        .sessions.map((session) => session.key.tool)
+        .sort()
+    ).toEqual(['antigravity', 'claude', 'codex'])
+    const otherReads = () => [codex.catalog.mock.calls.length, claude.catalog.mock.calls.length]
+    const before = otherReads()
+
+    // A refresh that is still reading when the source is turned off.
+    let finishRefresh!: (facts: SessionFacts[]) => void
+    antigravity.refresh.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishRefresh = resolve
+        })
+    )
+    theWatcher().emit('antigravity', [transcript(3)])
+    await Promise.resolve()
+    await running.setSourceEnabled('antigravity', false)
+    expect(latest().health.antigravity).toEqual({ state: 'off' })
+    expect(latest().sessions.some((session) => session.key.tool === 'antigravity')).toBe(false)
+    finishRefresh([antigravityFacts(4)])
+    await settle()
+    expect(latest().sessions.some((session) => session.key.tool === 'antigravity')).toBe(false)
+
+    // While off: no reads at all, not for watcher reports, reconciles, the timer, or the detail.
+    const reads = () => [
+      antigravity.catalog.mock.calls.length,
+      antigravity.refresh.mock.calls.length,
+      antigravity.recentMessages.mock.calls.length
+    ]
+    const offReads = reads()
+    theWatcher().emit('antigravity', [transcript(3)])
+    await running.reconcile()
+    await settle(LIVENESS_INTERVAL_MS)
+    await expect(running.recentMessages({ tool: 'antigravity', id: id(3) }, 20)).resolves.toEqual({
+      kind: 'not-found'
+    })
+    expect(reads()).toEqual(offReads)
+
+    await running.setSourceEnabled('antigravity', true)
+    await settle()
+    expect(antigravity.catalog.mock.calls.length).toBe(offReads[0]! + 1)
+    expect(latest().health.antigravity).toEqual(CONNECTED)
+    expect(latest().sessions.find((session) => session.key.tool === 'antigravity')?.key.id).toBe(
+      id(3)
+    )
+    // Turning Antigravity off and on read Codex and Claude Code only for the one reconcile.
+    expect(otherReads()).toEqual(before.map((count) => count + 1))
+  })
+
+  it('rechecks a running Antigravity session on the timer, without reading files', async () => {
+    antigravity.facts = [antigravityFacts(3, { turn: OPEN_ANTIGRAVITY })]
+    await started()
+    await settle()
+    expect(latest().sessions[0]?.activity).toEqual({ state: 'running' })
+    log = []
+    await settle(LIVENESS_INTERVAL_MS)
+    expect(log).toContain('antigravity:refresh:0')
+    expect(log.filter((entry) => entry.startsWith('codex:refresh'))).toEqual([])
   })
 })
 

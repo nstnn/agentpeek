@@ -155,6 +155,7 @@ if (!app.requestSingleInstanceLock()) {
         ...(paths.fixture
           ? {
               isCodexAppRunning: () => Promise.resolve(true),
+              isAntigravityAppRunning: () => Promise.resolve(true),
               probe: { isAlive: () => Promise.resolve(true) }
             }
           : {})

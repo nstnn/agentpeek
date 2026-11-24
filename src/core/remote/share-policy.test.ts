@@ -30,7 +30,8 @@ function snapshot(workspaces: (string | null)[], codex: 'connected' | 'off' = 'c
     sessions,
     health: {
       codex: codex === 'off' ? { state: 'off' } : { state: 'connected', lastReadAt: 1 },
-      claude: { state: 'not-installed' }
+      claude: { state: 'not-installed' },
+      antigravity: { state: 'not-installed' }
     },
     localState: { kind: 'available' },
     firstLaunch: false,
@@ -105,7 +106,7 @@ describe('policy narrowing', () => {
 })
 
 describe('remote source eligibility (CONSTRAINT-004)', () => {
-  const ANTIGRAVITY = 'antigravity' as unknown as AgentTool
+  const ANTIGRAVITY: AgentTool = 'antigravity'
   const AG_ONLY = '/Users/synthetic/projects/antigravity-only'
 
   function withIneligibleHealth(
@@ -147,7 +148,8 @@ describe('remote source eligibility (CONSTRAINT-004)', () => {
       ],
       health: {
         codex: { state: 'connected', lastReadAt: 1 },
-        claude: { state: 'not-installed' }
+        claude: { state: 'not-installed' },
+        antigravity: { state: 'not-installed' }
       },
       localState: { kind: 'available' },
       firstLaunch: false,

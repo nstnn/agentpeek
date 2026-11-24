@@ -29,7 +29,7 @@ test('Sources: footer, keyboard switches, disabled reading, save recovery and co
     )
   const choose = async (tool, enabled, key = false) => {
     const toggle = page.getByRole('switch', {
-      name: `Monitor ${tool === 'codex' ? 'Codex' : 'Claude Code'}`,
+      name: `Monitor ${{ codex: 'Codex', claude: 'Claude Code', antigravity: 'Antigravity' }[tool]}`,
       exact: true
     })
     await expect(toggle).toHaveAttribute('aria-disabled', 'false')
@@ -133,6 +133,8 @@ test('Sources: footer, keyboard switches, disabled reading, save recovery and co
     await page.getByRole('radio', { name: 'Dark', exact: true }).check()
     await expect(page.getByText('Saving appearance…')).toHaveCount(0)
     await choose('claude', false)
+    // The fixture home has no Antigravity folder; it stays ON (Not installed) until turned off.
+    await choose('antigravity', false)
     await expect
       .poll(() => application.evaluate(({ nativeTheme }) => nativeTheme.themeSource))
       .toBe('dark')
@@ -161,6 +163,7 @@ test('Sources: footer, keyboard switches, disabled reading, save recovery and co
     await launch()
     expect(await health('codex')).toBe('off')
     expect(await health('claude')).toBe('off')
+    expect(await health('antigravity')).toBe('off')
     await page.getByRole('button', { name: 'Open Settings', exact: true }).click()
     await expect(page.getByRole('radio', { name: 'Dark', exact: true })).toBeChecked()
     await expect(page.getByRole('switch', { name: 'Monitor Codex' })).toHaveAttribute(

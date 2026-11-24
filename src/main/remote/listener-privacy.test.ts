@@ -32,7 +32,11 @@ const snapshot = createSnapshot({
       summary: { title: TITLE, workspacePath: SHARED, lastActivityAt: 1, toolVersion: '1' }
     })
   ],
-  health: { codex: { state: 'connected', lastReadAt: 1 }, claude: { state: 'not-installed' } },
+  health: {
+    codex: { state: 'connected', lastReadAt: 1 },
+    claude: { state: 'not-installed' },
+    antigravity: { state: 'not-installed' }
+  },
   localState: { kind: 'available' },
   firstLaunch: false,
   fixture: true,

@@ -43,4 +43,9 @@ export function isSessionRange(value: unknown): value is SessionRange {
     SESSIONS_PER_TOOL.some((count) => count === range.maxPerTool)
   )
 }
-export const DEFAULT_SOURCES: Readonly<SourcePreferences> = { codex: true, claude: true }
+/** Every source is on until the user turns it off, Antigravity included (REQ-004). */
+export const DEFAULT_SOURCES: Readonly<SourcePreferences> = {
+  codex: true,
+  claude: true,
+  antigravity: true
+}

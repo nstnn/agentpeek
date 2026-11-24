@@ -7,6 +7,9 @@ import { sessionFolderWatches } from './watch-folders'
 const HOME = '/Users/synthetic'
 const ID = '00000000-0000-4000-8000-000000000001'
 const CATALOG = join(HOME, 'Library', 'Application Support', 'Claude', 'claude-code-sessions')
+const UPPER_ID = '0000000A-0000-4000-8000-00000000000B'
+const BRAIN = join(HOME, '.gemini', 'antigravity', 'brain')
+const ANNOTATIONS = join(HOME, '.gemini', 'antigravity', 'annotations')
 
 const watches = sessionFolderWatches(HOME)
 
@@ -24,13 +27,15 @@ function acceptedBy(path: string): string[] {
 }
 
 describe('sessionFolderWatches', () => {
-  it('watches exactly the five folders decided in TASK-002', () => {
+  it('watches exactly the five folders decided in TASK-002 and the two Antigravity folders', () => {
     expect(watches.map(({ tool, folder, recursive }) => ({ tool, folder, recursive }))).toEqual([
       { tool: 'claude', folder: join(HOME, '.claude', 'sessions'), recursive: false },
       { tool: 'claude', folder: join(HOME, '.claude', 'projects'), recursive: true },
       { tool: 'claude', folder: CATALOG, recursive: true },
       { tool: 'codex', folder: join(HOME, '.codex'), recursive: false },
-      { tool: 'codex', folder: join(HOME, '.codex', 'sessions'), recursive: true }
+      { tool: 'codex', folder: join(HOME, '.codex', 'sessions'), recursive: true },
+      { tool: 'antigravity', folder: BRAIN, recursive: true },
+      { tool: 'antigravity', folder: ANNOTATIONS, recursive: false }
     ])
   })
 
@@ -87,5 +92,38 @@ describe('sessionFolderWatches', () => {
     for (const name of [`2026/01/15/rollout-x-${ID}.jsonl.zst`, '2026/01/15', '2026']) {
       expect(acceptedBy(join(sessions, name))).toEqual([])
     }
+  })
+
+  it('accepts Antigravity transcripts only, never the full transcript or other brain files', () => {
+    const transcript = join(BRAIN, ID, '.system_generated', 'logs', 'transcript.jsonl')
+    expect(acceptedBy(transcript)).toEqual([`antigravity:${BRAIN}`])
+    for (const name of [
+      `${ID}/.system_generated/logs/transcript_full.jsonl`,
+      `${ID}/.system_generated/logs/transcript.jsonl.tmp`,
+      `${ID}/.system_generated/transcript.jsonl`,
+      `${ID}/task.md`,
+      `${ID}.pb`,
+      `tempmediaStorage/.system_generated/logs/transcript.jsonl`,
+      `${UPPER_ID}/.system_generated/logs/transcript.jsonl`
+    ]) {
+      expect(acceptedBy(join(BRAIN, name)), name).toEqual([])
+    }
+    // A path with `..` parts, as an event name could hold, is refused before it is resolved.
+    expect(acceptedBy(`${BRAIN}/${ID}/.system_generated/logs/../logs/transcript.jsonl`)).toEqual([])
+  })
+
+  it('accepts Antigravity title annotations only, never other files there', () => {
+    expect(acceptedBy(join(ANNOTATIONS, `${ID}.pbtxt`))).toEqual([`antigravity:${ANNOTATIONS}`])
+    for (const name of [
+      `${ID}.pbtxt.tmp`,
+      `.${ID}.pbtxt`,
+      `${UPPER_ID}.pbtxt`,
+      'oauth_creds.json',
+      `sub/${ID}.pbtxt`
+    ]) {
+      expect(acceptedBy(join(ANNOTATIONS, name)), name).toEqual([])
+    }
+    // The Gemini CLI's own folder is never watched.
+    expect(acceptedBy(join(HOME, '.gemini', 'oauth_creds.json'))).toEqual([])
   })
 })

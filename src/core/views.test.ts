@@ -170,14 +170,15 @@ describe('buildView', () => {
     expect(layout(active)).toEqual({
       running: ['running-2']
     })
-    expect(active.toolCounts).toEqual({ all: 3, codex: 2, claude: 1 })
+    expect(active.toolCounts).toEqual({ all: 3, codex: 2, claude: 1, antigravity: 0 })
     const inbox = buildView(sessions, 'inbox', 'claude')
     expect(layout(inbox)).toEqual({ waiting: ['waiting'], 'new-replies': ['reply'] })
-    expect(inbox.toolCounts).toEqual({ all: 3, codex: 1, claude: 2 })
+    expect(inbox.toolCounts).toEqual({ all: 3, codex: 1, claude: 2, antigravity: 0 })
     expect(buildView(sessions, 'all', 'codex').toolCounts).toEqual({
       all: 10,
       codex: 6,
-      claude: 4
+      claude: 4,
+      antigravity: 0
     })
     expect(layout(buildView(sessions, 'pinned', 'codex'))).toEqual({ pinned: ['running-pinned'] })
   })

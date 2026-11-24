@@ -1,4 +1,5 @@
 import { dirname } from 'node:path'
+import { antigravityPaths, classifyAntigravityPath } from './antigravity-files'
 import { classifyPath, claudePaths } from './claude-files'
 import { codexPaths, isRolloutPath } from './codex-files'
 import type { FolderWatch } from './file-watcher'
@@ -11,6 +12,7 @@ import type { FolderWatch } from './file-watcher'
 export function sessionFolderWatches(home: string): FolderWatch[] {
   const claude = claudePaths(home)
   const codex = codexPaths(home)
+  const antigravity = antigravityPaths(home)
   return [
     // `<pid>.json` only: never the `.key` file next to it.
     {
@@ -47,6 +49,22 @@ export function sessionFolderWatches(home: string): FolderWatch[] {
       folder: codex.sessions,
       recursive: true,
       accepts: (path) => isRolloutPath(codex, path)
+    },
+    // `<conversation id>/.system_generated/logs/transcript.jsonl` only: never
+    // `transcript_full.jsonl`, artifacts, or `.pb` stores. Antigravity closes the transcript after
+    // each append, so this folder watch sees new conversations and every step (TASK-001).
+    {
+      tool: 'antigravity',
+      folder: antigravity.brain,
+      recursive: true,
+      accepts: (path) => classifyAntigravityPath(antigravity, path).kind === 'transcript'
+    },
+    // `<conversation id>.pbtxt` only, for titles (DECISION-002).
+    {
+      tool: 'antigravity',
+      folder: antigravity.annotations,
+      recursive: false,
+      accepts: (path) => classifyAntigravityPath(antigravity, path).kind === 'annotation'
     }
   ]
 }
