@@ -114,7 +114,7 @@ describe('listTranscripts', () => {
     expect(files.map((file) => file.conversationId).sort()).toEqual([FIRST, SECOND].sort())
     for (const file of files) {
       expect(file.path).toBe(transcriptPath(paths, file.conversationId))
-      expect(file.signature).toMatch(/^\d+:\d+:\d+:[\d.]+$/)
+      expect(file.fileId).toMatch(/^\d+:\d+$/)
     }
   })
 

@@ -11,11 +11,12 @@
 // - `PLANNER_RESPONSE`: with `tool_calls`, a step that asks for tools (its `content` is commentary,
 //   never a final reply); without them, the turn's final reply;
 // - `GENERIC`: a tool result. `ERROR` there fails one step, not the turn. Its output is never read.
-// Unknown types still count as activity. A line that is not JSON or lacks `step_index`, `type`, or a
-// readable `created_at` is skipped. `thinking` and tool arguments are never read.
+// A line that is not JSON or lacks `step_index`, `type`, or `created_at` is skipped.
+// The file mtime supplies the time for an unfamiliar timestamp encoding.
+// `thinking` and tool arguments are never read.
 // Text in these records is conversation data: show it in the window only, never log it.
 
-/** A step's `status`, normalized. `canceled` is handled although 2.34.0 was not seen writing it. */
+/** A step's `status`, normalized. */
 export type AntigravityStepStatus = 'done' | 'error' | 'canceled' | 'other'
 
 interface StepBase {
@@ -23,8 +24,8 @@ interface StepBase {
   step: number
   /** `created_at` in epoch milliseconds. */
   at: number
-  /** `created_at` as written, for the reply cursor. */
-  stamp: string
+  /** `created_at` as written, or null when its encoding is unknown. */
+  stamp: string | null
   status: AntigravityStepStatus
 }
 
@@ -57,19 +58,25 @@ type JsonObject = Record<string, unknown>
 /** Reads one transcript line. Returns null for a line that is not JSON or lacks the step fields. */
 export function parseRecord(
   line: string,
-  options: { includeText?: boolean } = {}
+  options: { includeText?: boolean; fallbackAt?: number } = {}
 ): AntigravityRecord | null {
   const value = parseJson(line)
   if (!isObject(value) || typeof value.type !== 'string') return null
   const step = value.step_index
   if (typeof step !== 'number' || !Number.isSafeInteger(step) || step < 0) return null
-  const time = parseTime(value.created_at)
+  const encodedTime = value.created_at
+  const time =
+    parseTime(encodedTime) ??
+    (encodedTime != null && options.fallbackAt !== undefined
+      ? { at: options.fallbackAt, stamp: null }
+      : null)
   if (time === null) return null
   const base: StepBase = { step, at: time.at, stamp: time.stamp, status: parseStatus(value.status) }
   const includeText = options.includeText === true
   const truncated = truncatedFields(value)
+  const finishedStep = base.status === 'done' || base.status === 'canceled'
 
-  if (value.type === 'USER_INPUT' && value.source === 'USER_EXPLICIT') {
+  if (value.type === 'USER_INPUT' && value.source === 'USER_EXPLICIT' && finishedStep) {
     const content = typeof value.content === 'string' ? value.content : ''
     return {
       ...base,
@@ -81,18 +88,29 @@ export function parseRecord(
   if (value.type === 'SYSTEM_MESSAGE' && value.source === 'SYSTEM') {
     return { ...base, kind: 'system-message' }
   }
-  if (value.type === 'PLANNER_RESPONSE') {
+  if (value.type === 'PLANNER_RESPONSE' && value.source === 'MODEL' && finishedStep) {
+    const truncatedCalls = truncated.has('tool_calls')
+    if (
+      base.status === 'done' &&
+      !truncatedCalls &&
+      value.tool_calls !== undefined &&
+      !Array.isArray(value.tool_calls)
+    ) {
+      return { ...base, kind: 'other' }
+    }
     const content = typeof value.content === 'string' ? value.content.trim() : ''
     return {
       ...base,
       kind: 'planner-response',
       hasContent: content !== '',
       truncated: truncated.has('content'),
-      ...toolCalls(value.tool_calls, truncated.has('tool_calls')),
+      ...toolCalls(value.tool_calls, truncatedCalls),
       ...(includeText ? { text: content } : {})
     }
   }
-  if (value.type === 'GENERIC') return { ...base, kind: 'tool-result' }
+  if (value.type === 'GENERIC' && value.source === 'MODEL' && base.status !== 'other') {
+    return { ...base, kind: 'tool-result' }
+  }
   return { ...base, kind: 'other' }
 }
 
@@ -106,9 +124,9 @@ export function isFinalReply(record: AntigravityRecord): boolean {
   )
 }
 
-/** The reply cursor: stable across rereads, because Antigravity never rewrites a written step. */
+/** The reply cursor: independent of file metadata, including when display time uses the mtime. */
 export function replyCursor(record: AntigravityRecord): string {
-  return `${record.step}:${record.stamp}`
+  return `${record.step}:${record.stamp ?? 'unknown-time'}`
 }
 
 /**
@@ -183,7 +201,7 @@ const SECONDS_LIMIT = 100_000_000_000
  * milliseconds, and a protobuf `{ seconds, nanos }` object are all accepted.
  */
 function parseTime(value: unknown): { at: number; stamp: string } | null {
-  if (typeof value === 'string') {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
     const at = Date.parse(value)
     return Number.isNaN(at) ? null : { at, stamp: value }
   }
@@ -193,7 +211,14 @@ function parseTime(value: unknown): { at: number; stamp: string } | null {
   if (isObject(value)) {
     const seconds = parseNumeric(value.seconds)
     const nanos = value.nanos === undefined ? 0 : parseNumeric(value.nanos)
-    if (seconds !== null && seconds > 0 && nanos !== null && nanos >= 0 && nanos < 1_000_000_000) {
+    if (
+      seconds !== null &&
+      seconds > 0 &&
+      Number.isFinite(seconds * 1000) &&
+      nanos !== null &&
+      nanos >= 0 &&
+      nanos < 1_000_000_000
+    ) {
       return { at: seconds * 1000 + Math.floor(nanos / 1_000_000), stamp: `${seconds}.${nanos}` }
     }
   }

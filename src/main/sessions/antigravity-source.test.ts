@@ -1,7 +1,18 @@
-import { appendFile, chmod, mkdir, mkdtemp, rename, rm, utimes, writeFile } from 'node:fs/promises'
+import {
+  appendFile,
+  chmod,
+  mkdir,
+  mkdtemp,
+  rename,
+  rm,
+  symlink,
+  utimes,
+  writeFile
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { deriveAttention } from '../../core/attention'
 import {
   annotationText,
   conversationId,
@@ -15,6 +26,7 @@ import {
   unknownStepLine,
   userInputLine
 } from '../../core/antigravity/test-records'
+import { EMPTY_LOCAL_STATE } from '../../core/session'
 import { type AccessGate, createAccessGate } from './access'
 import { annotationPath, antigravityPaths, transcriptPath } from './antigravity-files'
 import {
@@ -166,7 +178,7 @@ describe('catalog', () => {
     expect(wide.olderAvailable()).toBe(false)
   })
 
-  it('widens the tail to find a user prompt when the first step is another kind', async () => {
+  it('finds a prefix prompt even when it falls outside the turn tail', async () => {
     const filler = Array.from({ length: 120 }, (_, i) =>
       toolRequestLine({
         step: i + 2,
@@ -213,8 +225,8 @@ describe('catalog', () => {
 
   it('skips malformed and unfinished lines without losing the conversation', async () => {
     const path = await writeTranscript(1, [
-      userInputLine({ step: 0, text: 'Synthetic' }),
       'not json',
+      userInputLine({ step: 0, text: 'Synthetic' }),
       '{"step_index": 1, "type": "GENERIC"}',
       finalReplyLine({ step: 2, text: 'Synthetic answer' })
     ])
@@ -242,14 +254,105 @@ describe('catalog', () => {
     expect(missing.health()).toEqual({ state: 'not-installed' })
   })
 
-  it('reads a transcript once and then only what was appended', async () => {
+  it('reuses the classification and facts of an unchanged transcript', async () => {
     const path = await writeTranscript(1, finishedTurn())
     const reader = createReader()
     const first = await reader.catalog()
     // The first line and the tail.
     expect(opened.filter((item) => item === path)).toHaveLength(2)
     expect(await reader.catalog()).toEqual(first)
-    expect(opened.filter((item) => item === path)).toHaveLength(3)
+    expect(opened.filter((item) => item === path)).toHaveLength(2)
+  })
+
+  it('reaches a conversation behind cap-many subagents on the first listing', async () => {
+    await writeTranscript(1, [systemMessageLine({ step: 0 })], NOW - MINUTE)
+    await writeTranscript(2, [systemMessageLine({ step: 0 })], NOW - 2 * MINUTE)
+    await writeTranscript(3, finishedTurn(), NOW - 3 * MINUTE)
+    const reader = createReader({ range: () => ({ windowMs: DAY, maxPerTool: 2 }) })
+    expect((await reader.catalog()).map(({ conversationId }) => conversationId)).toEqual([
+      conversationId(3)
+    ])
+    expect(reader.olderAvailable()).toBe(false)
+  })
+
+  it('bounds the reads spent on rejected candidates and goes further on the next listing', async () => {
+    // Cap 1: the budget is the minimum, 8 rejected candidates per listing.
+    for (let n = 1; n <= 12; n++) {
+      await writeTranscript(n, [toolResultLine({ step: 0 })], NOW - n * MINUTE)
+    }
+    await writeTranscript(13, finishedTurn(), NOW - 13 * MINUTE)
+    const reader = createReader({ range: () => ({ windowMs: DAY, maxPerTool: 1 }) })
+    expect(await reader.catalog()).toEqual([])
+    expect(opened).toHaveLength(8)
+    // Candidates left unread keep Load Older Sessions available.
+    expect(reader.olderAvailable()).toBe(true)
+    opened = []
+    expect((await reader.catalog()).map(({ conversationId }) => conversationId)).toEqual([
+      conversationId(13)
+    ])
+    // Only the 4 rejected candidates not read before, then the conversation (first line and tail).
+    expect(opened).toHaveLength(6)
+    expect(reader.olderAvailable()).toBe(false)
+  })
+
+  it('scales the rejected-candidate budget with the cap', async () => {
+    // Cap 3: 4 per listed session, 12 rejected candidates in all.
+    for (let n = 1; n <= 10; n++) {
+      await writeTranscript(n, [systemMessageLine({ step: 0 })], NOW - n * MINUTE)
+    }
+    await writeTranscript(11, finishedTurn(), NOW - 11 * MINUTE)
+    const reader = createReader({ range: () => ({ windowMs: DAY, maxPerTool: 3 }) })
+    expect((await reader.catalog()).map(({ conversationId }) => conversationId)).toEqual([
+      conversationId(11)
+    ])
+  })
+
+  it('does not let an unreadable transcript hide a readable one', async () => {
+    const unreadable = await writeTranscript(1, finishedTurn(), NOW - MINUTE)
+    await writeTranscript(2, finishedTurn(), NOW - 2 * MINUTE)
+    await chmod(unreadable, 0o000)
+    const reader = createReader({ range: () => ({ windowMs: DAY, maxPerTool: 1 }) })
+    expect((await reader.catalog()).map(({ conversationId }) => conversationId)).toEqual([
+      conversationId(2)
+    ])
+    await chmod(unreadable, 0o600)
+    expect(
+      (await reader.refresh([unreadable])).map(({ conversationId }) => conversationId)
+    ).toEqual([conversationId(1)])
+  })
+
+  it('keeps the older hint for omitted candidates and excludes known subagents', async () => {
+    await writeTranscript(1, finishedTurn())
+    await writeTranscript(2, [systemMessageLine({ step: 0 })], NOW - 4 * DAY)
+    const reader = createReader({ range: () => ({ windowMs: DAY, maxPerTool: 1 }) })
+    expect(await reader.catalog()).toHaveLength(1)
+    expect(reader.olderAvailable()).toBe(false)
+    const older = await writeTranscript(
+      3,
+      finishedTurn('Synthetic old prompt', NOW - 2 * DAY),
+      NOW - 2 * DAY
+    )
+    const oldest = await writeTranscript(
+      4,
+      finishedTurn('Synthetic older prompt', NOW - 3 * DAY),
+      NOW - 3 * DAY
+    )
+    const outsideLookahead = await writeTranscript(
+      5,
+      finishedTurn('Synthetic prompt beyond lookahead', NOW - 3.5 * DAY),
+      NOW - 3.5 * DAY
+    )
+    expect(await reader.catalog()).toHaveLength(1)
+    expect(reader.olderAvailable()).toBe(true)
+    await rm(older)
+    expect(await reader.refresh([older])).toHaveLength(1)
+    expect(reader.olderAvailable()).toBe(true)
+    await rm(oldest)
+    expect(await reader.refresh([oldest])).toHaveLength(1)
+    expect(reader.olderAvailable()).toBe(true)
+    await rm(outsideLookahead)
+    expect(await reader.refresh([outsideLookahead])).toHaveLength(1)
+    expect(reader.olderAvailable()).toBe(false)
   })
 })
 
@@ -320,6 +423,70 @@ describe('refresh', () => {
     await rm(path)
     expect(await reader.refresh([path])).toEqual([])
   })
+
+  it.each(['same-size', 'growing'])(
+    'rebuilds the reply on a %s in-place rewrite',
+    async (change) => {
+      const prompt = userInputLine({ step: 0, text: 'Synthetic prompt' })
+      const path = await writeTranscript(1, [prompt, finalReplyLine({ step: 1, text: 'First' })])
+      const reader = createReader()
+      const [before] = await reader.catalog()
+      const changedAt = T0 + 2 * SECOND
+      const rewritten = [prompt, finalReplyLine({ step: 1, at: changedAt, text: 'Other' })]
+      if (change === 'growing')
+        rewritten.push(userInputLine({ step: 2, text: 'Synthetic next prompt' }))
+      await writeTranscript(1, rewritten, NOW)
+      const [after] = await reader.refresh([path])
+      expect(after?.lastReply?.cursor).not.toBe(before?.lastReply?.cursor)
+      expect(after?.lastReply?.completedAt).toBe(changedAt)
+    }
+  )
+
+  it('uses the new mtime when a changed transcript crosses the old cutoff', async () => {
+    const old = NOW - 2 * DAY
+    const path = await writeTranscript(
+      1,
+      [userInputLine({ step: 0, at: old, text: 'Synthetic' })],
+      old
+    )
+    const options = { range: () => ({ windowMs: 3 * DAY, maxPerTool: 50 }) }
+    const reader = createReader(options)
+    expect(await reader.catalog()).toHaveLength(1)
+    clock += 2 * DAY
+    await appendFile(path, `${toolResultLine({ step: 1, at: old + SECOND })}\n`)
+    await utimes(path, clock / 1000, clock / 1000)
+    const after = await reader.refresh([path])
+    expect(after[0]?.summary.lastActivityAt).toBe(clock)
+    expect(after).toEqual(await createReader(options).catalog())
+  })
+
+  it('keeps a replayed reply suppressed after the later prompt is rolled back', async () => {
+    const oldTurn = finishedTurn()
+    const nextPrompt = userInputLine({ step: 4, text: 'Synthetic follow-up' })
+    const path = await writeTranscript(1, [...oldTurn, nextPrompt])
+    const reader = createReader()
+    const [before] = await reader.catalog()
+    expect(before?.lastReply?.newerTurnStarted).toBe(true)
+    await writeFile(`${path}.new`, `${oldTurn.join('\n')}\n`)
+    await rename(`${path}.new`, path)
+    const [after] = await reader.refresh([path])
+    expect(after?.lastReply?.cursor).toBe(before?.lastReply?.cursor)
+    expect(
+      deriveAttention({
+        activity: { state: 'idle' },
+        lastReply: after?.lastReply ?? null,
+        local: EMPTY_LOCAL_STATE,
+        baselineAt: T0 - SECOND
+      }).newReply
+    ).toBe(false)
+    await appendFile(
+      path,
+      `${nextPrompt}\n${finalReplyLine({ step: 5, text: 'Synthetic new reply' })}\n`
+    )
+    const [resumed] = await reader.refresh([path])
+    expect(resumed?.lastReply?.cursor).toMatch(/^5:/)
+    expect(resumed?.lastReply?.newerTurnStarted).toBe(false)
+  })
 })
 
 describe('recentMessages', () => {
@@ -369,6 +536,139 @@ describe('recentMessages', () => {
 
     await chmod(transcriptPath(paths, conversationId(1)), 0o000)
     expect(await reader.recentMessages(conversationId(1), 10)).toEqual({ kind: 'unreadable' })
+  })
+
+  it.each(['replacement', 'in-place rewrite'])(
+    'rechecks eligibility after a subagent %s',
+    async (change) => {
+      const path = await writeTranscript(1, finishedTurn())
+      const reader = createReader()
+      expect(await reader.catalog()).toHaveLength(1)
+      const child = `${systemMessageLine({ step: 0 })}\n${finalReplyLine({ step: 1, text: 'Synthetic subagent reply' })}\n`
+      if (change === 'replacement') {
+        await writeFile(`${path}.new`, child)
+        await rename(`${path}.new`, path)
+      } else {
+        await writeFile(path, child)
+      }
+      expect(await reader.recentMessages(conversationId(1), 10)).toEqual({ kind: 'not-found' })
+      expect(
+        change === 'replacement' ? await reader.refresh([path]) : await reader.catalog()
+      ).toEqual([])
+    }
+  )
+
+  it('refuses a symlink to a different UUID after the original was listed', async () => {
+    const path = await writeTranscript(1, finishedTurn())
+    const other = await writeTranscript(2, finishedTurn('Synthetic different prompt'))
+    const reader = createReader()
+    expect(await reader.catalog()).toHaveLength(2)
+    await rm(path)
+    await symlink(other, path)
+    opened = []
+    expect(await reader.recentMessages(conversationId(1), 10)).toEqual({ kind: 'unreadable' })
+    expect((await reader.refresh([path])).map(({ conversationId }) => conversationId)).toEqual([
+      conversationId(2)
+    ])
+    expect(opened).toEqual([])
+  })
+
+  it('checks the opened file still matches the classified transcript', async () => {
+    const path = await writeTranscript(1, finishedTurn())
+    const other = await writeTranscript(2, finishedTurn('Synthetic different prompt'))
+    let redirect = false
+    const reader = createReader({
+      gate: {
+        resolve: (candidate) => gate.resolve(candidate),
+        open: (candidate) => gate.open(redirect && candidate === path ? other : candidate)
+      }
+    })
+    expect(await reader.catalog()).toHaveLength(2)
+    redirect = true
+    expect(await reader.recentMessages(conversationId(1), 10)).toEqual({ kind: 'unreadable' })
+  })
+
+  it('ignores unobserved source and type pairs in facts and detail', async () => {
+    const wrongSource = (line: string): string =>
+      JSON.stringify({ ...JSON.parse(line), source: 'SYSTEM' })
+    const path = await writeTranscript(1, [
+      userInputLine({ step: 0, text: 'Synthetic prompt' }),
+      wrongSource(finalReplyLine({ step: 20, text: 'Synthetic non-model reply' }))
+    ])
+    const reader = createReader()
+    expect((await reader.catalog())[0]).toMatchObject({ lastTurnStep: 'open', lastReply: null })
+    await appendFile(
+      path,
+      [
+        finalReplyLine({ step: 2, text: 'Synthetic valid reply' }),
+        wrongSource(toolResultLine({ step: 3 })),
+        ''
+      ].join('\n')
+    )
+    expect((await reader.refresh([path]))[0]).toMatchObject({ lastTurnStep: 'ended' })
+    expect(await reader.recentMessages(conversationId(1), 10)).toMatchObject({
+      messages: [{ kind: 'prompt' }, { kind: 'reply', text: 'Synthetic valid reply' }]
+    })
+  })
+
+  it('ignores unknown statuses and malformed tool-call payloads', async () => {
+    const reader = createReader()
+    const path = await writeTranscript(1, [
+      ...finishedTurn(),
+      toolResultLine({ step: 4, status: 'FUTURE' })
+    ])
+    const [before] = await reader.catalog()
+    expect(before?.lastTurnStep).toBe('ended')
+    const malformed = JSON.parse(
+      finalReplyLine({ step: 6, text: 'Synthetic invalid reply' })
+    ) as Record<string, unknown>
+    malformed.tool_calls = { unexpectedShape: true }
+    await appendFile(
+      path,
+      `${userInputLine({ step: 5, text: 'Synthetic follow-up' })}\n${JSON.stringify(malformed)}\n`
+    )
+    const [after] = await reader.refresh([path])
+    expect(after?.lastTurnStep).toBe('open')
+    expect(after?.lastReply?.cursor).toBe(before?.lastReply?.cursor)
+    expect(JSON.stringify(await reader.recentMessages(conversationId(1), 10))).not.toContain(
+      'Synthetic invalid reply'
+    )
+  })
+
+  it('uses mtime for an unknown timestamp encoding with a stable reply cursor', async () => {
+    const mtime = NOW - MINUTE
+    const path = await writeTranscript(
+      1,
+      [
+        userInputLine({ step: 0, text: 'Synthetic prompt' }),
+        finalReplyLine({ step: 1, text: 'Synthetic reply', createdAt: { futureEncoding: 1 } })
+      ],
+      mtime
+    )
+    const reader = createReader()
+    const [before] = await reader.catalog()
+    expect(before?.lastReply?.cursor).toMatch(/^1:/)
+    expect(before?.lastReply?.completedAt).toBe(mtime)
+    expect(before?.lastReply?.completedAtEstimated).toBe(true)
+    expect(await reader.recentMessages(conversationId(1), 1)).toMatchObject({
+      messages: [{ kind: 'reply', at: mtime }]
+    })
+    await appendFile(path, `${unknownStepLine({ step: 2 })}\n`)
+    await utimes(path, NOW / 1000, NOW / 1000)
+    const [after] = await reader.refresh([path])
+    expect(after?.lastReply?.cursor).toBe(before?.lastReply?.cursor)
+    expect(after?.lastReply?.completedAt).toBe(mtime)
+    const [reopened] = await createReader().catalog()
+    expect(reopened?.lastReply?.cursor).toBe(before?.lastReply?.cursor)
+    expect(reopened?.lastReply?.completedAt).toBe(NOW)
+    expect(
+      deriveAttention({
+        activity: { state: 'idle' },
+        lastReply: reopened?.lastReply ?? null,
+        local: EMPTY_LOCAL_STATE,
+        baselineAt: NOW - SECOND
+      }).newReply
+    ).toBe(false)
   })
 })
 

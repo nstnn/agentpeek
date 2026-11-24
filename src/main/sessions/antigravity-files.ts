@@ -1,6 +1,6 @@
+import type { BigIntStats } from 'node:fs'
 import { lstat, readdir } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { type ListedFile, statFile } from './claude-files'
 
 // Where Antigravity Desktop keeps its files, and a metadata-only listing of its transcripts. The
 // listing reads folder entries and modification times; it never opens a file (CONSTRAINT-001).
@@ -68,8 +68,17 @@ export function classifyAntigravityPath(
   return { kind: 'other' }
 }
 
-export interface TranscriptFile extends ListedFile {
+export interface TranscriptFile {
   conversationId: string
+  path: string
+  fileId: string
+  modifiedAt: number
+  signature: string
+}
+
+/** Change identity for one file version, also checked on the opened descriptor. */
+export function transcriptSignature(stats: BigIntStats): string {
+  return `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeNs}:${stats.ctimeNs}`
 }
 
 /**
@@ -101,8 +110,16 @@ export async function statTranscript(
   const conversation = join(paths.brain, conversationId)
   const stats = await lstat(conversation).catch(() => null)
   if (stats?.isDirectory() !== true || !(await hasRealFolders(conversation))) return null
-  const file = await statFile(transcriptPath(paths, conversationId))
-  return file === null ? null : { ...file, conversationId }
+  const path = transcriptPath(paths, conversationId)
+  const file = await lstat(path, { bigint: true }).catch(() => null)
+  if (file?.isFile() !== true) return null
+  return {
+    conversationId,
+    path,
+    fileId: `${file.dev}:${file.ino}`,
+    modifiedAt: Number(file.mtimeNs) / 1_000_000,
+    signature: transcriptSignature(file)
+  }
 }
 
 /** Whether each folder on the way to the transcript is a real folder and not a symlink. */

@@ -12,8 +12,10 @@ export function antigravityMessages(records: readonly AntigravityRecord[]): Sess
   const messages: SessionMessage[] = []
   let lastStep: number | null = null
   for (const record of records) {
+    if (record.kind === 'system-message' || record.kind === 'other') continue
     if (lastStep !== null && record.step <= lastStep) continue
     lastStep = record.step
+    if (record.status === 'canceled') continue
     if (record.kind === 'user-input') {
       const text = record.text ?? ''
       if (text === '') continue
