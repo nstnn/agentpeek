@@ -187,8 +187,9 @@ export interface ToolCallDetail {
  * window only, and never logged, stored, or sent anywhere.
  */
 export type SessionMessage =
-  | { kind: 'prompt'; text: string; at: number; skill?: SkillMention }
-  | { kind: 'reply'; text: string; at: number }
+  // `truncated`: the tool's file holds only the start of the text (Antigravity, DECISION-003).
+  | { kind: 'prompt'; text: string; at: number; skill?: SkillMention; truncated?: true }
+  | { kind: 'reply'; text: string; at: number; truncated?: true }
   // Calls hold bounded details on the detail path. Never output, except a failed call's error.
   | { kind: 'tool-calls'; count: number; names: string[]; at: number; calls?: ToolCallDetail[] }
 

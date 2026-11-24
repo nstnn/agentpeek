@@ -83,11 +83,26 @@ export async function listTranscripts(paths: AntigravityPaths): Promise<Transcri
   const files: TranscriptFile[] = []
   for (const entry of await readdir(paths.brain, { withFileTypes: true })) {
     if (!entry.isDirectory() || !isConversationId(entry.name)) continue
-    if (!(await hasRealFolders(join(paths.brain, entry.name)))) continue
-    const file = await statFile(transcriptPath(paths, entry.name))
-    if (file !== null) files.push({ ...file, conversationId: entry.name })
+    const file = await statTranscript(paths, entry.name)
+    if (file !== null) files.push(file)
   }
   return files
+}
+
+/**
+ * One conversation's transcript and its signature, with the same checks as `listTranscripts`, or
+ * null when it is not there, the ID is not a conversation ID, or a folder on the way is a symlink.
+ */
+export async function statTranscript(
+  paths: AntigravityPaths,
+  conversationId: string
+): Promise<TranscriptFile | null> {
+  if (!isConversationId(conversationId)) return null
+  const conversation = join(paths.brain, conversationId)
+  const stats = await lstat(conversation).catch(() => null)
+  if (stats?.isDirectory() !== true || !(await hasRealFolders(conversation))) return null
+  const file = await statFile(transcriptPath(paths, conversationId))
+  return file === null ? null : { ...file, conversationId }
 }
 
 /** Whether each folder on the way to the transcript is a real folder and not a symlink. */
