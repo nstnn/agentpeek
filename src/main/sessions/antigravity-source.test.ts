@@ -744,7 +744,7 @@ describe('createAntigravitySource (TASK-005)', () => {
         lastActivityAt: NOW - MINUTE,
         toolVersion: null
       },
-      turn: { kind: 'antigravity', lastTurnStep: 'ended', appRunning: true },
+      turn: { kind: 'antigravity', lastTurnStep: 'ended', appRunning: false },
       lastReply: {
         cursor: `3:${new Date(NOW - 5 * MINUTE + 3 * SECOND).toISOString()}`,
         completedAt: NOW - 5 * MINUTE + 3 * SECOND,
@@ -776,11 +776,16 @@ describe('createAntigravitySource (TASK-005)', () => {
     expect(later?.turn).toEqual({ kind: 'antigravity', lastTurnStep: 'open', appRunning: true })
   })
 
-  it('treats a failed app check as running, which the quiet limit still bounds', async () => {
+  it('does not report running on a failed app check and retries after the cache expires', async () => {
     await writeTranscript(1, openTurn())
-    const source = createSource({ isAppRunning: () => Promise.reject(new Error('lsappinfo')) })
+    const isAppRunning = vi.fn<() => Promise<boolean>>()
+    isAppRunning.mockRejectedValueOnce(new Error('lsappinfo')).mockResolvedValue(true)
+    const source = createSource({ isAppRunning })
     const [facts] = await source.catalog()
-    expect(facts?.turn).toEqual({ kind: 'antigravity', lastTurnStep: 'open', appRunning: true })
+    expect(facts?.turn).toEqual({ kind: 'antigravity', lastTurnStep: 'open', appRunning: false })
+    clock += 5 * SECOND
+    const [retried] = await source.refresh([])
+    expect(retried?.turn).toEqual({ kind: 'antigravity', lastTurnStep: 'open', appRunning: true })
   })
 
   it('maps an unreadable transcript to unreadable turn facts without a reply', async () => {

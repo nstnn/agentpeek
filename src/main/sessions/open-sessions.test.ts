@@ -6,6 +6,7 @@ import {
   open,
   readFile,
   realpath,
+  rename,
   rm,
   utimes,
   writeFile
@@ -67,7 +68,7 @@ let home: string
 let stateFolder: string
 let clock: number
 let alive: boolean
-let antigravityRunning: boolean
+let antigravityRunning: boolean | null
 let snapshots: SessionsSnapshot[]
 let service: SessionsService | null
 /** Where the fake watcher sends changed paths. */
@@ -114,7 +115,10 @@ async function start(options: { realWatcher?: boolean } = {}): Promise<SessionsS
     fixture: true,
     onSnapshot: (snapshot) => snapshots.push(snapshot),
     isCodexAppRunning: () => Promise.resolve(true),
-    isAntigravityAppRunning: () => Promise.resolve(antigravityRunning),
+    isAntigravityAppRunning: () =>
+      antigravityRunning === null
+        ? Promise.reject(new Error('Synthetic app lookup failure'))
+        : Promise.resolve(antigravityRunning),
     probe: { isAlive: () => Promise.resolve(alive) },
     createWatcher: options.realWatcher === true ? undefined : fakeWatcher,
     now: () => clock
@@ -396,6 +400,24 @@ describe('with the real Antigravity source', () => {
     )
   })
 
+  it('recovers an open Antigravity turn at the next liveness check after a lookup failure', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    antigravityRunning = null
+    await writeAntigravityConversation()
+    await start()
+    await waitFor((latest) =>
+      expect(find(latest, ANTIGRAVITY_KEY)?.activity).toEqual({
+        state: 'unknown',
+        reason: 'app-not-running'
+      })
+    )
+
+    antigravityRunning = true
+    clock += LIVENESS_INTERVAL_MS
+    vi.advanceTimersByTime(LIVENESS_INTERVAL_MS)
+    await waitFor((latest) => expect(find(latest, ANTIGRAVITY_KEY)?.activity.state).toBe('running'))
+  })
+
   it('counts a reply as new only after the first read, keeps it read, and ignores a replay', async () => {
     await writeAntigravityConversation(NOW - 5 * MINUTE)
     await finishAntigravityTurn(2, NOW - 4 * MINUTE)
@@ -542,6 +564,26 @@ describe('with the real watcher', () => {
 })
 
 describe('with the real watcher and Antigravity', () => {
+  it('recovers health and activity when a valid transcript replaces an unsupported one', async () => {
+    const path = antigravityTranscript()
+    await writeLines(path, ['{"synthetic_unknown_field":true}'], NOW - MINUTE)
+    await start({ realWatcher: true })
+    await waitFor((latest) => expect(latest.health.antigravity.state).toBe('unsupported'))
+
+    const replacement = `${path}.synthetic-new`
+    await writeLines(
+      replacement,
+      [userInputLine({ step: 0, at: NOW, text: 'Synthetic replacement' })],
+      NOW
+    )
+    await rename(replacement, path)
+
+    await waitFor((latest) => {
+      expect(latest.health.antigravity).toEqual({ state: 'connected', lastReadAt: NOW })
+      expect(find(latest, ANTIGRAVITY_KEY)?.activity.state).toBe('running')
+    })
+  })
+
   it('sees a new conversation and its reply through the brain folder watch', async () => {
     await mkdir(antigravityPaths(home).brain, { recursive: true })
     await mkdir(antigravityPaths(home).annotations, { recursive: true })

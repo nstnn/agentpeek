@@ -44,7 +44,10 @@ export function detailStatus(session: Session): { kind: string; label: string; c
     const last = clockTime(session.summary.lastActivityAt)
     const descriptions = {
       'process-ended': `Claude Code's process for this session ended without reporting that the turn finished. Last activity ${last}.`,
-      'app-not-running': `The last turn looks unfinished, but the Codex app isn't running. Last activity ${last}.`,
+      'app-not-running':
+        session.key.tool === 'antigravity'
+          ? `The last turn looks unfinished. AgentPeek couldn't confirm that Antigravity is running. Last activity ${last}.`
+          : `The last turn looks unfinished, but the Codex app isn't running. Last activity ${last}.`,
       quiet: `The last turn looks unfinished, but Codex hasn't written anything for 30 minutes. Last activity ${last}.`,
       unreadable: "AgentPeek couldn't read this session's file.",
       unsupported: `${toolName(session.key.tool)} ${session.summary.toolVersion ?? '(unknown version)'} writes this session in a format AgentPeek doesn't recognize.`

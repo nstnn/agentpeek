@@ -15,7 +15,7 @@ export interface AntigravityFactsInput {
   /** See `AntigravityTurnState.lastTurnStep`. */
   lastTurnStep: 'open' | 'ended' | null
   lastReply: SessionReply | null
-  /** Whether Antigravity Desktop is running. */
+  /** Whether Antigravity Desktop was confirmed running. */
   appRunning: boolean
 }
 

@@ -156,6 +156,14 @@ describe('session detail', () => {
     mountDetail({ activity: { state: 'unknown', reason } })
     expect(await screen.findByText(text)).toBeTruthy()
   })
+  it('describes an unconfirmed Antigravity process without asserting that it stopped', async () => {
+    mountDetail({
+      key: { tool: 'antigravity', id: 'detail' },
+      activity: { state: 'unknown', reason: 'app-not-running' }
+    })
+    expect(await screen.findByText(/couldn't confirm that Antigravity is running/)).toBeTruthy()
+    expect(screen.getByText('Unknown · Antigravity activity unconfirmed')).toBeTruthy()
+  })
   it('loads a bounded recent exchange, metadata, tool summaries and GFM', async () => {
     const f = mountDetail()
     expect(screen.getByRole('heading', { name: 'Synthetic detail' })).toBeTruthy()

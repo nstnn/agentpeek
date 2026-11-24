@@ -81,7 +81,11 @@ export function rowStatus(session: Session, missing = false): { kind: string; la
   }
   if (session.attention.newReply) return { kind: 'reply', label: 'New reply' }
   if (activity.state === 'unknown') {
-    return { kind: 'unknown', label: `Unknown · ${UNKNOWN[activity.reason]}` }
+    const reason =
+      activity.reason === 'app-not-running' && session.key.tool === 'antigravity'
+        ? 'Antigravity activity unconfirmed'
+        : UNKNOWN[activity.reason]
+    return { kind: 'unknown', label: `Unknown · ${reason}` }
   }
   return { kind: 'idle', label: 'Idle' }
 }

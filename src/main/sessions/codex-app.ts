@@ -12,5 +12,5 @@ export const CODEX_BUNDLE_ID = 'com.openai.codex'
  * quiet rule still limits an open turn (see `isBundleRunning`).
  */
 export function isCodexAppRunning(): Promise<boolean> {
-  return isBundleRunning(CODEX_BUNDLE_ID)
+  return isBundleRunning(CODEX_BUNDLE_ID, true)
 }

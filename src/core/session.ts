@@ -76,7 +76,7 @@ export interface AntigravityTurnFacts {
    * found no turn step (TASK-004).
    */
   lastTurnStep: 'open' | 'ended' | null
-  /** Whether Antigravity Desktop (`com.google.antigravity`) is running. */
+  /** Whether Antigravity Desktop (`com.google.antigravity`) was confirmed running. */
   appRunning: boolean
 }
 
@@ -134,7 +134,7 @@ export const EMPTY_LOCAL_STATE: SessionLocalState = {
 /**
  * Why a session's activity is Unknown. Each reason has its own label in the interface.
  * - `process-ended`: Claude Code's process for an open turn ended without finishing the turn.
- * - `app-not-running`: a Codex or Antigravity turn looks open, but its app is not running.
+ * - `app-not-running`: a turn looks open, but Codex is not running or Antigravity liveness is unconfirmed.
  * - `quiet`: a Codex or Antigravity turn looks open, but nothing was written for its quiet limit
  *   (30 minutes for Codex, 15 for Antigravity).
  * - `unreadable`: the session's file is missing or unreadable, or AgentPeek found no turn event in it.

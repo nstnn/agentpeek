@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { isAntigravityAppRunning } from './app-running'
 import { CODEX_BUNDLE_ID, isCodexAppRunning } from './codex-app'
 
 // `lsappinfo` is replaced, so the tests never depend on which apps are running.
@@ -44,5 +45,22 @@ describe('isCodexAppRunning', () => {
   it('answers true when the check itself fails', async () => {
     answer(new Error('lsappinfo failed'), '')
     expect(await isCodexAppRunning()).toBe(true)
+  })
+})
+
+describe('isAntigravityAppRunning', () => {
+  it('requires a successful lookup that returns an ASN', async () => {
+    answer(null, 'ASN:0x0-0x1234:\n')
+    expect(await isAntigravityAppRunning()).toBe(true)
+    expect(execFile).toHaveBeenCalledWith(
+      '/usr/bin/lsappinfo',
+      ['find', 'bundleid=com.google.antigravity'],
+      { timeout: 2000 },
+      expect.any(Function)
+    )
+    answer(null, '')
+    expect(await isAntigravityAppRunning()).toBe(false)
+    answer(new Error('lsappinfo failed'), 'ASN:0x0-0x1234:\n')
+    expect(await isAntigravityAppRunning()).toBe(false)
   })
 })

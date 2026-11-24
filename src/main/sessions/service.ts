@@ -1,3 +1,4 @@
+import { ANTIGRAVITY_QUIET_LIMIT_MS } from '../../core/activity'
 import { establishBaseline, markRead as markReplyRead } from '../../core/attention'
 import { deriveSession, factsUnderHealth } from '../../core/derive-session'
 import type { ToolHealth } from '../../core/health'
@@ -30,13 +31,13 @@ import type { SkillContent, SkillRequest } from '../../core/skills'
 // The sessions service (TASK-010). It runs while the window is open and ties together:
 // - both sources, which read the tools' files and report facts;
 // - the watcher, whose changed paths go to the right source (only those files are read again);
-// - a timer that re-checks processes and time rules for running and waiting sessions;
+// - a timer that re-checks processes and time rules for open turns;
 // - the local state store, for pins, read markers, and each tool's first-start baseline.
 // From all of that it derives sessions with the rules in src/core and publishes snapshots. The
 // renderer only ever sees those snapshots and the results of `recentMessages`. Nothing here reads a
 // file itself, and nothing is logged.
 
-/** How often running and waiting sessions are re-checked (REQ-008: at least 30 s). */
+/** How often eligible open turns are re-checked (REQ-008: at least 30 s). */
 export const LIVENESS_INTERVAL_MS = 30 * 1000
 
 /** Snapshots are published at most this often, so a busy turn sends a few per second at most. */
@@ -320,12 +321,21 @@ export function createSessionsService(options: SessionsServiceOptions): Sessions
     }
   }
 
-  /** Re-checks the tools that have a running or waiting session, without reading any file. */
+  /** Also retries unconfirmed Antigravity app checks while the open turn is still fresh. */
   function checkLiveness(): void {
+    const at = now()
     for (const tool of AGENT_TOOLS) {
-      const open = current.sessions.some(
-        (session) => session.key.tool === tool && isRunningOrWaiting(session.activity)
-      )
+      const open = current.sessions.some((session) => {
+        if (session.key.tool !== tool) return false
+        const { activity, summary } = session
+        return (
+          isRunningOrWaiting(activity) ||
+          (tool === 'antigravity' &&
+            activity.state === 'unknown' &&
+            activity.reason === 'app-not-running' &&
+            at - summary.lastActivityAt < ANTIGRAVITY_QUIET_LIMIT_MS)
+        )
+      })
       if (open) void update(tool, (source) => source.refresh([]))
     }
   }

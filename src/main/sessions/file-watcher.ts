@@ -3,7 +3,7 @@ import { lstat, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AgentTool } from '../../core/tools'
 import { AGENT_TOOLS } from '../../core/tools'
-import type { AccessGate } from './access'
+import { type AccessGate, AccessRefusedError } from './access'
 import { isMissing } from './source-support'
 
 // The file watcher (TASK-010, as decided in TASK-002). While the window is open, it tells the
@@ -139,7 +139,11 @@ export function createFileWatcher(options: FileWatcherOptions): SessionWatcher {
     const found = await Promise.all(
       [...batch]
         .filter(([, tool]) => enabled.has(tool))
-        .map(async ([path, tool]) => ({ path, tool, signature: await readSignature(path) }))
+        .map(async ([path, tool]) => ({
+          path,
+          tool,
+          signature: await readSignature(path, tool === 'antigravity' ? options.gate : undefined)
+        }))
     )
     if (closed) return
     const changed = new Map<AgentTool, string[]>()
@@ -334,15 +338,22 @@ export function createFileWatcher(options: FileWatcherOptions): SessionWatcher {
  * A file's identity and size, which change when an append-only log (`.jsonl`) grows or is
  * replaced. Small JSON files are rewritten in place, sometimes at the same size (a registry's
  * status changing from `busy` to `idle`), so their modification time counts too. `MISSING` when
- * the file is not there, and null when it cannot be looked at. Only metadata is read.
+ * the file is missing or refused, and null when it cannot be looked at. The source rechecks an
+ * unavailable path to drop any stale entry. Antigravity events go through the gate before
+ * metadata is inspected on the resolved path.
  */
-async function readSignature(path: string): Promise<string | null> {
+async function readSignature(
+  path: string,
+  gate?: Pick<AccessGate, 'resolve'>
+): Promise<string | null> {
   try {
-    const stats = await lstat(path, { bigint: true })
+    const resolvedPath = gate === undefined ? path : await gate.resolve(path)
+    const stats = await lstat(resolvedPath, { bigint: true })
+    if (gate !== undefined && !stats.isFile()) return MISSING
     const identity = `${stats.dev}:${stats.ino}:${stats.size}`
     return path.endsWith('.jsonl') ? identity : `${identity}:${stats.mtimeNs}`
   } catch (error) {
-    return isMissing(error) ? MISSING : null
+    return error instanceof AccessRefusedError || isMissing(error) ? MISSING : null
   }
 }
 
