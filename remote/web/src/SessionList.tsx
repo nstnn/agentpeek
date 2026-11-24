@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import type { AgentTool } from '../../../src/core/tools'
+import type { RemoteTool } from '../../../src/core/remote/share-policy'
 import type { ViewerData } from './connection'
 import {
   listView,
@@ -101,7 +101,7 @@ function ListControls({
   onChoices: (choices: ListChoices) => void
 }) {
   const groupLabel = useId()
-  const tools: readonly { id: AgentTool | null; label: string; count: number }[] = [
+  const tools: readonly { id: RemoteTool | null; label: string; count: number }[] = [
     { id: null, label: 'All', count: view.toolCounts.all },
     { id: 'codex', label: toolName('codex'), count: view.toolCounts.codex },
     { id: 'claude', label: toolName('claude'), count: view.toolCounts.claude }

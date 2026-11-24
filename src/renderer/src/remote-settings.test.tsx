@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import type { AgentTool } from '../../core/tools'
 import type { RemoteSettingsView, RemoteStatusView } from '../../shared/remote-settings'
 import { SettingsDialog } from './SettingsDialog'
 import { candidateFolders } from './remote-folders'
@@ -377,6 +378,37 @@ describe('candidateFolders', () => {
       '/synthetic/b-app'
     ])
     expect(candidateFolders(null, [])).toEqual([])
+  })
+
+  it('excludes Antigravity-only and off-source folders while keeping mixed folders (CONSTRAINT-004)', () => {
+    const ANTIGRAVITY = 'antigravity' as unknown as AgentTool
+    const listed = snapshot(
+      [
+        session('ag-only', {
+          key: { tool: ANTIGRAVITY, id: 'ag-only' },
+          summary: { ...session('ag-only').summary, workspacePath: '/synthetic/ag-only' }
+        }),
+        session('ag-mixed', {
+          key: { tool: ANTIGRAVITY, id: 'ag-mixed' },
+          summary: { ...session('ag-mixed').summary, workspacePath: '/synthetic/mixed' }
+        }),
+        session('cx-mixed', {
+          key: { tool: 'codex', id: 'cx-mixed' },
+          summary: { ...session('cx-mixed').summary, workspacePath: '/synthetic/mixed' }
+        }),
+        session('cl-off', {
+          key: { tool: 'claude', id: 'cl-off' },
+          summary: { ...session('cl-off').summary, workspacePath: '/synthetic/claude-off' }
+        })
+      ],
+      {
+        health: {
+          codex: { state: 'connected', lastReadAt: 1 },
+          claude: { state: 'off' }
+        }
+      }
+    )
+    expect(candidateFolders(listed, [])).toEqual(['/synthetic/mixed'])
   })
 })
 

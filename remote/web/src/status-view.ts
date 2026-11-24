@@ -1,5 +1,5 @@
 import { looksOpen } from '../../../src/core/activity'
-import type { AgentTool } from '../../../src/core/tools'
+import { REMOTE_TOOLS, type RemoteTool } from '../../../src/core/remote/share-policy'
 import type {
   RemoteSession,
   RemoteSourceHealth,
@@ -14,7 +14,7 @@ import type {
 
 export type RowKind = 'waiting' | 'error' | 'reply' | 'unknown' | 'running' | 'idle'
 
-export const toolName = (tool: AgentTool): string => (tool === 'codex' ? 'Codex' : 'Claude Code')
+export const toolName = (tool: RemoteTool): string => (tool === 'codex' ? 'Codex' : 'Claude Code')
 
 const WAITING_LABELS = {
   permission: 'Permission',
@@ -100,8 +100,8 @@ const yearFormat = new Intl.DateTimeFormat(undefined, {
 })
 
 /** A line for each source the Mac cannot read; the other source's rows stay. */
-export function sourceIssues(sources: Record<AgentTool, RemoteSourceHealth>): string[] {
-  return (['codex', 'claude'] as const).flatMap((tool) => {
+export function sourceIssues(sources: Record<RemoteTool, RemoteSourceHealth>): string[] {
+  return REMOTE_TOOLS.flatMap((tool) => {
     switch (sources[tool].state) {
       case 'no-access':
         return [`${toolName(tool)}: no access on the Mac.`]
@@ -128,7 +128,7 @@ export type Grouping = 'status' | 'project'
 export interface ListChoices {
   view: ViewId
   grouping: Grouping
-  tool: AgentTool | null
+  tool: RemoteTool | null
 }
 
 export const DEFAULT_CHOICES: ListChoices = { view: 'active', grouping: 'status', tool: null }
@@ -184,7 +184,7 @@ const newestFirst = (a: Row, b: Row): number =>
 
 export function listView(status: RemoteStatus, choices: ListChoices): ListView {
   const rows: Row[] = []
-  const tools = new Set<AgentTool>()
+  const tools = new Set<RemoteTool>()
   let needsAttention = 0
   for (const project of status.projects) {
     for (const session of project.sessions) {
@@ -258,8 +258,8 @@ export function viewSummary(status: RemoteStatus): string {
 
 /** One line per source for the sidebar footer, in the desktop's order. */
 export function sourceLines(
-  sources: Record<AgentTool, RemoteSourceHealth>
-): { tool: AgentTool; name: string; state: RemoteSourceHealth['state']; text: string }[] {
+  sources: Record<RemoteTool, RemoteSourceHealth>
+): { tool: RemoteTool; name: string; state: RemoteSourceHealth['state']; text: string }[] {
   const words: Record<RemoteSourceHealth['state'], string> = {
     off: 'Off',
     checking: 'Checking',
@@ -268,7 +268,7 @@ export function sourceLines(
     connected: 'Connected',
     'no-access': 'No access'
   }
-  return (['codex', 'claude'] as const).map((tool) => ({
+  return REMOTE_TOOLS.map((tool) => ({
     tool,
     name: toolName(tool),
     state: sources[tool].state,

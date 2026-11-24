@@ -19,8 +19,12 @@ import {
   projectRecentMessages,
   REMOTE_MESSAGES_READ_LIMIT
 } from '../../core/remote/recent-messages'
-import type { RemoteSharing } from '../../core/remote/share-policy'
-import { projectRemoteStatus, type RemoteStatus } from '../../core/remote/status-projection'
+import { isRemoteTool, type RemoteSharing } from '../../core/remote/share-policy'
+import {
+  projectRemoteStatus,
+  type RemoteSessionKey,
+  type RemoteStatus
+} from '../../core/remote/status-projection'
 import type { RecentMessages, SessionKey } from '../../core/session'
 import type { SessionsSnapshot } from '../../core/snapshot'
 import { createRateLimiter } from './rate-limit'
@@ -214,8 +218,8 @@ interface Current {
   visible: string
   snapshotId: string
   status: RemoteStatus
-  /** Opaque ID to session key, for exactly the sessions in `status`. Never sent. */
-  sessions: ReadonlyMap<string, SessionKey>
+  /** Opaque ID to remote-eligible session key, for exactly the sessions in `status`. Never sent. */
+  sessions: ReadonlyMap<string, RemoteSessionKey>
 }
 
 /**
@@ -288,15 +292,17 @@ export async function startRemoteListener(
     return current
   }
 
-  /** The keys behind the projected rows, by minting each listed session's ID again. */
-  function projectedSessions(projected: RemoteStatus): Map<string, SessionKey> {
+  /** The eligible keys behind the projected rows, by minting each eligible session's ID again. */
+  function projectedSessions(projected: RemoteStatus): Map<string, RemoteSessionKey> {
     const listed = new Set(
       projected.projects.flatMap((project) => project.sessions.map((s) => s.id))
     )
-    const keys = new Map<string, SessionKey>()
+    const keys = new Map<string, RemoteSessionKey>()
     if (listed.size === 0) return keys
     for (const session of latest.sessions) {
-      const key = { tool: session.key.tool, id: session.key.id }
+      if (!isRemoteTool(session.key.tool)) continue
+      if (latest.health[session.key.tool].state === 'off') continue
+      const key: RemoteSessionKey = { tool: session.key.tool, id: session.key.id }
       const id = mintId(key)
       if (listed.has(id)) keys.set(id, key)
     }
@@ -482,7 +488,7 @@ export async function startRemoteListener(
     if (!details()) return refuse(response, 'details-off', false)
     const before = status()
     const key = before.sessions.get(session)
-    if (key === undefined) return refuse(response, 'not-found', false)
+    if (key === undefined || !isRemoteTool(key.tool)) return refuse(response, 'not-found', false)
     const sleepsBefore = sleeps
     detailReads.add(response)
     let result: MessagesResult | 'not-found'
@@ -500,7 +506,12 @@ export async function startRemoteListener(
     if (!details()) return refuse(response, 'details-off', false)
     const after = status()
     const still = after.sessions.get(session)
-    if (still?.tool !== key.tool || still.id !== key.id) {
+    if (
+      still === undefined ||
+      !isRemoteTool(still.tool) ||
+      still.tool !== key.tool ||
+      still.id !== key.id
+    ) {
       return refuse(response, 'not-found', false)
     }
     if (after.generation !== before.generation) return refuse(response, 'policy-changed', false)
@@ -608,10 +619,10 @@ export async function startRemoteListener(
     port: address.port,
     streamCount: () => streams.size,
     aliasFor(key) {
-      if (closing) return null
+      if (closing || !isRemoteTool(key.tool)) return null
       const { status: projected, sharing } = status()
       if (sharing.shareTitles) return null
-      const id = mintId(key)
+      const id = mintId({ tool: key.tool, id: key.id })
       for (const project of projected.projects) {
         const session = project.sessions.find((row) => row.id === id)
         if (session) return session.title

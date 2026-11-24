@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import {
   isListedWorkspace,
+  isRemoteTool,
   isShareableWorkspace,
   MAX_SHARED_WORKSPACES,
   narrowsSharing,
@@ -528,6 +529,7 @@ export function createRemoteView(options: RemoteViewOptions) {
      * so it matches the page exactly: same policy, generation and opaque-ID order. Null while off.
      */
     aliasFor(key: SessionKey): string | null {
+      if (!isRemoteTool(key.tool)) return null
       return listener?.aliasFor(key) ?? null
     },
 

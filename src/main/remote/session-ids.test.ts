@@ -33,4 +33,11 @@ describe('createSessionIdMinter', () => {
     secret.fill(4)
     expect(mint({ tool: 'codex', id: 'x' })).toBe(before)
   })
+
+  it('refuses to mint an opaque ID for an ineligible tool', () => {
+    const mint = createSessionIdMinter(SECRET_A)
+    expect(() => mint({ tool: 'antigravity' as unknown as 'codex', id: 'raw-ag-1' })).toThrow(
+      /eligible tool/
+    )
+  })
 })

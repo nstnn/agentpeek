@@ -1,8 +1,13 @@
 import type { ToolHealth } from '../health'
-import type { SessionKey, Session, UnknownReason } from '../session'
+import type { Session, UnknownReason } from '../session'
 import type { SessionsSnapshot } from '../snapshot'
-import { AGENT_TOOLS, type AgentTool } from '../tools'
-import { normalizeWorkspace, type RemoteSharing } from './share-policy'
+import {
+  isRemoteTool,
+  normalizeWorkspace,
+  REMOTE_TOOLS,
+  type RemoteSharing,
+  type RemoteTool
+} from './share-policy'
 
 // The Remote View status projection (TASK-009): turns a desktop snapshot into the minimal view a
 // browser may receive. Every field is copied from an explicit allowlist, never by spreading a
@@ -52,10 +57,15 @@ export type RemoteActivity =
   | { state: 'idle' }
   | { state: 'unknown'; reason: UnknownReason }
 
+export interface RemoteSessionKey {
+  tool: RemoteTool
+  id: string
+}
+
 export interface RemoteSession {
   /** Opaque per-viewer ID from the caller's minter; never the tool's own session ID. */
   id: string
-  tool: AgentTool
+  tool: RemoteTool
   /** The tool's title when title sharing is on, otherwise a generic alias such as "Session 2". */
   title: string
   activity: RemoteActivity
@@ -84,7 +94,7 @@ export type RemoteSourceHealth =
 export interface RemoteStatus {
   /** When the desktop snapshot was made. Resending the same view never changes it. */
   observedAt: number
-  sources: Record<AgentTool, RemoteSourceHealth>
+  sources: Record<RemoteTool, RemoteSourceHealth>
   /** Shared projects in label order, including those with no sessions right now. */
   projects: RemoteProject[]
   /** How much the budgets left out, so the viewer can say the list is incomplete. */
@@ -92,10 +102,11 @@ export interface RemoteStatus {
 }
 
 /**
- * Mints the opaque ID for a session. The caller keys it with a Mac-local per-viewer secret (see
- * `src/main/remote/session-ids.ts`); the same secret must give the same ID for the same key.
+ * Mints the opaque ID for a remote-eligible session. The caller keys it with a Mac-local
+ * per-viewer secret (see `src/main/remote/session-ids.ts`); the same secret must give the same ID
+ * for the same key.
  */
-export type SessionIdMinter = (key: SessionKey) => string
+export type SessionIdMinter = (key: RemoteSessionKey) => string
 
 export interface RemoteStatusPolicy extends RemoteSharing {
   mintId: SessionIdMinter
@@ -116,8 +127,11 @@ export function projectRemoteStatus(
   const candidates: { label: string; session: RemoteSession }[] = []
   let omittedSessions = 0
   for (const session of snapshot.sessions) {
+    // Only remote-eligible sources may enter projection, count toward limits, or mint IDs.
+    if (!isRemoteTool(session.key.tool)) continue
+    const tool = session.key.tool
     // A source the owner turned off shares nothing, even from a snapshot that still lists it.
-    if (snapshot.health[session.key.tool].state === 'off') continue
+    if (snapshot.health[tool].state === 'off') continue
     const workspace = normalizeWorkspace(session.summary.workspacePath)
     if (workspace === null || !labels.has(workspace)) continue
     const label = keptLabels.get(workspace)
@@ -125,7 +139,7 @@ export function projectRemoteStatus(
       omittedSessions += 1
       continue
     }
-    candidates.push({ label, session: projectSession(session, policy) })
+    candidates.push({ label, session: projectSession(session, tool, policy) })
   }
 
   candidates.sort((a, b) => compareSessions(a.session, b.session))
@@ -136,8 +150,8 @@ export function projectRemoteStatus(
   for (const row of rows) byLabel.get(row.label)?.push(row.session)
   for (const sessions of byLabel.values()) assignAliases(sessions, policy.shareTitles)
 
-  const sources = {} as Record<AgentTool, RemoteSourceHealth>
-  for (const tool of AGENT_TOOLS) sources[tool] = projectHealth(snapshot.health[tool])
+  const sources = {} as Record<RemoteTool, RemoteSourceHealth>
+  for (const tool of REMOTE_TOOLS) sources[tool] = projectHealth(snapshot.health[tool])
 
   return {
     observedAt: snapshot.takenAt,
@@ -150,11 +164,15 @@ export function projectRemoteStatus(
   }
 }
 
-function projectSession(session: Session, policy: RemoteStatusPolicy): RemoteSession {
+function projectSession(
+  session: Session,
+  tool: RemoteTool,
+  policy: RemoteStatusPolicy
+): RemoteSession {
   const title = policy.shareTitles ? cleanText(session.summary.title ?? '') : ''
   return {
-    id: policy.mintId({ tool: session.key.tool, id: session.key.id }),
-    tool: session.key.tool,
+    id: policy.mintId({ tool, id: session.key.id }),
+    tool,
     // Filled with an alias later when titles are hidden, or when the tool has no usable title.
     title,
     activity: projectActivity(session.activity),

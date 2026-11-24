@@ -1,9 +1,16 @@
+import { createHmac } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { decodeMessages, REMOTE_ROUTES, type StatusFrame } from '../../core/remote/protocol'
 import type { RemoteSharing } from '../../core/remote/share-policy'
-import type { RecentMessages, Session, SessionKey } from '../../core/session'
+import {
+  sessionKeyToString,
+  type RecentMessages,
+  type Session,
+  type SessionKey
+} from '../../core/session'
 import { createSnapshot, type SessionsSnapshot } from '../../core/snapshot'
 import type { ToolHealth } from '../../core/health'
+import type { AgentTool } from '../../core/tools'
 import { testSession } from '../test-support'
 import { freePort, HOST, OWNER_HEADERS, OWNER, send, subscribe } from './http-test-support'
 import { startRemoteListener, type RemoteListener, type RemoteListenerOptions } from './listener'
@@ -358,6 +365,53 @@ describe('recent-messages policy changes during the read', () => {
     const pending = h.get(CODEX)
     await expect.poll(gate.started).toBe(1)
     h.policy.snapshot = snapshot({}, 3)
+    h.listener.publish(h.policy.snapshot)
+    gate.release()
+    expect((await pending).status).toBe(200)
+  })
+
+  it('refuses a forged opaque ID for an ineligible Antigravity session in a mixed shared workspace without reading', async () => {
+    const ANTIGRAVITY = 'antigravity' as unknown as AgentTool
+    const AG_KEY: SessionKey = { tool: ANTIGRAVITY, id: 'SENTINEL-AG-RAW-ID' }
+    const forgedId = createHmac('sha256', Buffer.from(SECRET))
+      .update(sessionKeyToString(AG_KEY))
+      .digest()
+      .subarray(0, 16)
+      .toString('base64url')
+    const base = snapshot()
+    const mixed: SessionsSnapshot = {
+      ...base,
+      sessions: [...base.sessions, session(AG_KEY, SHARED)],
+      health: {
+        ...base.health,
+        antigravity: { state: 'connected', lastReadAt: 1 }
+      } as SessionsSnapshot['health']
+    }
+    const reader = answering()
+    const h = await start(reader, { snapshot: mixed })
+    const reply = await h.get(forgedId)
+    expect(reply.status).toBe(404)
+    expect(error(reply.body)).toBe('not-found')
+    generic(reply.body)
+    expect(reader).not.toHaveBeenCalled()
+  })
+
+  it('completes an eligible read even when Antigravity-only changes arrive during the read', async () => {
+    const ANTIGRAVITY = 'antigravity' as unknown as AgentTool
+    const AG_KEY: SessionKey = { tool: ANTIGRAVITY, id: 'SENTINEL-AG-MID-READ' }
+    const gate = gatedReader()
+    const h = await start(gate.reader)
+    const pending = h.get(CODEX)
+    await expect.poll(gate.started).toBe(1)
+    const base = snapshot({}, 4)
+    h.policy.snapshot = {
+      ...base,
+      sessions: [...base.sessions, session(AG_KEY, SHARED)],
+      health: {
+        ...base.health,
+        antigravity: { state: 'off' }
+      } as SessionsSnapshot['health']
+    }
     h.listener.publish(h.policy.snapshot)
     gate.release()
     expect((await pending).status).toBe(200)

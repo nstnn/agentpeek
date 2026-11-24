@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto'
+import { isRemoteTool } from '../../core/remote/share-policy'
 import type { SessionIdMinter } from '../../core/remote/status-projection'
 import { sessionKeyToString } from '../../core/session'
 
@@ -15,10 +16,14 @@ export function createSessionIdMinter(secret: Uint8Array): SessionIdMinter {
     throw new Error('Remote View session ID secret is too short')
   }
   const key = Buffer.from(secret)
-  return (sessionKey) =>
-    createHmac('sha256', key)
+  return (sessionKey) => {
+    if (!isRemoteTool(sessionKey.tool)) {
+      throw new Error('Remote View session ID requires an eligible tool')
+    }
+    return createHmac('sha256', key)
       .update(sessionKeyToString(sessionKey))
       .digest()
       .subarray(0, 16)
       .toString('base64url')
+  }
 }

@@ -1,9 +1,11 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
+import type { AgentTool } from '../../core/tools'
 import type { RemoteSettingsView, RemoteStatusView } from '../../shared/remote-settings'
 import { App } from './App'
 import { SettingsDialog } from './SettingsDialog'
+import { useRemoteAlias } from './remote-status'
 import { createSessionsStore } from './sessions-store'
 import { fakeApi, session, snapshot } from '../test-support'
 
@@ -142,6 +144,18 @@ describe('Remote View alias in the session detail', () => {
     await open()
     expect(f.api.getRemoteAlias).not.toHaveBeenCalled()
     expect(alias()).toBeNull()
+  })
+
+  it('does not ask for an ineligible tool even while Remote View is on', () => {
+    const f = fakeApi(snapshot())
+    const ANTIGRAVITY = 'antigravity' as unknown as AgentTool
+    function Probe() {
+      const value = useRemoteAlias(f.api, { tool: ANTIGRAVITY, id: 'ag-1' }, on(), 1)
+      return <span data-testid="probe">{value ?? 'none'}</span>
+    }
+    render(<Probe />)
+    expect(screen.getByTestId('probe').textContent).toBe('none')
+    expect(f.api.getRemoteAlias).not.toHaveBeenCalled()
   })
 })
 

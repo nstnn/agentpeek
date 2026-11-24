@@ -1,10 +1,24 @@
 import type { SessionsSnapshot } from '../snapshot'
-import { AGENT_TOOLS } from '../tools'
+import type { AgentTool } from '../tools'
 
 // The Remote View sharing policy (TASK-015): which exact workspace folders the owner shares and
 // whether session titles go with them. It is Mac-local: the desktop chooses folders from the
 // sessions it already lists, and a remote request never names a path. Pure, so the projection and
 // the main process apply the same rules.
+
+/**
+ * The explicit allowlist of desktop sources approved for Remote View (scope decision 7,
+ * CONSTRAINT-004). Kept separate from `AGENT_TOOLS` so adding a desktop source never widens the
+ * remote wire contract, health map, workspace eligibility, or message lookup.
+ */
+export const REMOTE_TOOLS = ['codex', 'claude'] as const satisfies readonly AgentTool[]
+
+export type RemoteTool = (typeof REMOTE_TOOLS)[number]
+
+/** Checks whether a tool is approved for Remote View before projecting, validating or resolving. */
+export function isRemoteTool(value: unknown): value is RemoteTool {
+  return typeof value === 'string' && (REMOTE_TOOLS as readonly string[]).includes(value)
+}
 
 export interface RemoteSharing {
   /** Exact workspace folders, each in `normalizeWorkspace` form. Children and worktrees are not included. */
@@ -44,10 +58,16 @@ export function isShareableWorkspace(value: unknown): value is string {
   )
 }
 
-/** The exact folder of a session the snapshot lists, which is the only folder the owner can add. */
+/**
+ * The exact folder of a remote-eligible, active-source session the snapshot lists, which is the
+ * only folder the owner can add. Ineligible sources never make a folder shareable.
+ */
 export function isListedWorkspace(snapshot: SessionsSnapshot, workspace: string): boolean {
   return snapshot.sessions.some(
-    (session) => normalizeWorkspace(session.summary.workspacePath) === workspace
+    (session) =>
+      isRemoteTool(session.key.tool) &&
+      snapshot.health[session.key.tool].state !== 'off' &&
+      normalizeWorkspace(session.summary.workspacePath) === workspace
   )
 }
 
@@ -58,9 +78,9 @@ export function narrowsSharing(previous: RemoteSharing, next: RemoteSharing): bo
   return previous.sharedWorkspaces.some((workspace) => !kept.has(workspace))
 }
 
-/** True when a tool that was on in `previous` is off in `next`: its rows must go at once. */
+/** True when a remote-eligible tool that was on in `previous` is off in `next`: its rows must go at once. */
 export function sourceTurnedOff(previous: SessionsSnapshot, next: SessionsSnapshot): boolean {
-  return AGENT_TOOLS.some(
+  return REMOTE_TOOLS.some(
     (tool) => previous.health[tool].state !== 'off' && next.health[tool].state === 'off'
   )
 }

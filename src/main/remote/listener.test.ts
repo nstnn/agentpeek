@@ -1,10 +1,12 @@
 import { createServer } from 'node:http'
 import { networkInterfaces } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ToolHealth } from '../../core/health'
 import { REMOTE_LIMITS, type RemoteFrame, type StatusFrame } from '../../core/remote/protocol'
 import { REMOTE_SESSION_FIELDS } from '../../core/remote/status-projection'
 import type { Session } from '../../core/session'
 import { createSnapshot, type SessionsSnapshot } from '../../core/snapshot'
+import type { AgentTool } from '../../core/tools'
 import { testSession } from '../test-support'
 import { accepts, freePort, HOST, OWNER, OWNER_HEADERS, send, subscribe } from './http-test-support'
 import { NOTHING_SHARED, type RemoteSharing } from '../../core/remote/share-policy'
@@ -453,5 +455,73 @@ describe('remote listener close', () => {
     expect(timers().length).toBe(before)
     await new Promise((done) => setTimeout(done, REMOTE_LIMITS.minStatusIntervalMs + 100))
     expect(viewer.frames).toHaveLength(2)
+  })
+})
+
+describe('remote listener ineligible source isolation (CONSTRAINT-004)', () => {
+  const ANTIGRAVITY = 'antigravity' as unknown as AgentTool
+  const AG_KEY = { tool: ANTIGRAVITY, id: 'SENTINEL-AG-ID' }
+
+  function mixedSnapshot(
+    agSessions: Session[],
+    agHealth: ToolHealth,
+    takenAt: number
+  ): SessionsSnapshot {
+    const base = snapshot([...sessions(5), ...agSessions], takenAt)
+    return {
+      ...base,
+      health: {
+        ...base.health,
+        antigravity: agHealth
+      } as SessionsSnapshot['health']
+    }
+  }
+
+  const agSession = (lastActivityAt: number, title = 'SENTINEL-AG-TITLE'): Session =>
+    testSession({
+      key: AG_KEY,
+      summary: {
+        title,
+        workspacePath: SHARED,
+        lastActivityAt,
+        toolVersion: '2.34.0'
+      },
+      activity: { state: 'running' }
+    })
+
+  it('excludes Antigravity rows, health, and aliases and ignores Antigravity-only changes', async () => {
+    let latest = mixedSnapshot([agSession(50)], { state: 'connected', lastReadAt: 1 }, 1)
+    const listener = await start({ snapshot: () => latest })
+    const viewer = subscribe(listener.port)
+    await expect.poll(() => viewer.frames.length).toBe(1)
+
+    const initial = statuses(viewer.frames)[0]!
+    expect(Object.keys(initial.status.sources)).toEqual(['codex', 'claude'])
+    expect(initial.status.projects[0]!.sessions).toHaveLength(1)
+    expect(initial.status.projects[0]!.sessions[0]!.tool).toBe('codex')
+    expect(viewer.raw.join('')).not.toMatch(/antigravity|SENTINEL-AG/)
+    expect(listener.aliasFor(AG_KEY)).toBeNull()
+    expect(listener.aliasFor({ tool: 'codex', id: SENTINELS.rawId })).toBe('Session 1')
+
+    // Antigravity-only activity, title, and health changes produce no new visible frame.
+    latest = mixedSnapshot(
+      [agSession(999, 'SENTINEL-AG-UPDATED')],
+      { state: 'no-access', lastReadAt: null },
+      2
+    )
+    listener.publish(latest)
+    latest = mixedSnapshot([], { state: 'off' }, 3)
+    listener.publish(latest)
+    await new Promise((done) => setTimeout(done, REMOTE_LIMITS.minStatusIntervalMs + 100))
+    expect(viewer.frames).toHaveLength(1)
+
+    // A stream opened afterwards still sees the unchanged snapshotId and observedAt.
+    const later = subscribe(listener.port)
+    await expect.poll(() => later.frames.length).toBe(1)
+    expect(statuses(later.frames)[0]).toMatchObject({
+      snapshotId: initial.snapshotId,
+      observedAt: 1
+    })
+    later.disconnect()
   })
 })
