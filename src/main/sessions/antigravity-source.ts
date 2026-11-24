@@ -218,6 +218,7 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
 
   async function refresh(changedPaths: readonly string[]): Promise<AntigravityConversationFacts[]> {
     let readAny = false
+    let recognizedTranscript = false
     for (const path of new Set(changedPaths)) {
       const kind = classifyAntigravityPath(paths, path)
       if (kind.kind === 'other') continue
@@ -229,9 +230,14 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
       }
       older.delete(id)
       const file = await statTranscript(paths, id)
-      const entry =
-        file === null ? undefined : eligibleEntry(file, await inspectTranscript(file, true))
-      if (file === null) inspected.delete(id)
+      let entry: TrackedConversation | undefined
+      if (file === null) {
+        inspected.delete(id)
+      } else {
+        const result = await inspectTranscript(file, true)
+        if (result.kind === 'user' || result.kind === 'excluded') recognizedTranscript = true
+        entry = eligibleEntry(file, result)
+      }
       if (entry === undefined) {
         tracked.delete(id)
         titles.delete(id)
@@ -241,7 +247,10 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
     }
     keep([...tracked.values()])
     await readTitles({ onlyMissing: true })
-    if (readAny && health.state === 'connected') {
+    if (
+      readAny &&
+      (health.state === 'connected' || (health.state === 'unsupported' && recognizedTranscript))
+    ) {
       lastReadAt = now()
       health = { state: 'connected', lastReadAt }
     }
@@ -518,7 +527,7 @@ function newestFirst(a: TrackedConversation, b: TrackedConversation): number {
 }
 
 export interface AntigravitySourceOptions extends AntigravityReaderOptions {
-  /** Whether Antigravity Desktop is running. Tests and fixture mode pass their own. */
+  /** Whether Antigravity Desktop is confirmed running. Tests and fixture mode pass their own. */
   isAppRunning?: () => Promise<boolean>
 }
 
@@ -545,7 +554,7 @@ export function createAntigravitySource(options: AntigravitySourceOptions): Sess
     if (!conversations.some((conversation) => conversation.lastTurnStep === 'open')) return
     const at = now()
     if (appCheck !== null && at - appCheck.at < APP_CHECK_MAX_AGE_MS) return
-    const running = await isAppRunning().catch(() => true)
+    const running = await isAppRunning().catch(() => false)
     appCheck = { at, running }
   }
 
@@ -553,7 +562,7 @@ export function createAntigravitySource(options: AntigravitySourceOptions): Sess
     return serialized(async () => {
       const conversations = await task()
       await checkApp(conversations)
-      const appRunning = appCheck?.running ?? true
+      const appRunning = appCheck?.running ?? false
       return conversations.map((conversation) =>
         antigravitySessionFacts({ ...conversation, appRunning })
       )

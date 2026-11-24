@@ -12,10 +12,11 @@ import {
   writeFile
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentTool } from '../../core/tools'
 import { type AccessGate, AccessRefusedError, createAccessGate } from './access'
+import { antigravityPaths, transcriptPath } from './antigravity-files'
 import { codexPaths } from './codex-files'
 import {
   type ChangeListener,
@@ -165,6 +166,36 @@ function folderWatch(tool: AgentTool): FakeWatch {
 function reported(): string[] {
   return listener.mock.calls.flatMap(([, paths]) => paths)
 }
+
+it('checks Antigravity folder events against the access gate before reading metadata', async () => {
+  const paths = antigravityPaths(root)
+  const valid = transcriptPath(paths, '00000000-0000-4000-8000-000000000001')
+  const refused = transcriptPath(paths, '00000000-0000-4000-8000-000000000002')
+  const outside = join(root, 'outside')
+  const outsideFile = join(outside, 'transcript.jsonl')
+  await mkdir(dirname(valid), { recursive: true })
+  await writeFile(valid, '{}\n')
+  await mkdir(outside)
+  await writeFile(outsideFile, '{}\n')
+  await mkdir(dirname(dirname(refused)), { recursive: true })
+  await symlink(outside, dirname(refused))
+  const started = start({ folders: sessionFolderWatches(root), gate: createAccessGate(root) })
+  await started.watchFolders(['antigravity'])
+  const [brain] = active(paths.brain)
+  if (brain === undefined) throw new Error('No watch on the Antigravity brain folder.')
+
+  brain.emit('change', relative(paths.brain, refused))
+  brain.emit('change', relative(paths.brain, valid))
+  await waitForReport(valid)
+  expect(reported()).toEqual([refused, valid])
+  expect(lstat).toHaveBeenCalledWith(valid, { bigint: true })
+  expect(lstat).not.toHaveBeenCalledWith(refused, expect.anything())
+  expect(lstat).not.toHaveBeenCalledWith(outsideFile, expect.anything())
+
+  await rm(valid)
+  brain.emit('rename', relative(paths.brain, valid))
+  await waitForReport(valid, 2)
+})
 
 async function waitForReport(path: string, times = 1): Promise<void> {
   await vi.waitFor(() => {
