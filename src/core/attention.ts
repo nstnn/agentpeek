@@ -30,6 +30,8 @@ export function deriveAttention(input: AttentionInput): SessionAttention {
 function isUnread(reply: SessionReply, local: SessionLocalState, baselineAt: number): boolean {
   // A newer turn started in the tool, so the user has seen this reply or error there.
   if (reply.newerTurnStarted) return false
+  // An estimated completion time cannot establish that this reply is new.
+  if (reply.completedAtEstimated) return false
   // It finished before AgentPeek first read this tool.
   if (reply.completedAt <= baselineAt) return false
   const cursor = reply.isError ? local.acknowledgedErrorCursor : local.seenCursor

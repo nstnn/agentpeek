@@ -77,6 +77,8 @@ export interface SessionReply {
   /** The read cursor: the Codex `turn_id`, or the `uuid` of Claude Code's assistant record. */
   cursor: string
   completedAt: number
+  /** True when a file timestamp substitutes for an unrecognized completion timestamp. */
+  completedAtEstimated?: true
   isError: boolean
   /** For an error, the tool's code, such as `server_overloaded` or `rate_limit`. */
   errorCode: string | null

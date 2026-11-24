@@ -67,23 +67,27 @@ const CARRIAGE_RETURN = 0x0d
 const SPACE = 0x20
 const TAB = 0x09
 
-/** Reads the first complete, non-blank line, reading at most `maxBytes`. */
+/** Reads the first complete, non-blank line accepted by `matches`, up to `maxBytes`. */
 export async function readFirstLine(
   gate: AccessGate,
   path: string,
-  maxBytes = FIRST_LINE_MAX_BYTES
+  maxBytes = FIRST_LINE_MAX_BYTES,
+  matches: (line: string) => boolean = () => true
 ): Promise<FirstLineResult> {
   const handle = await gate.open(path)
   try {
     let data = Buffer.alloc(0)
+    let checked = 0
     while (data.length < maxBytes) {
       const length = Math.min(CHUNK_BYTES, maxBytes - data.length)
       const chunk = await readAt(handle, data.length, length)
       data = Buffer.concat([data, chunk])
-      const [first] = findCompleteLines(data, true).lines
-      if (first !== undefined) {
-        return { kind: 'line', line: decode(data, first), bytesRead: data.length }
+      const { lines, unfinishedLineStart } = findCompleteLines(data.subarray(checked), true)
+      for (const range of lines) {
+        const line = decode(data.subarray(checked), range)
+        if (matches(line)) return { kind: 'line', line, bytesRead: data.length }
       }
+      checked += unfinishedLineStart ?? 0
       // A short read means the end of the file.
       if (chunk.length < length) return { kind: 'none', bytesRead: data.length }
     }

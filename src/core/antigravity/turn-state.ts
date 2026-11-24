@@ -6,7 +6,8 @@ import { type AntigravityRecord, isFinalReply, replyCursor } from './records'
 //
 // Antigravity writes a step only when it completes, never while it runs (TASK-001). So the last
 // step tells whether a turn looks open: a prompt, a step that asked for tools, or a tool result
-// leave it open; a final reply or a canceled step end it. A subagent kill left no record at all,
+// leave it open; a final reply or a recognized cancellation ends it. A subagent kill left no
+// terminal record at all,
 // so an open-looking turn may have stopped; the service decides how long to trust it (DECISION-004).
 
 export interface AntigravityTurnState {
@@ -17,20 +18,22 @@ export interface AntigravityTurnState {
   lastTurnStep: 'open' | 'ended' | null
   /** The latest final reply (see `SessionReply`). Antigravity has no verified turn-level error. */
   lastReply: SessionReply | null
+  lastReplyStep: number | null
   /** The time of the newest step read, or null when none was read. */
   lastRecordAt: number | null
   /** The highest `step_index` read. A step at or below it is a replay and is ignored. */
   lastStep: number | null
-  /** Whether a user prompt was read: subagent transcripts have none (DECISION-001). */
-  hasUserInput: boolean
+  /** Newest user prompt read. Subagent transcripts have none (DECISION-001). */
+  lastUserStep: number | null
 }
 
 export const EMPTY_ANTIGRAVITY_TURN_STATE: AntigravityTurnState = {
   lastTurnStep: null,
   lastReply: null,
+  lastReplyStep: null,
   lastRecordAt: null,
   lastStep: null,
-  hasUserInput: false
+  lastUserStep: null
 }
 
 /** Applies records, oldest first, to the state. */
@@ -38,22 +41,21 @@ export function foldAntigravityRecords(
   state: AntigravityTurnState,
   records: readonly AntigravityRecord[]
 ): AntigravityTurnState {
-  let { lastTurnStep, lastReply, lastRecordAt, lastStep, hasUserInput } = state
+  let { lastTurnStep, lastReply, lastReplyStep, lastRecordAt, lastStep, lastUserStep } = state
   for (const record of records) {
+    if (record.kind === 'system-message' || record.kind === 'other') continue
     // Steps are appended in order. A step seen again (a replayed or duplicated line) must not move
     // the state back or announce an old reply as new.
     if (lastStep !== null && record.step <= lastStep) continue
     lastStep = record.step
     lastRecordAt = lastRecordAt === null ? record.at : Math.max(lastRecordAt, record.at)
-    if (record.kind === 'system-message' || record.kind === 'other') continue
     if (record.status === 'canceled') {
-      // A stop: the turn is over, without a reply or an error.
       lastTurnStep = 'ended'
       continue
     }
     switch (record.kind) {
       case 'user-input':
-        hasUserInput = true
+        lastUserStep = record.step
         lastTurnStep = 'open'
         // A newer prompt means the user has seen the previous reply in Antigravity.
         if (lastReply !== null && !lastReply.newerTurnStarted) {
@@ -63,9 +65,11 @@ export function foldAntigravityRecords(
       case 'planner-response':
         if (isFinalReply(record)) {
           lastTurnStep = 'ended'
+          lastReplyStep = record.step
           lastReply = {
             cursor: replyCursor(record),
             completedAt: record.at,
+            ...(record.stamp === null ? { completedAtEstimated: true } : {}),
             isError: false,
             errorCode: null,
             newerTurnStarted: false
@@ -80,5 +84,5 @@ export function foldAntigravityRecords(
         break
     }
   }
-  return { lastTurnStep, lastReply, lastRecordAt, lastStep, hasUserInput }
+  return { lastTurnStep, lastReply, lastReplyStep, lastRecordAt, lastStep, lastUserStep }
 }

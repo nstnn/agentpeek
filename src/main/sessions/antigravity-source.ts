@@ -19,10 +19,11 @@ import {
   isConversationId,
   listTranscripts,
   statTranscript,
+  transcriptSignature,
   type TranscriptFile
 } from './antigravity-files'
 import { statFile } from './claude-files'
-import { type JsonlCursor, readFirstLine, readLastLines, readNewLines } from './jsonl-reader'
+import { readFirstLine, readLastLines } from './jsonl-reader'
 import { DEFAULT_LISTING_RANGE, type ListingRange } from './session-source'
 import { readSmallFile } from './small-file-reader'
 import { createQueue, isMissing } from './source-support'
@@ -32,11 +33,11 @@ import { createQueue, isMissing } from './source-support'
 // activity and attention.
 // - Which conversations: at each reconcile, a metadata-only listing of `brain/` finds the
 //   transcripts and their modification times. The newest in the listing range (7 days by default)
-//   are sorted out by their first step, read once per file: a user prompt lists the conversation, a
-//   system message marks a subagent transcript, which is never listed (DECISION-001). Up to the
+//   are classified with bounded reads. A user prompt is required and an initial system message
+//   marks a subagent transcript (DECISION-001). Unchanged classifications are reused. Up to the
 //   range's cap (50 by default) are kept, plus saved pins.
-// - Turns: a kept transcript's tail is read once, then only the steps Antigravity appends (from a
-//   cursor). A replaced, cut, or rewritten file is read again from its tail.
+// - Turns: each changed version is read from a bounded tail. This keeps facts and detail on the
+//   same version even when a rewrite keeps the inode and grows the file.
 // - Titles: `annotations/<id>.pbtxt`, read only for listed conversations and only when the file
 //   changed (DECISION-002). The workspace is never known: `null`.
 // - Live updates: Antigravity opens, appends, and closes the transcript on every step, so a folder
@@ -73,7 +74,7 @@ export interface AntigravityConversationFacts {
   fileStatus: AntigravityFileStatus
   /** See `AntigravityTurnState.lastTurnStep`. */
   lastTurnStep: 'open' | 'ended' | null
-  /** The latest final reply. Its cursor is `<step_index>:<created_at>`. */
+  /** The latest final reply. Its cursor is stable across rereads of the same record. */
   lastReply: SessionReply | null
 }
 
@@ -90,37 +91,28 @@ export interface AntigravityReader {
 
 /** A listed conversation and what has been read of it. */
 interface TrackedConversation {
-  conversationId: string
-  path: string
-  modifiedAt: number
-  /** Where the next read starts, or null when the tail must be read again. */
-  cursor: JsonlCursor | null
+  file: TranscriptFile
   state: AntigravityTurnState
   status: AntigravityFileStatus
 }
 
-/** What a transcript's first step says about the conversation. */
-type FirstStep =
-  // A user prompt: a conversation to list.
-  | 'user'
-  // A system message: a subagent transcript, never listed.
-  | 'subagent'
-  // Another step, or a first line over the cap: listed only if its tail holds a user prompt.
-  | 'other'
-  // A first line without the step fields: Antigravity has changed its format.
-  | 'unrecognized'
-
-/** The result of looking up a transcript's first step, or why it was not read. */
-type FirstStepLookup = FirstStep | 'not-yet' | 'skip'
+type Inspection =
+  { kind: 'user'; entry: TrackedConversation } | { kind: 'excluded' | 'unsupported' | 'unreadable' }
 
 /**
  * The tail read of a transcript, in growing steps. It stops at the first step that holds a turn
  * step. Antigravity cuts long fields to about 4 KB in `transcript.jsonl`, so steps are small.
  */
 const TAIL_STEPS_BYTES = [256 * 1024, 2 * 1024 * 1024] as const
+const PREFIX_MAX_BYTES = 256 * 1024
 
-/** The most that is read of the steps added since the cursor. More starts over from the tail. */
-const NEW_LINES_MAX_BYTES = 4 * 1024 * 1024
+/**
+ * How many recent candidates one listing may newly read and reject, per listed session (at least
+ * `MIN_REJECT_BUDGET`). Subagent transcripts often outnumber conversations, so the budget must reach
+ * past them on the first listing.
+ */
+const REJECT_BUDGET_PER_SESSION = 4
+const MIN_REJECT_BUDGET = 8
 
 /** The tail read for the detail's messages. */
 const MESSAGES_TAIL_BYTES = 2 * 1024 * 1024
@@ -137,20 +129,20 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
   const now = options.now ?? Date.now
   const range = () => options.range?.() ?? DEFAULT_LISTING_RANGE
 
-  /** First steps read so far, by conversation ID, with the file identity they were read from. */
-  const firstSteps = new Map<string, { fileId: string; step: FirstStep }>()
-  /** The listed conversations, by conversation ID. */
+  const inspected = new Map<string, { signature: string; result: Inspection }>()
   const tracked = new Map<string, TrackedConversation>()
-  /** Titles of listed conversations, with the annotation signature they were read at. */
+  // A rewrite cannot undo a later user prompt already observed for this UUID.
+  const promptSteps = new Map<string, number>()
   const titles = new Map<string, { signature: string | null; title: string | null }>()
+  const older = new Set<string>()
   let health: ToolHealth = { state: 'checking' }
   let lastReadAt: number | null = null
-  let older = false
   const serialized = createQueue()
 
   async function reconcile(): Promise<AntigravityConversationFacts[]> {
     const startedAt = now()
     const { windowMs, maxPerTool } = range()
+    older.clear()
     let files: TranscriptFile[]
     try {
       files = await listTranscripts(paths)
@@ -158,38 +150,56 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
       health = isMissing(error) ? { state: 'not-installed' } : { state: 'no-access', lastReadAt }
       tracked.clear()
       titles.clear()
-      firstSteps.clear()
+      inspected.clear()
       return []
     }
     const present = new Set(files.map((file) => file.conversationId))
-    for (const id of firstSteps.keys()) if (!present.has(id)) firstSteps.delete(id)
+    for (const id of inspected.keys()) if (!present.has(id)) inspected.delete(id)
 
     const pins = new Set(options.pinnedIds?.() ?? [])
-    const remainingPins = new Set([...pins].filter((id) => present.has(id)))
     let recentCount = 0
+    // Bound the new reads spent on recent candidates that are not listed (subagents, unsupported or
+    // unreadable files). Listed ones are bounded by the cap. Rejected versions are cached, so a later
+    // listing (such as Load Older Sessions) goes further.
+    let rejectBudget = Math.max(MIN_REJECT_BUDGET, REJECT_BUDGET_PER_SESSION * maxPerTool)
+    // Confirm more than one omitted conversation so removing one does not hide another.
+    let olderBudget = Math.max(2, maxPerTool)
     let recognized = 0
-    let unrecognized = 0
-    older = false
+    let unsupported = 0
     const kept: TrackedConversation[] = []
     for (const file of files.sort(newestFileFirst)) {
-      const recentCandidate = startedAt - file.modifiedAt <= windowMs && recentCount < maxPerTool
-      const pinned = pins.has(file.conversationId)
-      if (!recentCandidate && !pinned) {
-        older = true
-        if (remainingPins.size === 0) break
+      const id = file.conversationId
+      const pinned = pins.has(id)
+      const recent = startedAt - file.modifiedAt <= windowMs && recentCount < maxPerTool
+      const cached = cachedInspection(file)
+      if (!pinned && cached === undefined) {
+        if (recent) {
+          if (rejectBudget <= 0) {
+            // Not classified yet: it may be a conversation, so offer to look further.
+            older.add(id)
+            continue
+          }
+        } else {
+          if (olderBudget <= 0) {
+            // SessionSource allows an approximate older hint for candidates beyond the read budget.
+            older.add(id)
+            continue
+          }
+          olderBudget--
+        }
+      }
+      const result = cached ?? (await inspectTranscript(file))
+      if (result.kind === 'unsupported') unsupported++
+      else if (result.kind !== 'unreadable') recognized++
+      const entry = eligibleEntry(file, result)
+      if (entry === undefined) {
+        if (!pinned && recent && cached === undefined) rejectBudget--
         continue
       }
-      remainingPins.delete(file.conversationId)
-      const first = await firstStep(file)
-      if (first === 'unrecognized') unrecognized++
-      else if (first !== 'not-yet' && first !== 'skip') recognized++
-      if (first === 'not-yet' || first === 'skip' || first === 'subagent') continue
-      if (first === 'unrecognized') continue
-      const entry = tracked.get(file.conversationId) ?? newEntry(file)
-      entry.path = file.path
-      entry.modifiedAt = file.modifiedAt
-      if (!(await readTranscript(entry, { requireUserInput: first === 'other' }))) continue
-      if (first === 'other' && !entry.state.hasUserInput) continue
+      if (!pinned && !recent) {
+        if (result.kind === 'user') older.add(id)
+        continue
+      }
       kept.push(entry)
       if (!pinned) recentCount++
     }
@@ -197,9 +207,8 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
     await readTitles()
 
     lastReadAt = startedAt
-    // Every first step is in a format AgentPeek does not know: Antigravity has changed its format.
     health =
-      recognized === 0 && unrecognized > 0
+      recognized === 0 && unsupported > 0
         ? { state: 'unsupported', toolVersion: null }
         : { state: 'connected', lastReadAt: startedAt }
     return facts()
@@ -211,24 +220,24 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
       const kind = classifyAntigravityPath(paths, path)
       if (kind.kind === 'other') continue
       readAny = true
+      const id = kind.conversationId
       if (kind.kind === 'annotation') {
-        if (tracked.has(kind.conversationId)) await readTitle(kind.conversationId)
+        if (tracked.has(id)) await readTitle(id)
         continue
       }
-      const entry = tracked.get(kind.conversationId)
+      older.delete(id)
+      const file = await statTranscript(paths, id)
+      const entry =
+        file === null ? undefined : eligibleEntry(file, await inspectTranscript(file, true))
+      if (file === null) inspected.delete(id)
       if (entry === undefined) {
-        await discover(kind.conversationId)
-      } else if (
-        !(await readTranscript(entry, {
-          requireUserInput: firstSteps.get(kind.conversationId)?.step === 'other'
-        }))
-      ) {
-        tracked.delete(kind.conversationId)
-        titles.delete(kind.conversationId)
+        tracked.delete(id)
+        titles.delete(id)
+      } else {
+        tracked.set(id, entry)
       }
     }
     keep([...tracked.values()])
-    // Title changes arrive as annotation paths; here only newly listed conversations need one.
     await readTitles({ onlyMissing: true })
     if (readAny && health.state === 'connected') {
       lastReadAt = now()
@@ -237,77 +246,130 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
     return facts()
   }
 
-  /** A transcript the watcher reported that is not listed yet: a new or a resumed conversation. */
-  async function discover(conversationId: string): Promise<void> {
-    const file = await statTranscript(paths, conversationId)
-    if (file === null) return
-    const first = await firstStep(file)
-    if (first !== 'user' && first !== 'other') return
-    const entry = newEntry(file)
-    if (!(await readTranscript(entry, { requireUserInput: first === 'other' }))) return
-    if (first === 'other' && !entry.state.hasUserInput) return
-    tracked.set(conversationId, entry)
+  function cachedInspection(file: TranscriptFile): Inspection | undefined {
+    const cached = inspected.get(file.conversationId)
+    return cached?.signature === file.signature ? cached.result : undefined
   }
 
-  async function firstStep(file: TranscriptFile): Promise<FirstStepLookup> {
-    const fileId = file.signature.split(':').slice(0, 2).join(':')
-    const cached = firstSteps.get(file.conversationId)
-    if (cached !== undefined && cached.fileId === fileId) return cached.step
-    let step: FirstStep
-    try {
-      const first = await readFirstLine(gate, file.path)
-      if (first.kind === 'none') return 'not-yet'
-      step = first.kind === 'too-long' ? 'other' : classifyFirstStep(parseRecord(first.line))
-    } catch {
-      return 'skip'
+  function eligibleEntry(
+    file: TranscriptFile,
+    result: Inspection
+  ): TrackedConversation | undefined {
+    if (result.kind === 'user') return result.entry
+    const previous = tracked.get(file.conversationId)
+    if (result.kind === 'unreadable' && previous?.file.fileId === file.fileId) {
+      return { ...previous, file, status: 'unreadable' }
     }
-    firstSteps.set(file.conversationId, { fileId, step })
-    return step
+    return undefined
   }
 
-  /** Reads what is new in a transcript. Returns false when the file is gone. */
-  async function readTranscript(
-    entry: TrackedConversation,
-    options: { requireUserInput?: boolean } = {}
-  ): Promise<boolean> {
-    try {
-      if (entry.cursor !== null) {
-        const added = await readNewLines(gate, entry.path, entry.cursor, {
-          maxBytes: NEW_LINES_MAX_BYTES
-        })
-        if (added.kind === 'lines') {
-          const records = parseRecords(added.lines)
-          entry.cursor = added.cursor
-          entry.state = foldAntigravityRecords(entry.state, records)
-          if (records.length > 0) entry.status = 'read'
-          return true
+  /** Check the descriptor against the no-symlink stat before any transcript bytes are read. */
+  function transcriptGate(file: TranscriptFile): AccessGate {
+    return {
+      resolve: (path) => gate.resolve(path),
+      async open(path) {
+        const handle = await gate.open(path)
+        try {
+          if (transcriptSignature(await handle.stat({ bigint: true })) === file.signature) {
+            return handle
+          }
+          throw new Error('The Antigravity transcript changed before it was read.')
+        } catch (error) {
+          await handle.close()
+          throw error
         }
-        // The file was replaced, cut, rewritten, or grew too much: read its tail again.
       }
-      await readTail(entry, options)
-      return true
-    } catch (error) {
-      if (isMissing(error)) return false
-      entry.status = 'unreadable'
-      entry.cursor = null
-      return true
     }
   }
 
-  async function readTail(
-    entry: TrackedConversation,
-    options: { requireUserInput?: boolean } = {}
-  ): Promise<void> {
-    for (const maxBytes of TAIL_STEPS_BYTES) {
-      const tail = await readLastLines(gate, entry.path, { maxLines: ALL_LINES, maxBytes })
-      const records = parseRecords(tail.lines)
-      entry.cursor = tail.cursor
-      entry.state = foldAntigravityRecords(EMPTY_ANTIGRAVITY_TURN_STATE, records)
-      entry.status = tail.lines.length > 0 && records.length === 0 ? 'unsupported' : 'read'
-      const ready =
-        entry.state.lastTurnStep !== null && (!options.requireUserInput || entry.state.hasUserInput)
-      if (ready || tail.reachedStart) return
+  async function stillCurrent(file: TranscriptFile): Promise<boolean> {
+    return (await statTranscript(paths, file.conversationId))?.signature === file.signature
+  }
+
+  async function inspectTranscript(
+    file: TranscriptFile,
+    retryUnreadable = false
+  ): Promise<Inspection> {
+    const cached = cachedInspection(file)
+    if (cached !== undefined && (cached.kind !== 'unreadable' || !retryUnreadable)) return cached
+    const previous = inspected.get(file.conversationId)?.result
+    const readGate = transcriptGate(file)
+    try {
+      const result = await readTranscript(file, readGate, previous)
+      if (!(await stillCurrent(file))) return { kind: 'unreadable' }
+      if (result.kind === 'user') rememberPrompts(result.entry)
+      inspected.set(file.conversationId, { signature: file.signature, result })
+      return result
+    } catch (error) {
+      const result = { kind: 'unreadable' } as const
+      // An unreadable file should not consume discovery budget on every listing. A permission
+      // change changes its signature, and a named refresh or detail can retry the current version.
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error.code === 'EACCES' || error.code === 'EPERM') &&
+        (await stillCurrent(file))
+      ) {
+        inspected.set(file.conversationId, { signature: file.signature, result })
+      }
+      return result
     }
+  }
+
+  async function readTranscript(
+    file: TranscriptFile,
+    readGate: AccessGate,
+    previous: Inspection | undefined
+  ): Promise<Inspection> {
+    let prefixHasPrompt = false
+    let startsWithSystem = false
+    let sawSupported = false
+    let sawLine = false
+    const prefix = await readFirstLine(readGate, file.path, PREFIX_MAX_BYTES, (line) => {
+      sawLine = true
+      const record = parseRecord(line, { fallbackAt: file.modifiedAt })
+      if (record === null || record.kind === 'other') return false
+      prefixHasPrompt = record.kind === 'user-input'
+      startsWithSystem = !sawSupported && record.kind === 'system-message'
+      sawSupported = true
+      return prefixHasPrompt || startsWithSystem
+    })
+    if (startsWithSystem) return { kind: 'excluded' }
+    if (prefix.kind === 'none')
+      return { kind: sawLine && !sawSupported ? 'unsupported' : 'excluded' }
+
+    for (const maxBytes of TAIL_STEPS_BYTES) {
+      const tail = await readLastLines(readGate, file.path, { maxLines: ALL_LINES, maxBytes })
+      const records = parseRecords(tail.lines, file.modifiedAt)
+      const state = foldAntigravityRecords(EMPTY_ANTIGRAVITY_TURN_STATE, records)
+      const hasPrompt = prefixHasPrompt || state.lastUserStep !== null
+      if (
+        (hasPrompt && state.lastTurnStep !== null) ||
+        tail.reachedStart ||
+        maxBytes === TAIL_STEPS_BYTES[1]
+      ) {
+        const hasSupportedTail = records.some(({ kind }) => kind !== 'other')
+        if (hasPrompt) {
+          // An unchanged reply with an mtime fallback keeps its first completion time across rereads.
+          const priorReply = previous?.kind === 'user' ? previous.entry.state.lastReply : null
+          if (priorReply !== null && state.lastReply?.cursor === priorReply.cursor) {
+            state.lastReply = { ...state.lastReply, completedAt: priorReply.completedAt }
+          }
+          const status = tail.lines.length > 0 && !hasSupportedTail ? 'unsupported' : 'read'
+          return { kind: 'user', entry: { file, state, status } }
+        }
+        return { kind: sawSupported || hasSupportedTail ? 'excluded' : 'unsupported' }
+      }
+    }
+    return { kind: 'unsupported' }
+  }
+
+  function rememberPrompts({ file, state }: TrackedConversation): void {
+    if (state.lastUserStep === null) return
+    const id = file.conversationId
+    const previous = promptSteps.get(id) ?? -1
+    if (state.lastUserStep > previous) promptSteps.set(id, state.lastUserStep)
   }
 
   /**
@@ -354,41 +416,57 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
     tracked.clear()
     let recentCount = 0
     for (const entry of [...entries].sort(newestFirst)) {
-      if (tracked.has(entry.conversationId)) continue
-      const pinned = pins.has(entry.conversationId)
+      const id = entry.file.conversationId
+      const pinned = pins.has(id)
       if (!pinned && (recentCount >= maxPerTool || lastActivityAt(entry) < cutoff)) {
-        older = true
+        if (entry.status !== 'unreadable') older.add(id)
         continue
       }
       if (!pinned) recentCount++
-      tracked.set(entry.conversationId, entry)
+      older.delete(id)
+      tracked.set(id, entry)
     }
   }
 
   function facts(): AntigravityConversationFacts[] {
     return [...tracked.values()].sort(newestFirst).map((entry) => ({
-      conversationId: entry.conversationId,
+      conversationId: entry.file.conversationId,
       summary: {
-        title: titles.get(entry.conversationId)?.title ?? null,
+        title: titles.get(entry.file.conversationId)?.title ?? null,
         workspacePath: null,
         lastActivityAt: lastActivityAt(entry),
         toolVersion: null
       },
       fileStatus: entry.status,
       lastTurnStep: entry.status === 'read' ? entry.state.lastTurnStep : null,
-      lastReply: entry.state.lastReply
+      lastReply: lastReply(entry)
     }))
   }
 
+  function lastReply({ file, state, status }: TrackedConversation): SessionReply | null {
+    const reply = state.lastReply
+    if (status !== 'read' || reply === null || state.lastReplyStep === null) return null
+    const promptStep = promptSteps.get(file.conversationId) ?? -1
+    return state.lastReplyStep < promptStep && !reply.newerTurnStarted
+      ? { ...reply, newerTurnStarted: true }
+      : reply
+  }
+
   async function recentMessages(conversationId: string, limit: number): Promise<RecentMessages> {
-    const entry = tracked.get(conversationId)
-    if (entry === undefined) return { kind: 'not-found' }
+    if (!tracked.has(conversationId)) return { kind: 'not-found' }
+    const file = await statTranscript(paths, conversationId)
+    if (file === null) return { kind: 'unreadable' }
+    const result = await inspectTranscript(file, true)
+    if (result.kind !== 'user') {
+      return result.kind === 'unreadable' ? { kind: 'unreadable' } : { kind: 'not-found' }
+    }
     try {
-      const tail = await readLastLines(gate, entry.path, {
+      const tail = await readLastLines(transcriptGate(file), file.path, {
         maxLines: ALL_LINES,
         maxBytes: MESSAGES_TAIL_BYTES
       })
-      const messages = antigravityMessages(parseRecords(tail.lines, { includeText: true }))
+      if (!(await stillCurrent(file))) return { kind: 'unreadable' }
+      const messages = antigravityMessages(parseRecords(tail.lines, file.modifiedAt, true))
       const count = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 0
       return {
         kind: 'messages',
@@ -403,44 +481,27 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
   return {
     catalog: () => serialized(reconcile),
     refresh: (changedPaths) => serialized(() => refresh(changedPaths)),
-    recentMessages,
+    recentMessages: (id, limit) => serialized(() => recentMessages(id, limit)),
     health: () => health,
-    olderAvailable: () => older
-  }
-}
-
-function classifyFirstStep(record: AntigravityRecord | null): FirstStep {
-  if (record === null) return 'unrecognized'
-  if (record.kind === 'user-input') return 'user'
-  if (record.kind === 'system-message') return 'subagent'
-  return 'other'
-}
-
-function newEntry(file: TranscriptFile): TrackedConversation {
-  return {
-    conversationId: file.conversationId,
-    path: file.path,
-    modifiedAt: file.modifiedAt,
-    cursor: null,
-    state: EMPTY_ANTIGRAVITY_TURN_STATE,
-    status: 'read'
+    olderAvailable: () => older.size > 0
   }
 }
 
 function parseRecords(
   lines: readonly string[],
-  options: { includeText?: boolean } = {}
+  fallbackAt: number,
+  includeText = false
 ): AntigravityRecord[] {
   const records: AntigravityRecord[] = []
   for (const line of lines) {
-    const record = parseRecord(line, options)
+    const record = parseRecord(line, { includeText, fallbackAt })
     if (record !== null) records.push(record)
   }
   return records
 }
 
 function lastActivityAt(entry: TrackedConversation): number {
-  return Math.max(entry.state.lastRecordAt ?? 0, entry.modifiedAt)
+  return Math.max(entry.state.lastRecordAt ?? 0, entry.file.modifiedAt)
 }
 
 function newestFileFirst(a: TranscriptFile, b: TranscriptFile): number {
@@ -448,5 +509,8 @@ function newestFileFirst(a: TranscriptFile, b: TranscriptFile): number {
 }
 
 function newestFirst(a: TrackedConversation, b: TrackedConversation): number {
-  return lastActivityAt(b) - lastActivityAt(a) || a.conversationId.localeCompare(b.conversationId)
+  return (
+    lastActivityAt(b) - lastActivityAt(a) ||
+    a.file.conversationId.localeCompare(b.file.conversationId)
+  )
 }

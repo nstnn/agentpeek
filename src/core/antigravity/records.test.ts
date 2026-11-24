@@ -96,7 +96,7 @@ describe('parseRecord', () => {
     }
   })
 
-  it('skips lines without the step fields and keeps unknown types as activity', () => {
+  it('skips lines without the step fields and identifies unknown types', () => {
     for (const line of [
       'not json',
       '{"step_index": 1',
@@ -236,9 +236,10 @@ describe('foldAntigravityRecords', () => {
         errorCode: null,
         newerTurnStarted: false
       },
+      lastReplyStep: 4,
       lastRecordAt: T0 + 4 * SECOND,
       lastStep: 4,
-      hasUserInput: true
+      lastUserStep: 0
     })
   })
 
@@ -264,7 +265,7 @@ describe('foldAntigravityRecords', () => {
     expect(state.lastReply?.newerTurnStarted).toBe(true)
   })
 
-  it('ends the turn on a canceled step without a reply, and ignores unknown or system steps', () => {
+  it('ends a canceled turn only for a recognized step', () => {
     const canceled = fold([TURN[0]!, toolResultLine({ step: 1, status: 'CANCELED' })])
     expect(canceled).toMatchObject({ lastTurnStep: 'ended', lastReply: null })
     const unknown = fold([
@@ -274,8 +275,8 @@ describe('foldAntigravityRecords', () => {
     expect(unknown).toMatchObject({
       lastTurnStep: null,
       lastReply: null,
-      hasUserInput: false,
-      lastStep: 1
+      lastUserStep: null,
+      lastStep: null
     })
     const openAfterUnknownCancel = fold([
       TURN[0]!,
@@ -285,7 +286,7 @@ describe('foldAntigravityRecords', () => {
     expect(openAfterUnknownCancel).toMatchObject({
       lastTurnStep: 'open',
       lastReply: null,
-      lastStep: 2
+      lastStep: 0
     })
   })
 })
@@ -316,12 +317,13 @@ describe('antigravityMessages', () => {
     ])
   })
 
-  it('leaves out system messages, empty prompts, and replayed steps', () => {
+  it('leaves out system messages, empty prompts, canceled tool requests, and replayed steps', () => {
     const lines = [
       systemMessageLine({ step: 0 }),
       userInputLine({ step: 1, text: '' }),
       finalReplyLine({ step: 2, text: 'Synthetic only reply' }),
-      finalReplyLine({ step: 2, text: 'Synthetic replay' })
+      finalReplyLine({ step: 2, text: 'Synthetic replay' }),
+      toolRequestLine({ step: 3, tools: ['run_command'], status: 'CANCELED' })
     ]
     expect(antigravityMessages(parse(lines, true))).toEqual([
       { kind: 'reply', text: 'Synthetic only reply', at: T0 + 2 * SECOND }
