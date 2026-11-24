@@ -1,4 +1,4 @@
-import { readdir } from 'node:fs/promises'
+import { lstat, readdir } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { type ListedFile, statFile } from './claude-files'
 
@@ -75,17 +75,30 @@ export interface TranscriptFile extends ListedFile {
 /**
  * Lists every conversation transcript with its signature. Errors on `brain/` itself, such as a
  * missing folder, reach the caller. A folder without a transcript (a legacy conversation) and a
- * transcript that vanishes during the listing are skipped. Symlinked conversation folders are
- * never followed: the folder listing reports them as neither folders nor files.
+ * transcript that vanishes during the listing are skipped. Symlinks are never followed below
+ * `brain/`: the conversation folder, `.system_generated` and `logs` must each be a real folder, and
+ * the transcript a regular file, so discovery never reports a file outside `brain/`.
  */
 export async function listTranscripts(paths: AntigravityPaths): Promise<TranscriptFile[]> {
   const files: TranscriptFile[] = []
   for (const entry of await readdir(paths.brain, { withFileTypes: true })) {
     if (!entry.isDirectory() || !isConversationId(entry.name)) continue
+    if (!(await hasRealFolders(join(paths.brain, entry.name)))) continue
     const file = await statFile(transcriptPath(paths, entry.name))
     if (file !== null) files.push({ ...file, conversationId: entry.name })
   }
   return files
+}
+
+/** Whether each folder on the way to the transcript is a real folder and not a symlink. */
+async function hasRealFolders(conversation: string): Promise<boolean> {
+  let folder = conversation
+  for (const name of TRANSCRIPT_NAMES.slice(0, -1)) {
+    folder = join(folder, name)
+    const stats = await lstat(folder).catch(() => null)
+    if (stats?.isDirectory() !== true) return false
+  }
+  return true
 }
 
 /** The names of the parts of `path` below `folder`, or null when it is not inside `folder`. */

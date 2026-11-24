@@ -126,6 +126,22 @@ describe('listTranscripts', () => {
     expect(await listTranscripts(paths)).toEqual([])
   })
 
+  it.each([
+    ['.system_generated', ['.system_generated']],
+    ['logs', ['.system_generated', 'logs']]
+  ])('does not follow a symlinked %s folder out of brain', async (_, names) => {
+    const paths = antigravityPaths(home)
+    const outside = join(root, 'elsewhere')
+    await createFile(
+      join(outside, ...['.system_generated', 'logs'].slice(names.length), 'transcript.jsonl')
+    )
+    const link = join(paths.brain, FIRST, ...names)
+    await mkdir(dirname(link), { recursive: true })
+    await symlink(outside, link)
+    await createFile(transcriptPath(paths, SECOND))
+    expect((await listTranscripts(paths)).map((file) => file.conversationId)).toEqual([SECOND])
+  })
+
   it('lets a missing brain folder reach the caller', async () => {
     await expect(listTranscripts(antigravityPaths(home))).rejects.toMatchObject({ code: 'ENOENT' })
   })
