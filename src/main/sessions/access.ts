@@ -1,7 +1,8 @@
 import { constants, type FileHandle, open, realpath } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
-// The access gate: the only way AgentPeek opens a Codex or Claude Code file (CONSTRAINT-001).
+// The access gate: the only way AgentPeek opens a Codex, Claude Code, or Antigravity file
+// (CONSTRAINT-001).
 // AgentPeek has no App Sandbox, so this code is the only guard. A path is allowed only when both
 // the path as given and its real path (after following symlinks) match the allowlist below, and the
 // file is then opened read-only. AgentPeek never writes, renames, locks, or deletes tool files.
@@ -11,7 +12,9 @@ interface AllowedFiles {
   folder: string
   /**
    * The files allowed inside that folder. `*` stands for any part of one name, and `**` for any
-   * number of folders. Neither matches a name that starts with a dot.
+   * number of folders. Neither matches a name that starts with a dot. `{uuid}` at the start of a
+   * part stands for a lowercase canonical UUID. A part without `*` or `{uuid}` matches only that
+   * exact name, which may start with a dot (`.system_generated`).
    */
   pattern: string
 }
@@ -24,7 +27,14 @@ const ALLOWLIST: readonly AllowedFiles[] = [
   {
     folder: 'Library/Application Support/Claude/claude-code-sessions',
     pattern: '*/*/local_*.json'
-  }
+  },
+  // Antigravity Desktop (TASK-003 of the antigravity-desktop plan): one transcript per conversation,
+  // and the conversation's title. Never `transcript_full.jsonl`, `conversations/`, or `presence/`.
+  {
+    folder: '.gemini/antigravity/brain',
+    pattern: '{uuid}/.system_generated/logs/transcript.jsonl'
+  },
+  { folder: '.gemini/antigravity/annotations', pattern: '{uuid}.pbtxt' }
 ]
 
 /** File names that are never read, even if a pattern matches them: keys and credentials. */
@@ -186,11 +196,17 @@ function matchesNames(names: readonly string[], parts: readonly string[]): boole
   return name !== undefined && matchesName(name, part) && matchesNames(restNames, restParts)
 }
 
-/** Matches one name against a pattern part with at most one `*`. */
+/** Matches one name against a pattern part with at most one `*`, or a leading `{uuid}`. */
 function matchesName(name: string, part: string): boolean {
-  if (!isPlainName(name)) return false
+  if (name === '') return false
+  if (part.startsWith(UUID_PART)) {
+    const suffix = part.slice(UUID_PART.length)
+    return name.endsWith(suffix) && UUID.test(name.slice(0, name.length - suffix.length))
+  }
   const star = part.indexOf('*')
+  // A literal part names one exact file or folder, so it may name a hidden one.
   if (star === -1) return name === part
+  if (!isPlainName(name)) return false
   const prefix = part.slice(0, star)
   const suffix = part.slice(star + 1)
   return (
@@ -198,7 +214,12 @@ function matchesName(name: string, part: string): boolean {
   )
 }
 
-/** A name a pattern may match: not empty, and not hidden (starting with a dot). */
+const UUID_PART = '{uuid}'
+
+/** A lowercase canonical UUID, the form Antigravity uses for conversation IDs. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+/** A name a wildcard may match: not empty, and not hidden (starting with a dot). */
 function isPlainName(name: string): boolean {
   return name !== '' && !name.startsWith('.')
 }
