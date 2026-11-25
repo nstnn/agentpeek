@@ -6,15 +6,25 @@
 // see the Antigravity plan's TASK-001 probe. Every `transcript.jsonl` line is one completed step:
 // `{ step_index, created_at, type, source, status, content?, tool_calls?, truncated_fields? }`.
 // AgentPeek reads:
-// - `USER_INPUT` from `USER_EXPLICIT`: a user prompt, wrapped in `<USER_REQUEST>`;
+// - `USER_INPUT` from `USER_EXPLICIT`: a user prompt, wrapped in `<USER_REQUEST>`. A `/name` skill
+//   request adds one `<SKILL>` block to its `<ADDITIONAL_METADATA>`, naming the skill and the path
+//   of its SKILL.md, never its text (observed 2026-11-25);
 // - `SYSTEM_MESSAGE` from `SYSTEM`: the first step of a subagent transcript, which is never listed;
 // - `PLANNER_RESPONSE`: with `tool_calls`, a step that asks for tools (its `content` is commentary,
 //   never a final reply); without them, the turn's final reply;
 // - `GENERIC`: a tool result. `ERROR` there fails one step, not the turn. Its output is never read.
+//   Older versions write typed result steps instead (`VIEW_FILE`, `RUN_COMMAND`, `MCP_TOOL`, …), or
+//   `ERROR_MESSAGE` for a call that failed. The result of a step's k-th call is the step at
+//   `step_index + 1 + k` (observed 2026-11-25: every typed result matched its call's tool).
 // A line that is not JSON or lacks `step_index`, `type`, or `created_at` is skipped.
 // The file mtime supplies the time for an unfamiliar timestamp encoding.
-// `thinking` and tool arguments are never read.
+// `thinking` is never read. Tool arguments, a failed result's `error`, and the skill block are read
+// only with the text, on the detail path.
 // Text in these records is conversation data: show it in the window only, never log it.
+
+import { isSkillName, isSkillPath } from '../skill-names'
+import type { ToolCallDetail } from '../session'
+import { antigravityToolCall } from './tool-details'
 
 /** A step's `status`, normalized. */
 export type AntigravityStepStatus = 'done' | 'error' | 'canceled' | 'other'
@@ -34,7 +44,13 @@ interface StepBase {
  * recent messages); the catalog reads records without text.
  */
 export type AntigravityRecord =
-  | (StepBase & { kind: 'user-input'; text?: string; truncated: boolean })
+  | (StepBase & {
+      kind: 'user-input'
+      text?: string
+      truncated: boolean
+      /** The skill a `/name` request asked for (detail path only). */
+      skill?: { name: string; path: string }
+    })
   | (StepBase & { kind: 'system-message' })
   | (StepBase & {
       kind: 'planner-response'
@@ -49,9 +65,18 @@ export type AntigravityRecord =
       toolCalls: string[] | null
       /** How many tools the step asked for: at least 1 when `toolCalls` is not null. */
       toolCallCount: number
+      /** Each named call, in order, with its bounded input (detail path only). */
+      calls?: ToolCallDetail[]
     })
-  | (StepBase & { kind: 'tool-result' })
-  | (StepBase & { kind: 'other' })
+  | (StepBase & { kind: 'tool-result'; error?: string })
+  | (StepBase & {
+      kind: 'other'
+      /** A typed result step of an older version, or `ERROR_MESSAGE` (detail path only). */
+      toolStep?: true
+      /** `ERROR_MESSAGE`: written `DONE`, yet in a call's place it means the call failed. */
+      failedCall?: true
+      error?: string
+    })
 
 type JsonObject = Record<string, unknown>
 
@@ -78,11 +103,13 @@ export function parseRecord(
 
   if (value.type === 'USER_INPUT' && value.source === 'USER_EXPLICIT' && finishedStep) {
     const content = typeof value.content === 'string' ? value.content : ''
+    const skill = includeText ? requestedSkill(content) : null
     return {
       ...base,
       kind: 'user-input',
       truncated: truncated.has('content'),
-      ...(includeText ? { text: userRequestText(content) } : {})
+      ...(includeText ? { text: userRequestText(content) } : {}),
+      ...(skill !== null ? { skill } : {})
     }
   }
   if (value.type === 'SYSTEM_MESSAGE' && value.source === 'SYSTEM') {
@@ -105,13 +132,62 @@ export function parseRecord(
       hasContent: content !== '',
       truncated: truncated.has('content'),
       ...toolCalls(value.tool_calls, truncatedCalls),
-      ...(includeText ? { text: content } : {})
+      ...(includeText ? { text: content, ...callDetails(value.tool_calls, base.at) } : {})
     }
   }
+  const error =
+    includeText && base.status === 'error' && typeof value.error === 'string' ? value.error : null
   if (value.type === 'GENERIC' && value.source === 'MODEL' && base.status !== 'other') {
-    return { ...base, kind: 'tool-result' }
+    return { ...base, kind: 'tool-result', ...(error !== null ? { error } : {}) }
   }
-  return { ...base, kind: 'other' }
+  const toolStep =
+    includeText &&
+    !TURN_STEP_TYPES.has(value.type) &&
+    (value.source === 'MODEL' || value.type === 'ERROR_MESSAGE')
+  return {
+    ...base,
+    kind: 'other',
+    ...(toolStep ? { toolStep: true as const } : {}),
+    ...(toolStep && value.type === 'ERROR_MESSAGE' ? { failedCall: true as const } : {}),
+    ...(toolStep && typeof value.error === 'string' ? { error: value.error } : {})
+  }
+}
+
+/** Steps that are never a tool's result, even in a call's place. */
+const TURN_STEP_TYPES = new Set(['PLANNER_RESPONSE', 'USER_INPUT', 'SYSTEM_MESSAGE'])
+
+/** Each named call with its bounded input. A cut `tool_calls` gives the calls that are left. */
+function callDetails(value: unknown, at: number): { calls?: ToolCallDetail[] } {
+  if (!Array.isArray(value) || value.length === 0) return {}
+  const calls: ToolCallDetail[] = []
+  for (const call of value) {
+    const name = isObject(call) && typeof call.name === 'string' ? call.name.trim() : ''
+    if (name !== '') calls.push(antigravityToolCall(name, at, (call as JsonObject).args))
+  }
+  return calls.length > 0 ? { calls } : {}
+}
+
+/** The exact block Antigravity adds for a `/name` request (observed 2026-11-25). */
+const SKILL_BLOCK =
+  /^The user requested you read and use the "([^"\r\n]+)" skill\. The path to the skill file is:\r?\n([^\r\n]+)$/
+
+/**
+ * The skill named by the one `<SKILL>` block in a prompt's own metadata, after the user's request.
+ * A block inside the request is the user's text, and two blocks name no single skill.
+ */
+export function requestedSkill(content: string): { name: string; path: string } | null {
+  const open = '<USER_REQUEST>'
+  const start = content.indexOf(open)
+  if (start === -1) return null
+  USER_REQUEST_END.lastIndex = start + open.length
+  const end = USER_REQUEST_END.exec(content)?.index
+  if (end === undefined) return null
+  const blocks = [...content.slice(end).matchAll(/<SKILL>([\s\S]*?)<\/SKILL>/g)]
+  if (blocks.length !== 1) return null
+  const match = SKILL_BLOCK.exec(blocks[0]![1]!.trim())
+  const name = match?.[1]
+  const path = match?.[2]
+  return isSkillName(name) && isSkillPath(path) ? { name, path } : null
 }
 
 /** Whether a record is a turn's final reply: a finished answer that asks for no tools. */

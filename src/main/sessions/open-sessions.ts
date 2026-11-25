@@ -76,6 +76,7 @@ export async function openSessionsService(options: OpenSessionsOptions): Promise
         range,
         isAppRunning: options.isAntigravityAppRunning,
         now,
+        fixture: options.fixture,
         pinnedIds: () =>
           store
             .pinnedKeys()

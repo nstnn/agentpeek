@@ -31,11 +31,21 @@ function stepLine(fields: Record<string, unknown>, options: StepOptions): string
   })
 }
 
-/** A user prompt, wrapped the way Antigravity wraps it. */
-export function userInputLine(options: StepOptions & { text: string }): string {
+/** The block Antigravity adds to a prompt's metadata for a `/name` skill request. */
+export function skillBlock(name: string, path: string): string {
+  return (
+    `<SKILL>\nThe user requested you read and use the "${name}" skill. ` +
+    `The path to the skill file is:\n${path}\n</SKILL>`
+  )
+}
+
+/** A user prompt, wrapped the way Antigravity wraps it, with optional extra metadata. */
+export function userInputLine(options: StepOptions & { text: string; metadata?: string }): string {
   const content =
     `<USER_REQUEST>\n${options.text}\n</USER_REQUEST>\n` +
-    '<ADDITIONAL_METADATA>\nSynthetic local time and open files.\n</ADDITIONAL_METADATA>'
+    '<ADDITIONAL_METADATA>\nSynthetic local time and open files.\n' +
+    (options.metadata === undefined ? '' : `${options.metadata}\n`) +
+    '</ADDITIONAL_METADATA>'
   return stepLine({ source: 'USER_EXPLICIT', type: 'USER_INPUT', content }, options)
 }
 
@@ -49,7 +59,7 @@ export function systemMessageLine(options: StepOptions & { text?: string }): str
 
 /** A step that asks for tools, optionally with commentary. */
 export function toolRequestLine(
-  options: StepOptions & { tools: string[]; commentary?: string }
+  options: StepOptions & { tools: string[]; commentary?: string; args?: unknown[] }
 ): string {
   return stepLine(
     {
@@ -60,9 +70,9 @@ export function toolRequestLine(
       output_tokens: 5,
       thinking: 'Synthetic thinking that must never be shown.',
       ...(options.commentary !== undefined ? { content: options.commentary } : {}),
-      tool_calls: options.tools.map((name) => ({
+      tool_calls: options.tools.map((name, index) => ({
         name,
-        args: { path: '/Users/synthetic/secret-argument.txt' }
+        args: options.args?.[index] ?? { path: '/Users/synthetic/synthetic-argument.txt' }
       }))
     },
     options
@@ -83,13 +93,14 @@ export function finalReplyLine(options: StepOptions & { text: string }): string 
   )
 }
 
-/** A tool result. `ERROR` fails the step only. */
-export function toolResultLine(options: StepOptions): string {
+/** A tool result. `ERROR` fails the step only; `error` is the text a failed one carries. */
+export function toolResultLine(options: StepOptions & { error?: string; type?: string }): string {
   return stepLine(
     {
-      source: 'MODEL',
-      type: 'GENERIC',
-      content: 'Synthetic tool output that must never be shown.'
+      source: options.type === 'ERROR_MESSAGE' ? 'SYSTEM' : 'MODEL',
+      type: options.type ?? 'GENERIC',
+      content: 'Synthetic tool output that must never be shown.',
+      ...(options.error !== undefined ? { error: options.error } : {})
     },
     options
   )

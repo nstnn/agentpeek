@@ -8,7 +8,7 @@ The synthetic simulator changes the same local file shapes the tools write. The 
 - `fixture-transitions`: completed, failed, stopped and permission-denied turns; attention clears on a newer turn.
 - `fixture-stress`: long messages/titles, hostile Markdown, malformed lines and source/read failures.
 - `fixture-reconcile`: old resumed thread and removed registry.
-- `fixture-antigravity`: `antigravity-seed` adds Antigravity idle (shortened reply), running and quiet conversations to a fresh home before launch; the Antigravity recipes in sessions-list.md, session-detail.md, app-menu.md and source-monitoring.md drive them.
+- `fixture-antigravity`: `antigravity-seed` adds Antigravity idle (two tool calls with inputs of which one failed, and a shortened reply), running and quiet conversations to a fresh home before launch; `antigravity-skill`, run on the copied home after launch, adds Fixture Antigravity skill, a `/synthetic-antigravity` request backed by `~/.gemini/config/skills`; the Antigravity recipes in sessions-list.md, session-detail.md, app-menu.md and source-monitoring.md drive them.
 - `fixture-smoke`: built-app automation, retained evidence, profile isolation and cleanup.
 - `fixture-split-smoke`: A/B to C/B selection, inactive/hidden replies, active read, compact Back/Hide Sessions, close-to-single and layout reset on relaunch.
 

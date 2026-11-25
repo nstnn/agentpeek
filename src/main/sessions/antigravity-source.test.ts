@@ -19,6 +19,7 @@ import {
   finalReplyLine,
   MINUTE,
   SECOND,
+  skillBlock,
   systemMessageLine,
   T0,
   toolRequestLine,
@@ -492,6 +493,84 @@ describe('refresh', () => {
   })
 })
 
+describe('skill', () => {
+  const NAME = 'synthetic-pr'
+  const skillPath = () => join(home, '.gemini', 'config', 'skills', NAME, 'SKILL.md')
+
+  async function writeSkillPrompt(path: string): Promise<void> {
+    await writeTranscript(1, [
+      userInputLine({ step: 0, at: T0, text: `/${NAME} go`, metadata: skillBlock(NAME, path) }),
+      finalReplyLine({ step: 1, at: T0 + SECOND, text: 'Synthetic answer' })
+    ])
+  }
+
+  it('reads the SKILL.md a recent prompt asked for from Antigravity skills', async () => {
+    await mkdir(dirname(skillPath()), { recursive: true })
+    await writeFile(
+      skillPath(),
+      '---\nname: synthetic-pr\ndescription: Synthetic skill.\n---\n# Synthetic body'
+    )
+    await writeSkillPrompt(skillPath())
+    const reader = createReader()
+    await reader.catalog()
+    expect(
+      await reader.skill(conversationId(1), { at: T0, name: NAME, path: skillPath() })
+    ).toEqual({
+      kind: 'skill',
+      source: 'local',
+      text: '# Synthetic body',
+      description: 'Synthetic skill.',
+      truncated: false
+    })
+  })
+
+  it('reads only what a listed prompt asked for, and never a project or other file', async () => {
+    const project = join(root, 'project', '.agents', 'skills', NAME, 'SKILL.md')
+    await mkdir(dirname(project), { recursive: true })
+    await writeFile(project, '# Synthetic project skill')
+    await writeSkillPrompt(project)
+    const reader = createReader()
+    await reader.catalog()
+    expect(await reader.skill(conversationId(1), { at: T0, name: NAME, path: project })).toEqual({
+      kind: 'unavailable',
+      reason: 'not-allowed'
+    })
+    for (const request of [
+      { at: T0 + 1, name: NAME, path: project },
+      { at: T0, name: 'other-skill', path: project },
+      { at: T0, name: NAME, path: skillPath() }
+    ]) {
+      expect(await reader.skill(conversationId(1), request)).toEqual({
+        kind: 'unavailable',
+        reason: 'not-found'
+      })
+    }
+    expect(await reader.skill(conversationId(2), { at: T0, name: NAME, path: project })).toEqual({
+      kind: 'unavailable',
+      reason: 'not-found'
+    })
+  })
+
+  it('reports a missing skill file as not found', async () => {
+    await writeSkillPrompt(skillPath())
+    const source = createAntigravitySource({
+      home,
+      gate,
+      now: () => clock,
+      isAppRunning: () => Promise.resolve(false)
+    })
+    await source.catalog()
+    const request = { at: T0, name: NAME, path: skillPath() }
+    expect(await source.getSkill!({ tool: 'antigravity', id: conversationId(1) }, request)).toEqual(
+      { kind: 'unavailable', reason: 'not-found' }
+    )
+    expect(await source.getSkill!({ tool: 'codex', id: conversationId(1) }, request)).toEqual({
+      kind: 'unavailable',
+      reason: 'not-found'
+    })
+  })
+})
+
 describe('recentMessages', () => {
   it('returns the newest prompts, replies and tool groups within the limit', async () => {
     await writeTranscript(1, [
@@ -511,7 +590,13 @@ describe('recentMessages', () => {
       kind: 'messages',
       messages: [
         { kind: 'prompt', text: 'Synthetic one', at: T0 },
-        { kind: 'tool-calls', count: 1, names: ['read_file'], at: T0 + SECOND },
+        {
+          kind: 'tool-calls',
+          count: 1,
+          names: ['read_file'],
+          at: T0 + SECOND,
+          calls: [expect.objectContaining({ name: 'read_file', status: 'done' })]
+        },
         { kind: 'reply', text: 'Synthetic answer', at: T0 + 3 * SECOND },
         { kind: 'prompt', text: 'Synthetic two', at: T0 + 10 * SECOND },
         { kind: 'reply', text: 'Synthetic reply two', at: T0 + 11 * SECOND, truncated: true }

@@ -173,7 +173,7 @@ function relativePath(path: string, cwd: string | null): string {
 }
 
 /** The first line with text, its white space collapsed, at most `SUMMARY_LIMIT` characters. */
-function oneLine(text: string): string | null {
+export function oneLine(text: string): string | null {
   const line = text
     .split('\n')
     .map((part) => part.replace(/\s+/g, ' ').trim())
