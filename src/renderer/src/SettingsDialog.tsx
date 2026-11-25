@@ -18,7 +18,7 @@ import {
 import { AGENT_TOOLS, type AgentTool } from '../../core/tools'
 import { healthCopy, rangeDays, toolName } from './session-display'
 import { RemoteViewSettings } from './RemoteViewSettings'
-import { SettingsSelect } from './SettingsSelect'
+import { PopupSelect } from './PopupSelect'
 
 const LABELS = { system: 'System', light: 'Light', dark: 'Dark' }
 
@@ -307,7 +307,7 @@ function SessionHistorySettings({
         <span id={`${id}-days`} className="settings-select-label">
           Show sessions active in the last
         </span>
-        <SettingsSelect
+        <PopupSelect
           labelId={`${id}-days`}
           value={saved?.days ?? null}
           options={SESSION_DAYS.map((days) => ({ value: days, label: rangeDays(days) }))}
@@ -321,7 +321,7 @@ function SessionHistorySettings({
         <span id={`${id}-count`} className="settings-select-label">
           At most, per tool
         </span>
-        <SettingsSelect
+        <PopupSelect
           labelId={`${id}-count`}
           value={saved?.maxPerTool ?? null}
           options={SESSIONS_PER_TOOL.map((count) => ({ value: count, label: `${count} sessions` }))}

@@ -66,13 +66,16 @@ describe('independent navigation visibility', () => {
     await screen.findByRole('option', { name: /Synthetic a,/ })
     act(() => f.command({ type: 'open-secondary', key: f.b.key }))
     await within(pane('Right')).findByRole('region')
-    await userEvent.click(screen.getByRole('radio', { name: /^Codex / }))
+    await userEvent.click(screen.getByRole('combobox', { name: 'Filter by tool' }))
+    await userEvent.click(screen.getByRole('option', { name: /^Codex / }))
     act(() => f.push(snapshot([])))
     await userEvent.click(screen.getByRole('button', { name: 'Close Right Pane' }))
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Hide Sessions' }).disabled).toBe(
       true
     )
-    expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'Codex 0' }))
+    const filter = screen.getByRole('combobox', { name: 'Filter by tool' })
+    expect(filter.textContent).toBe('Codex 0')
+    expect(document.activeElement).toBe(filter)
   })
 
   it.each(['separator', 'settings'] as const)(

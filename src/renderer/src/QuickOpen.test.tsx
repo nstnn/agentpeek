@@ -45,7 +45,7 @@ describe('Find Session', () => {
     const { command, push, first, api, store } = setup()
     await screen.findByRole('button', { name: 'All Sessions 2' })
     act(() => command('quick-open'))
-    const input = screen.getByRole('combobox')
+    const input = screen.getByRole('combobox', { name: 'Find by title, folder or session ID' })
     await userEvent.type(input, 'absent')
     expect(screen.getByText(/No matching sessions/)).toBeTruthy()
     await userEvent.keyboard('{Enter}')
@@ -69,7 +69,10 @@ describe('Find Session', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Find Session' }))
     expect(store.getSnapshot().targetReady).toBe(false)
     expect(api.setSelection).toHaveBeenLastCalledWith(null, { secondPaneOpen: false })
-    await userEvent.type(screen.getByRole('combobox'), 'alpha')
+    await userEvent.type(
+      screen.getByRole('combobox', { name: 'Find by title, folder or session ID' }),
+      'alpha'
+    )
     expect(api.getMessages).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole('button', { name: 'Close Find Session' }))
     expect(store.getSnapshot().selection?.session.key).toEqual(selected)

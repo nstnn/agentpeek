@@ -24,6 +24,7 @@ import { NavigationIcon } from './NavigationIcon'
 import { useNavigationMotion } from './use-navigation-motion'
 import { SettingsDialog } from './SettingsDialog'
 import { QuickOpen } from './QuickOpen'
+import { PopupSelect } from './PopupSelect'
 import { useRemoteStatus } from './remote-status'
 
 export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.Element {
@@ -60,6 +61,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
   const mainPane = useRef<HTMLElement>(null)
   const secondPane = useRef<HTMLElement>(null)
   const navigation = useRef<HTMLElement>(null)
+  const toolFilter = useRef<HTMLDivElement>(null)
   const focusRevealedList = useRef(false)
   const previousSecond = useRef<string | null>(null)
   const previousMain = useRef<string | null>(null)
@@ -172,7 +174,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
     const focusList = () =>
       (
         navigation.current?.querySelector<HTMLElement>('.list-scroll') ??
-        navigation.current?.querySelector<HTMLElement>('.tool-filter [aria-checked=true]') ??
+        toolFilter.current ??
         navigation.current?.querySelector<HTMLElement>('button:not(:disabled):not([tabindex="-1"])')
       )?.focus({ preventScroll: true })
     if (focusRevealedList.current && navigationVisible) {
@@ -480,10 +482,21 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                   type="button"
                   className="find-session"
                   aria-label="Find Session"
+                  aria-keyshortcuts="Meta+K"
                   title="Find Session (⌘K)"
                   onClick={store.openSearch}
                 >
-                  ⌕
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="6.75" cy="6.75" r="3.75" />
+                    <path d="m9.5 9.5 3 3" />
+                  </svg>
                 </button>
                 {state.splitBrowsing && (
                   <button
@@ -498,70 +511,37 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                 )}
               </div>
               <p className="summary">
-                {attention} need attention · {running} running · {unknown} unknown
+                <span>{attention} need attention ·</span> <span>{running} running ·</span>{' '}
+                <span>{unknown} unknown</span>
               </p>
-              <div className="grouping-control">
-                <span>Group by</span>
-                <div className="grouping-options" role="radiogroup" aria-label="Group sessions by">
-                  {(['project', 'status'] as const).map((grouping) => (
-                    <button
-                      key={grouping}
-                      type="button"
-                      role="radio"
-                      aria-checked={state.grouping === grouping}
-                      tabIndex={state.grouping === grouping ? 0 : -1}
-                      onClick={() => store.setGrouping(grouping)}
-                      onKeyDown={(event) => {
-                        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-                        event.preventDefault()
-                        const next =
-                          event.key === 'Home'
-                            ? 'project'
-                            : event.key === 'End'
-                              ? 'status'
-                              : grouping === 'project'
-                                ? 'status'
-                                : 'project'
-                        store.setGrouping(next)
-                        event.currentTarget.parentElement
-                          ?.querySelectorAll('button')
-                          [next === 'project' ? 0 : 1]?.focus()
-                      }}
-                    >
-                      {grouping === 'project' ? 'Project' : 'Status'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="tool-filter" role="radiogroup" aria-label="Filter by tool">
-                {(['all', ...AGENT_TOOLS] as const).map((tool) => (
-                  <button
-                    key={tool}
-                    type="button"
-                    role="radio"
-                    aria-checked={filter === tool}
-                    tabIndex={filter === tool ? 0 : -1}
-                    onClick={() => store.setFilter(tool)}
-                    onKeyDown={(event) => {
-                      const tools = ['all', ...AGENT_TOOLS] as const
-                      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-                      event.preventDefault()
-                      const index =
-                        event.key === 'Home'
-                          ? 0
-                          : event.key === 'End'
-                            ? tools.length - 1
-                            : (tools.indexOf(tool) +
-                                (event.key === 'ArrowRight' ? 1 : tools.length - 1)) %
-                              tools.length
-                      store.setFilter(tools[index]!)
-                      event.currentTarget.parentElement?.querySelectorAll('button')[index]?.focus()
-                    }}
-                  >
-                    {tool === 'all' ? 'All' : toolName(tool)}{' '}
-                    <span>{contents.toolCounts[tool]}</span>
-                  </button>
-                ))}
+              <div className="list-controls">
+                <span hidden id={`${regionId}-tool-filter`}>
+                  Filter by tool
+                </span>
+                <PopupSelect
+                  className="tool-filter"
+                  triggerRef={toolFilter}
+                  labelId={`${regionId}-tool-filter`}
+                  value={filter}
+                  options={(['all', ...AGENT_TOOLS] as const).map((tool) => ({
+                    value: tool,
+                    label: `${tool === 'all' ? 'All tools' : toolName(tool)} ${contents.toolCounts[tool]}`
+                  }))}
+                  onChange={store.setFilter}
+                />
+                <span hidden id={`${regionId}-grouping`}>
+                  Group sessions by
+                </span>
+                <PopupSelect
+                  labelId={`${regionId}-grouping`}
+                  prefix="Group: "
+                  value={state.grouping}
+                  options={[
+                    { value: 'project', label: 'Project' },
+                    { value: 'status', label: 'Status' }
+                  ]}
+                  onChange={store.setGrouping}
+                />
               </div>
             </header>
             {snapshot?.firstLaunch && !firstLaunchDismissed && (
@@ -614,14 +594,12 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                 unfilteredCount={contents.toolCounts.all}
                 onShowAll={() => {
                   store.setView('all')
-                  document
-                    .querySelector<HTMLButtonElement>('.tool-filter [aria-checked=true]')
-                    ?.focus()
+                  toolFilter.current?.focus()
                 }}
                 onSettings={store.openSettings}
                 onClearFilter={() => {
                   store.setFilter('all')
-                  document.querySelector<HTMLButtonElement>('.tool-filter [role=radio]')?.focus()
+                  toolFilter.current?.focus()
                 }}
               />
             )}

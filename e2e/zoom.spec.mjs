@@ -110,7 +110,8 @@ test('Zoom: exact steps, bounds, responsive reading, settings, recovery and cold
     await expect(page.getByRole('status')).toHaveCount(0, { timeout: 3000 })
 
     await page.getByRole('button', { name: /^All Sessions \d/ }).click()
-    await page.getByRole('radio', { name: 'Status', exact: true }).click()
+    await page.getByRole('combobox', { name: 'Group sessions by', exact: true }).click()
+    await page.getByRole('option', { name: 'Status', exact: true }).click()
     await page.getByRole('option', { name: /^Fixture Codex long/ }).click()
     const transcript = page.getByRole('region', { name: 'Recent messages' })
     const messageToggle = page.getByRole('button', { name: 'Show More', exact: true })
@@ -178,7 +179,8 @@ test('Zoom: exact steps, bounds, responsive reading, settings, recovery and cold
     await page.getByRole('button', { name: /^Active \d+$/ }).click()
 
     // Open two real reading targets using the UI, then cross the three-column boundary.
-    await page.getByRole('radio', { name: 'Status', exact: true }).click()
+    await page.getByRole('combobox', { name: 'Group sessions by', exact: true }).click()
+    await page.getByRole('option', { name: 'Status', exact: true }).click()
     await page.getByRole('option', { name: /^Fixture Codex complete,/ }).click()
     await menu('session-open-secondary')
     await page.getByRole('option', { name: /^Fixture Claude busy,/ }).click()
