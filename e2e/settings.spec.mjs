@@ -88,7 +88,8 @@ test('Settings: appearance, keyboard, covered replies, failed save and cold rest
   }
   try {
     await launch()
-    await page.getByRole('radio', { name: 'Status', exact: true }).click()
+    await page.getByRole('combobox', { name: 'Group sessions by', exact: true }).click()
+    await page.getByRole('option', { name: 'Status', exact: true }).click()
     await page.getByRole('option', { name: /^Fixture Codex complete,/ }).click()
     await expect(page.locator('.transcript')).toBeVisible()
     await page.getByRole('button', { name: 'Settings', exact: true }).click()

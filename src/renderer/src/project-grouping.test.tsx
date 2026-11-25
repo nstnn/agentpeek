@@ -111,7 +111,9 @@ describe('project grouping', () => {
       projectSession('none', null)
     ])
     await screen.findByRole('tree')
-    expect(screen.getByRole('radio', { name: 'Project', checked: true })).toBeTruthy()
+    expect(screen.getByRole('combobox', { name: 'Group sessions by' }).textContent).toBe(
+      'Group: Project'
+    )
     expect(header('/a/demo')).toBeTruthy()
     expect(header('/b/demo')).toBeTruthy()
     expect(header('No folder')).toBeTruthy()
@@ -138,7 +140,8 @@ describe('project grouping', () => {
     act(() => f.push(snapshot([a, waiting])))
     expect(header('app').getAttribute('aria-label')).toContain('1 session · 1 running')
     expect(screen.getByRole('tree').getAttribute('aria-activedescendant')).toBe(header('app').id)
-    await userEvent.click(screen.getByRole('radio', { name: 'Codex 1' }))
+    await userEvent.click(screen.getByRole('combobox', { name: 'Filter by tool' }))
+    await userEvent.click(screen.getByRole('option', { name: 'Codex 1' }))
     expect(header('app').getAttribute('aria-expanded')).toBe('false')
     expect(header('app').getAttribute('aria-label')).toContain('1 session · 1 running')
     await userEvent.click(screen.getByRole('button', { name: 'All Sessions 2' }))
@@ -205,12 +208,14 @@ describe('project grouping', () => {
       'a',
       'b'
     ])
-    await userEvent.click(screen.getByRole('radio', { name: 'Status' }))
+    await userEvent.click(screen.getByRole('combobox', { name: 'Group sessions by' }))
+    await userEvent.click(screen.getByRole('option', { name: 'Status' }))
     expect(
       screen.getByRole('option', { name: /^Synthetic b,/ }).getAttribute('aria-selected')
     ).toBe('true')
     expect(f.store.getSnapshot().selection?.session.key).toEqual(selectedPane?.session.key)
-    await userEvent.click(screen.getByRole('radio', { name: 'Project' }))
+    await userEvent.click(screen.getByRole('combobox', { name: 'Group sessions by' }))
+    await userEvent.click(screen.getByRole('option', { name: 'Project' }))
     act(() => f.push(snapshot([a], { takenAt: NOW + 2 })))
     expect(row('b').getAttribute('aria-label')).toContain('Unavailable — last known')
     expect(header('app').getAttribute('aria-label')).toContain('1 session')

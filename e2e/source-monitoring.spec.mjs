@@ -103,7 +103,8 @@ test('Sources: footer, keyboard switches, disabled reading, save recovery and co
     ).toBe(true)
     await expect(page.getByRole('switch')).toHaveCount(0)
     await save('sources-footer-light')
-    await page.getByRole('radio', { name: 'Status', exact: true }).click()
+    await page.getByRole('combobox', { name: 'Group sessions by', exact: true }).click()
+    await page.getByRole('option', { name: 'Status', exact: true }).click()
     await page.getByRole('option', { name: /^Fixture Codex complete,/ }).click()
     await page.getByRole('button', { name: 'Pin', exact: true }).click()
     await expect

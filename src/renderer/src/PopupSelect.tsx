@@ -1,27 +1,28 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX } from 'react'
-
-export interface SettingsSelectOption {
-  value: number
-  label: string
-}
+import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type Ref } from 'react'
 
 /**
  * A select-only combo box drawn in AgentPeek's own style. Focus stays on the trigger and the
- * list follows it through aria-activedescendant. The list is a manual popover, so it sits in the
- * top layer above the Settings dialog and is never clipped by the dialog's scroll area.
+ * list follows it through aria-activedescendant. The manual popover stays above dialogs and
+ * scroll areas.
  */
-export function SettingsSelect({
+export function PopupSelect<Value extends number | string>({
   labelId,
   value,
   options,
+  prefix,
+  className,
+  triggerRef,
   disabled = false,
   onChange
 }: {
   labelId: string
-  value: number | null
-  options: readonly SettingsSelectOption[]
+  value: Value | null
+  options: readonly { value: Value; label: string }[]
+  prefix?: string
+  className?: string
+  triggerRef?: Ref<HTMLDivElement>
   disabled?: boolean
-  onChange: (value: number) => void
+  onChange: (value: Value) => void
 }): JSX.Element {
   const id = useId()
   const field = useRef<HTMLDivElement>(null)
@@ -71,11 +72,15 @@ export function SettingsSelect({
   }, [open])
 
   return (
-    <div ref={field} className="settings-select-field">
+    <div
+      ref={field}
+      className={className ? `popup-select-field ${className}` : 'popup-select-field'}
+    >
       <div
+        ref={triggerRef}
         role="combobox"
         tabIndex={0}
-        className="settings-select"
+        className="popup-select"
         aria-labelledby={labelId}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -83,6 +88,7 @@ export function SettingsSelect({
         aria-activedescendant={open ? optionId(active) : undefined}
         aria-disabled={disabled || undefined}
         onClick={() => (open ? setOpen(false) : show())}
+        onBlur={() => setOpen(false)}
         onKeyDown={(event) => {
           if (disabled || event.metaKey || event.ctrlKey || event.altKey) return
           const { key } = event
@@ -115,7 +121,6 @@ export function SettingsSelect({
             choose(active)
             return
           } else if (key === 'Escape') {
-            // Close only the list; the Settings dialog stays open.
             event.preventDefault()
             event.stopPropagation()
             setOpen(false)
@@ -129,16 +134,25 @@ export function SettingsSelect({
           setActive(next)
         }}
       >
-        <span className="settings-select-value">{options[current]?.label ?? ''}</span>
-        <svg className="settings-select-chevron" viewBox="0 0 12 12" aria-hidden="true">
+        <span className="popup-select-value">
+          {prefix && <span className="popup-select-prefix">{prefix}</span>}
+          {options[current]?.label ?? ''}
+        </span>
+        <svg
+          className="popup-select-chevron"
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
           <path
+            className="popup-select-chevron-pair"
             d="m3.5 4.75 2.5-2.5 2.5 2.5M3.5 7.25l2.5 2.5 2.5-2.5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
           />
+          <path className="popup-select-chevron-down" d="m3 4.5 3 3 3-3" />
         </svg>
       </div>
       {open && (
@@ -147,7 +161,7 @@ export function SettingsSelect({
           id={`${id}-list`}
           role="listbox"
           popover="manual"
-          className="settings-select-list"
+          className="popup-select-list"
           aria-labelledby={labelId}
         >
           {options.map((option, index) => (
@@ -155,14 +169,14 @@ export function SettingsSelect({
               key={option.value}
               id={optionId(index)}
               role="option"
-              className="settings-select-option"
+              className="popup-select-option"
               aria-selected={index === active}
               data-current={index === current}
               onPointerMove={() => setActive(index)}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => choose(index)}
             >
-              <svg className="settings-select-check" viewBox="0 0 12 12" aria-hidden="true">
+              <svg className="popup-select-check" viewBox="0 0 12 12" aria-hidden="true">
                 <path
                   d="m2.5 6.25 2.25 2.25 4.75-5"
                   fill="none"

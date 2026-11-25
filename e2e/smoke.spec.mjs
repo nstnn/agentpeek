@@ -124,7 +124,9 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     page = await application.firstWindow()
     await expect(page.locator('.fixture-banner')).toContainText(fixture.home)
     await expect(page.getByRole('heading', { name: 'Active', exact: true })).toBeVisible()
-    await expect(page.getByRole('radio', { name: 'Project', exact: true })).toBeChecked()
+    await expect(page.getByRole('combobox', { name: 'Group sessions by' })).toHaveText(
+      'Group: Project'
+    )
     await expect(page.getByRole('tree')).toBeVisible()
     const project = page.locator('.project-heading').first()
     await project.click()
@@ -133,7 +135,8 @@ test('built app: fixture bootstrap, safe detail, split navigation/read isolation
     await project.click()
     await expect(page.getByRole('treeitem', { name: /^Fixture / })).not.toHaveCount(0)
     // Keep the established smoke journeys exercising the Status presentation.
-    await page.getByRole('radio', { name: 'Status', exact: true }).click()
+    await page.getByRole('combobox', { name: 'Group sessions by', exact: true }).click()
+    await page.getByRole('option', { name: 'Status', exact: true }).click()
     const paths = await application.evaluate(({ app, BrowserWindow }) => ({
       userData: app.getPath('userData'),
       windows: BrowserWindow.getAllWindows().length,

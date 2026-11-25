@@ -80,9 +80,11 @@ test('Waiting, metadata search and durable pins through cold restarts', async ({
     expect(child.exitCode).toBe(0)
     await expect.poll(() => profileProcesses(fixture.userData)).toEqual([])
   }
+  const findInput = () =>
+    page.getByRole('combobox', { name: 'Find by title, folder or session ID', exact: true })
   const find = async (query) => {
     await menu('Find Session…')
-    const input = page.getByRole('combobox')
+    const input = findInput()
     await expect(input).toBeFocused()
     await input.fill(query)
     return page.getByRole('dialog', { name: 'Find Session', exact: true })
@@ -94,18 +96,20 @@ test('Waiting, metadata search and durable pins through cold restarts', async ({
     await menu('Reload Sessions')
     await expect(page.getByRole('button', { name: 'Inbox 1', exact: true })).toBeVisible()
     await menu('Inbox')
-    await page.getByRole('radio', { name: 'Status', exact: true }).click()
+    await page.getByRole('combobox', { name: 'Group sessions by', exact: true }).click()
+    await page.getByRole('option', { name: 'Status', exact: true }).click()
     await save('waiting-in-inbox')
     await page.getByRole('option', { name: /^Fixture Claude busy,/ }).click()
     await expect(page.getByRole('button', { name: 'Inbox 1', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Mark Read', exact: true })).toBeDisabled()
     await save('waiting-remains-after-viewing')
-    await page.getByRole('radio', { name: 'Codex 0', exact: true }).click()
+    await page.getByRole('combobox', { name: 'Filter by tool', exact: true }).click()
+    await page.getByRole('option', { name: 'Codex 0', exact: true }).click()
     await find('Fixture Claude bulk 1')
     await expect(
       page.getByRole('option', { name: /^Fixture Claude bulk 1 Claude Code/ })
     ).toBeVisible()
-    await page.getByRole('combobox').fill(id(500))
+    await findInput().fill(id(500))
     await expect(page.getByRole('option')).toHaveCount(1)
     await save('find-other-tool-by-id')
     await page.keyboard.press('Enter')
@@ -121,7 +125,7 @@ test('Waiting, metadata search and durable pins through cold restarts', async ({
     await page.getByRole('button', { name: 'Pin', exact: true }).click()
     await page.keyboard.press('Meta+k')
     await expect(page.getByRole('dialog', { name: 'Find Session', exact: true })).toBeVisible()
-    await page.getByRole('combobox').fill('/Users/synthetic/projects/fixture-demo')
+    await findInput().fill('/Users/synthetic/projects/fixture-demo')
     await expect(page.getByRole('option').first()).toBeVisible()
     for (let i = 0; i < 5; i++) {
       await page.keyboard.press('Tab')
@@ -129,10 +133,10 @@ test('Waiting, metadata search and durable pins through cold restarts', async ({
         await page.evaluate(() => !!globalThis.window.document.activeElement?.closest('dialog'))
       ).toBe(true)
     }
-    await page.getByRole('combobox').focus()
+    await findInput().focus()
     await page.keyboard.press('ArrowDown')
     await page.keyboard.press('Home')
-    await page.getByRole('combobox').fill('no-such-synthetic-session')
+    await findInput().fill('no-such-synthetic-session')
     await expect(page.getByText(/No matching sessions/)).toBeVisible()
     await simulate(fixture.home, 'codex-complete')
     // Reload is an external source change here; use a focus/reconcile after closing only if the watcher cannot observe it.
