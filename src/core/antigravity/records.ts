@@ -1,4 +1,4 @@
-// Antigravity Desktop transcript lines and title files, turned into normalized records. Pure
+// Antigravity Desktop transcript lines and annotations, turned into normalized records. Pure
 // TypeScript: the file access lives in src/main/sessions/antigravity-source.ts.
 //
 // The formats are internal to Antigravity and undocumented beyond the transcript's path. What is
@@ -310,12 +310,15 @@ function parseNumeric(value: unknown): number | null {
   return null
 }
 
-/**
- * The `title` of an annotation file (`annotations/<id>.pbtxt`), a protobuf text-format message.
- * Only a top-level `title` string is read; every other field is skipped. Returns null when there is
- * none, it is blank, or the file cannot be read as text format.
- */
-export function parseAnnotationTitle(text: string): string | null {
+export interface AntigravityAnnotation {
+  title: string | null
+  archived: boolean
+}
+
+/** Reads the top-level title and archive flag from an annotation's protobuf text format. */
+export function parseAnnotation(text: string): AntigravityAnnotation {
+  let title: string | null | undefined
+  let archived = false
   let depth = 0
   let index = 0
   while (index < text.length) {
@@ -325,7 +328,7 @@ export function parseAnnotationTitle(text: string): string | null {
       index = end === -1 ? text.length : end + 1
     } else if (char === '"' || char === "'") {
       const string = readString(text, index)
-      if (string === null) return null
+      if (string === null) break
       index = string.end
     } else if (char === '{' || char === '<') {
       depth++
@@ -337,14 +340,20 @@ export function parseAnnotationTitle(text: string): string | null {
       const match = /^[A-Za-z0-9_]+/.exec(text.slice(index))
       const name = match?.[0] ?? char
       index += name.length
-      if (depth !== 0 || name !== 'title') continue
-      const title = readTitleValue(text, index)
-      if (title !== undefined) return title
+      if (depth !== 0) continue
+      if (name === 'title' && title === undefined) title = readTitleValue(text, index)
+      if (name === 'archived') {
+        const flag = /^\s*:\s*(true|false)(?=$|[\s#;,])/.exec(text.slice(index))
+        if (flag !== null) {
+          archived = flag[1] === 'true'
+          index += flag[0].length
+        }
+      }
     } else {
       index++
     }
   }
-  return null
+  return { title: title ?? null, archived }
 }
 
 /** The string value after a `title` name, or undefined when the field is not a string. */

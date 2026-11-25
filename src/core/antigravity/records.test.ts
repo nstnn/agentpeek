@@ -3,7 +3,7 @@ import { antigravityMessages } from './messages'
 import {
   type AntigravityRecord,
   isFinalReply,
-  parseAnnotationTitle,
+  parseAnnotation,
   parseRecord,
   replyCursor,
   requestedSkill,
@@ -240,7 +240,9 @@ describe('requestedSkill', () => {
   })
 })
 
-describe('parseAnnotationTitle', () => {
+describe('parseAnnotation', () => {
+  const parseAnnotationTitle = (text: string): string | null => parseAnnotation(text).title
+
   it('reads the top-level title string', () => {
     expect(parseAnnotationTitle('title: "Synthetic plan"\n')).toBe('Synthetic plan')
     expect(parseAnnotationTitle('# comment title: "no"\ntitle:\'Single\'\n')).toBe('Single')
@@ -267,6 +269,18 @@ describe('parseAnnotationTitle', () => {
     ]) {
       expect(parseAnnotationTitle(text)).toBeNull()
     }
+  })
+
+  it('reads only a top-level archive flag, including after a title on the same line', () => {
+    expect(
+      parseAnnotation('title:"Synthetic" archived:true archival_status_timestamp:{seconds:1}')
+    ).toEqual({ title: 'Synthetic', archived: true })
+    expect(
+      parseAnnotation(
+        'meta { archived: true } # archived: true\ntitle: "archived: true" archived: false'
+      )
+    ).toEqual({ title: 'archived: true', archived: false })
+    expect(parseAnnotation('archived: trueish').archived).toBe(false)
   })
 })
 

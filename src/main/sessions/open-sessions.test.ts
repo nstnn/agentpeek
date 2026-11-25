@@ -564,6 +564,30 @@ describe('with the real watcher', () => {
 })
 
 describe('with the real watcher and Antigravity', () => {
+  it('updates Active when Antigravity archives and unarchives an open turn', async () => {
+    await writeAntigravityConversation(NOW - SECOND)
+    const paths = antigravityPaths(home)
+    const annotation = annotationPath(paths, ANTIGRAVITY_ID)
+    const title = annotationText('Synthetic Antigravity')
+    await mkdir(paths.annotations, { recursive: true })
+    await writeFile(annotation, title)
+    const app = await start({ realWatcher: true })
+    await waitFor((latest) => expect(find(latest, ANTIGRAVITY_KEY)?.activity.state).toBe('running'))
+
+    await writeFile(annotation, `${title}archived: true\n`)
+    await waitFor((latest) => {
+      expect(find(latest, ANTIGRAVITY_KEY)).toBeUndefined()
+      expect(latest.groupCounts.running).toBe(0)
+    })
+    expect(await app.recentMessages(ANTIGRAVITY_KEY, 20)).toEqual({ kind: 'not-found' })
+
+    await writeFile(annotation, title)
+    await waitFor((latest) => {
+      expect(find(latest, ANTIGRAVITY_KEY)?.activity.state).toBe('running')
+      expect(latest.groupCounts.running).toBe(1)
+    })
+  })
+
   it('recovers health and activity when a valid transcript replaces an unsupported one', async () => {
     const path = antigravityTranscript()
     await writeLines(path, ['{"synthetic_unknown_field":true}'], NOW - MINUTE)
