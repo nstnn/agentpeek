@@ -31,29 +31,30 @@ npm run fixture -- simulate <absolute-home> codex-complete
 Each command writes once and exits; there is no polling or automatic scenario loop. Wait for
 the expected UI result between steps. Fresh fixtures avoid stale state between scenarios.
 
-| Step                             | Session and expected result                                                                                                                                          |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `codex-complete`                 | Codex complete: Running → Idle, New reply when unselected.                                                                                                           |
-| `codex-error`                    | Codex error: Running → Idle, Error.                                                                                                                                  |
-| `codex-aborted`                  | Codex aborted: Running → Idle, no reply/error attention.                                                                                                             |
-| `codex-reply`                    | Codex complete: a fresh completed turn, new unread cursor.                                                                                                           |
-| `codex-new-turn`                 | Codex complete: starts a newer turn, clearing unseen attention.                                                                                                      |
-| `skill-references`               | Codex retry: append explicit skill cards for recorded, current, missing, long, empty and blocked content. Use the helper's copied home so paths stay isolated.       |
-| `skill-local-updated`            | Replace the generated current local skill; Reload Skill shows the updated version.                                                                                   |
-| `skill-missing-restored`         | Create the generated missing skill; Try Again recovers its current local content.                                                                                    |
-| `claude-skill`                   | Claude busy: append a slash skill invocation, synthetic recorded skill copy and reply. The card uses transcript content only.                                        |
-| `claude-waiting`                 | Claude busy: Running → Waiting for you (permission).                                                                                                                 |
-| `claude-denied`                  | Claude busy: denied tool result + interrupt, then Idle, no reply/error.                                                                                              |
-| `claude-stopped`                 | Claude stopped: interrupt, then Idle, no reply/error.                                                                                                                |
-| `claude-api-error`               | Claude apiError: API error, then Idle, Error.                                                                                                                        |
-| `claude-reply`                   | Claude busy: human prompt + completed reply, then Idle, New reply.                                                                                                   |
-| `claude-new-turn`                | Claude busy: newer human prompt + busy registry, clearing attention.                                                                                                 |
-| `registry-removed`               | Claude dead: removes the synthetic non-existent PID's registry; catalog-backed row becomes Idle.                                                                     |
-| `old-resumed`                    | Old Codex thread: starts a turn; Reload Sessions discovers it as Running.                                                                                            |
-| `malformed-line`                 | Appends invalid JSON to Codex malformed; ignored without affecting the other source.                                                                                 |
-| `read-failure`, `read-restored`  | Removes/restores permission on Codex retry's transcript for failed-read/Try Again.                                                                                   |
-| `missing-codex`, `restore-codex` | Hides/restores only the generated Codex tree; Reload Sessions updates health.                                                                                        |
-| `antigravity-seed`               | Run on the original home **before** `launch --fixture`: adds Antigravity idle (shortened reply), running, and quiet (Unknown after 15 min) conversations; once only. |
+| Step                             | Session and expected result                                                                                                                                                                                            |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `codex-complete`                 | Codex complete: Running → Idle, New reply when unselected.                                                                                                                                                             |
+| `codex-error`                    | Codex error: Running → Idle, Error.                                                                                                                                                                                    |
+| `codex-aborted`                  | Codex aborted: Running → Idle, no reply/error attention.                                                                                                                                                               |
+| `codex-reply`                    | Codex complete: a fresh completed turn, new unread cursor.                                                                                                                                                             |
+| `codex-new-turn`                 | Codex complete: starts a newer turn, clearing unseen attention.                                                                                                                                                        |
+| `skill-references`               | Codex retry: append explicit skill cards for recorded, current, missing, long, empty and blocked content. Use the helper's copied home so paths stay isolated.                                                         |
+| `skill-local-updated`            | Replace the generated current local skill; Reload Skill shows the updated version.                                                                                                                                     |
+| `skill-missing-restored`         | Create the generated missing skill; Try Again recovers its current local content.                                                                                                                                      |
+| `claude-skill`                   | Claude busy: append a slash skill invocation, synthetic recorded skill copy and reply. The card uses transcript content only.                                                                                          |
+| `claude-waiting`                 | Claude busy: Running → Waiting for you (permission).                                                                                                                                                                   |
+| `claude-denied`                  | Claude busy: denied tool result + interrupt, then Idle, no reply/error.                                                                                                                                                |
+| `claude-stopped`                 | Claude stopped: interrupt, then Idle, no reply/error.                                                                                                                                                                  |
+| `claude-api-error`               | Claude apiError: API error, then Idle, Error.                                                                                                                                                                          |
+| `claude-reply`                   | Claude busy: human prompt + completed reply, then Idle, New reply.                                                                                                                                                     |
+| `claude-new-turn`                | Claude busy: newer human prompt + busy registry, clearing attention.                                                                                                                                                   |
+| `registry-removed`               | Claude dead: removes the synthetic non-existent PID's registry; catalog-backed row becomes Idle.                                                                                                                       |
+| `old-resumed`                    | Old Codex thread: starts a turn; Reload Sessions discovers it as Running.                                                                                                                                              |
+| `malformed-line`                 | Appends invalid JSON to Codex malformed; ignored without affecting the other source.                                                                                                                                   |
+| `read-failure`, `read-restored`  | Removes/restores permission on Codex retry's transcript for failed-read/Try Again.                                                                                                                                     |
+| `missing-codex`, `restore-codex` | Hides/restores only the generated Codex tree; Reload Sessions updates health.                                                                                                                                          |
+| `antigravity-seed`               | Run on the original home **before** `launch --fixture`: adds Antigravity idle (two detailed tool calls, one failed; shortened reply), running, and quiet (Unknown after 15 min) conversations; once only.              |
+| `antigravity-skill`              | Run on the **copied** home after launch, after `antigravity-seed`: adds an Antigravity skill under `~/.gemini/config/skills` and Fixture Antigravity skill, whose `/synthetic-antigravity` prompt names it; once only. |
 
 Codex long has more than 20 messages, a tool summary, a long title, and a 211,200-character reply.
 Codex hostile has literal HTML, an unsafe link, a remote image, a table, and a code block.
@@ -63,10 +64,13 @@ description, an Edit diff, a Read range, a failed Bash with its error, an ID-nam
 truncated Write with literal script text, and a last Bash with no result yet (Running, or Waiting
 after `claude-waiting`). These inputs are synthetic text only.
 `antigravity-seed` writes `~/.gemini/antigravity` transcripts and titles for three
-conversations: Fixture Antigravity idle (a finished turn whose reply is marked shortened by the
-tool, so the detail shows the truncation notice), running (an open turn one minute old) and
-quiet (an open turn 20 minutes old: Unknown · Quiet for 15 min). Each has one `view_file` tool
-group. Fixture mode confirms the app is running, so the running row stays Running for about 14
+conversations. Fixture Antigravity idle is a finished turn: a `read_file` call that works, a
+`run_command` call that fails, and a reply marked shortened by the tool, so the detail shows the
+truncation notice. Running is an open turn one minute old and quiet an open turn 20 minutes old
+(Unknown · Quiet for 15 min); each has one `view_file` tool group. `antigravity-skill` writes
+`~/.gemini/config/skills/synthetic-antigravity/SKILL.md` and Fixture Antigravity skill, a finished
+`/synthetic-antigravity` turn whose prompt metadata names that file by its absolute path. The path
+must name the home the app reads, so run it on the helper's copied home, not the original. Fixture mode confirms the app is running, so the running row stays Running for about 14
 minutes after seeding. Active then shows eight running sessions. Seed a fresh home: the step
 refuses to reuse an existing `.gemini` folder.
 The simulator accepts only marked synthetic homes under the OS temp folder and rejects

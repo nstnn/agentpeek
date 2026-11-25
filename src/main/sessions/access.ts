@@ -88,7 +88,9 @@ export function createAccessGate(home: string): AccessGate {
 export function createSkillAccessGate(
   home: string,
   workspace: string | null,
-  fixture: boolean
+  fixture: boolean,
+  /** Home folders this tool keeps its own skills in, such as Antigravity's `.gemini/config/skills`. */
+  toolFolders: readonly string[] = []
 ): AccessGate {
   if (!isAbsolute(home)) throw new Error('The home folder must be an absolute path.')
   const entries: AllowedFiles[] = [
@@ -96,7 +98,8 @@ export function createSkillAccessGate(
     { folder: '.codex/skills', pattern: '**/SKILL.md' },
     { folder: '.codex/skills/.system', pattern: '**/SKILL.md' },
     { folder: '.claude/skills', pattern: '**/SKILL.md' },
-    { folder: '.codex/plugins/cache', pattern: '**/skills/**/SKILL.md' }
+    { folder: '.codex/plugins/cache', pattern: '**/skills/**/SKILL.md' },
+    ...toolFolders.map((folder) => ({ folder, pattern: '**/SKILL.md' }))
   ]
   if (
     !fixture &&

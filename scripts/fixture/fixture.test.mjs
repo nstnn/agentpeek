@@ -257,6 +257,35 @@ it('seeds idle, running and quiet Antigravity conversations once, before launch'
     ['reply', true]
   ])
   expect(JSON.stringify(idle)).not.toContain('must never be shown')
+  const tools = idle.messages[1]
+  expect(tools.calls.map((call) => [call.name, call.summary, call.status])).toEqual([
+    ['read_file', expect.stringMatching(/synthetic\.md · lines 1–8$/), 'done'],
+    ['run_command', 'Synthetic fixture command', 'failed']
+  ])
+  expect(tools.calls[1].error).toBe('Synthetic fixture failure.')
+
+  await simulate(created.home, 'antigravity-skill', Date.now())
+  await expect(simulate(created.home, 'antigravity-skill', Date.now())).rejects.toThrow()
+  const key = { tool: 'antigravity', id: ANTIGRAVITY_IDS.skill }
+  await service.reconcile()
+  await vi.waitFor(() => expect(antigravity('skill')).toBeDefined())
+  const read = await service.recentMessages(key, 20)
+  const prompt = read.messages[0]
+  expect(prompt).toMatchObject({
+    text: '/synthetic-antigravity Synthetic Antigravity skill request.',
+    skill: { name: 'synthetic-antigravity', start: 0, end: 22 }
+  })
+  expect(prompt.skill.path.startsWith(created.home)).toBe(true)
+  const skill = await service.getSkill(key, {
+    at: prompt.at,
+    name: prompt.skill.name,
+    path: prompt.skill.path
+  })
+  expect(skill).toMatchObject({
+    kind: 'skill',
+    source: 'local',
+    description: 'Synthetic Antigravity skill.'
+  })
 })
 
 it('refuses unmarked, escaping, symlinked and unknown simulation targets', async () => {

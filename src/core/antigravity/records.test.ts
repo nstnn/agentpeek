@@ -6,11 +6,13 @@ import {
   parseAnnotationTitle,
   parseRecord,
   replyCursor,
+  requestedSkill,
   userRequestText
 } from './records'
 import {
   finalReplyLine,
   SECOND,
+  skillBlock,
   systemMessageLine,
   T0,
   toolRequestLine,
@@ -19,6 +21,7 @@ import {
   userInputLine
 } from './test-records'
 import { EMPTY_ANTIGRAVITY_TURN_STATE, foldAntigravityRecords } from './turn-state'
+import type { SessionMessage } from '../session'
 
 function parse(lines: string[], includeText = false): AntigravityRecord[] {
   return lines
@@ -61,14 +64,36 @@ describe('parseRecord', () => {
     for (const record of parse(TURN)) expect(record).not.toHaveProperty('text')
   })
 
-  it('reads text only when asked, without metadata, thinking, arguments or output', () => {
+  it('reads text only when asked, without metadata, thinking or output', () => {
     const records = parse(TURN, true)
     expect(records[0]).toMatchObject({ text: 'Synthetic question one' })
     expect(records[4]).toMatchObject({ text: 'Synthetic **answer** one' })
     const serialized = JSON.stringify(records)
-    for (const hidden of ['ADDITIONAL_METADATA', 'thinking', 'secret-argument', 'tool output']) {
+    for (const hidden of ['ADDITIONAL_METADATA', 'thinking', 'tool output']) {
       expect(serialized).not.toContain(hidden)
     }
+  })
+
+  it('reads tool arguments, errors, and typed result steps only on the detail path', () => {
+    const lines = [
+      toolRequestLine({ step: 1, tools: ['run_command'] }),
+      toolResultLine({ step: 2, status: 'ERROR', error: 'Synthetic failure' }),
+      toolResultLine({ step: 3, type: 'VIEW_FILE' }),
+      toolResultLine({ step: 4, type: 'ERROR_MESSAGE', error: 'Synthetic system failure' }),
+      unknownStepLine({ step: 5 })
+    ]
+    expect(JSON.stringify(parse(lines))).not.toMatch(/synthetic-argument|failure|toolStep/i)
+    const [request, failed, typed, system] = parse(lines, true)
+    expect(request).toMatchObject({ calls: [{ name: 'run_command' }] })
+    expect(JSON.stringify(request)).toContain('synthetic-argument')
+    expect(failed).toMatchObject({ kind: 'tool-result', error: 'Synthetic failure' })
+    expect(typed).toMatchObject({ kind: 'other', toolStep: true, status: 'done' })
+    expect(system).toMatchObject({
+      toolStep: true,
+      failedCall: true,
+      status: 'done',
+      error: 'Synthetic system failure'
+    })
   })
 
   it('accepts the plausible created_at encodings and rejects non-numeric protobuf fields', () => {
@@ -186,6 +211,35 @@ describe('userRequestText', () => {
   })
 })
 
+describe('requestedSkill', () => {
+  const PATH = '/Users/synthetic/.gemini/config/skills/synthetic-pr/SKILL.md'
+  const content = (request: string, metadata: string) =>
+    `<USER_REQUEST>\n${request}\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\n${metadata}\n</ADDITIONAL_METADATA>`
+
+  it('reads the one skill block in the metadata', () => {
+    expect(requestedSkill(content('/synthetic-pr go', skillBlock('synthetic-pr', PATH)))).toEqual({
+      name: 'synthetic-pr',
+      path: PATH
+    })
+  })
+
+  it('ignores a block the user typed, two blocks, odd wording, and unsafe names or paths', () => {
+    const block = skillBlock('synthetic-pr', PATH)
+    expect(requestedSkill(content(block, 'Synthetic metadata.'))).toBeNull()
+    expect(requestedSkill(content('/synthetic-pr', block + block))).toBeNull()
+    expect(requestedSkill(content('/x', block.replace('requested', 'asked')))).toBeNull()
+    expect(requestedSkill(content('/x', skillBlock('bad name', PATH)))).toBeNull()
+    for (const path of [
+      'relative/SKILL.md',
+      '/Users/synthetic/../SKILL.md',
+      '/Users/a/README.md'
+    ]) {
+      expect(requestedSkill(content('/x', skillBlock('synthetic-pr', path)))).toBeNull()
+    }
+    expect(requestedSkill('<SKILL>no request</SKILL>')).toBeNull()
+  })
+})
+
 describe('parseAnnotationTitle', () => {
   it('reads the top-level title string', () => {
     expect(parseAnnotationTitle('title: "Synthetic plan"\n')).toBe('Synthetic plan')
@@ -291,6 +345,13 @@ describe('foldAntigravityRecords', () => {
   })
 })
 
+const withoutCalls = (message: SessionMessage) => {
+  if (message.kind !== 'tool-calls') return message
+  const rest = { ...message }
+  delete rest.calls
+  return rest
+}
+
 describe('antigravityMessages', () => {
   it('shows prompts, final replies, and grouped tool calls only', () => {
     const lines = [
@@ -302,7 +363,7 @@ describe('antigravityMessages', () => {
       toolResultLine({ step: 9 }),
       finalReplyLine({ step: 10, text: 'Synthetic answer two', truncated: ['content'] })
     ]
-    expect(antigravityMessages(parse(lines, true))).toEqual([
+    expect(antigravityMessages(parse(lines, true)).map(withoutCalls)).toEqual([
       { kind: 'prompt', text: 'Synthetic question one', at: T0 },
       { kind: 'tool-calls', count: 2, names: ['read_file'], at: T0 + SECOND },
       { kind: 'reply', text: 'Synthetic **answer** one', at: T0 + 4 * SECOND },
@@ -327,6 +388,102 @@ describe('antigravityMessages', () => {
     ]
     expect(antigravityMessages(parse(lines, true))).toEqual([
       { kind: 'reply', text: 'Synthetic only reply', at: T0 + 2 * SECOND }
+    ])
+  })
+
+  it('gives each call its input, summary, and the status of the step in its place', () => {
+    const lines = [
+      userInputLine({ step: 0, text: 'Synthetic question' }),
+      toolRequestLine({
+        step: 1,
+        tools: ['read_file', 'run_command', 'edit_file'],
+        args: [
+          { Path: '/Users/synthetic/a.md', StartLine: '3', EndLine: '9' },
+          { CommandLine: 'echo synthetic', toolSummary: 'Synthetic summary', toolAction: 'Run' },
+          { Path: '/Users/synthetic/b.md', Target: 'old', Replacement: 'new\nmore' }
+        ]
+      }),
+      toolResultLine({ step: 2 }),
+      toolResultLine({ step: 3, status: 'ERROR', error: '  Synthetic failure  ' }),
+      toolResultLine({ step: 4, status: 'CANCELED' }),
+      toolRequestLine({ step: 5, tools: ['view_file', 'list_dir'] }),
+      toolResultLine({ step: 6, type: 'VIEW_FILE' }),
+      toolResultLine({ step: 7, type: 'ERROR_MESSAGE', error: 'Synthetic system failure' }),
+      toolRequestLine({ step: 8, tools: ['grep_search', 'search_web'] }),
+      finalReplyLine({ step: 9, text: 'Synthetic answer' }),
+      toolRequestLine({ step: 10, tools: ['run_command', 'run_command'] }),
+      toolResultLine({ step: 11, status: 'RUNNING' })
+    ]
+    const messages = antigravityMessages(parse(lines, true))
+    const groups = messages.filter((message) => message.kind === 'tool-calls')
+    expect(groups.map((group) => group.calls?.map((call) => call.status))).toEqual([
+      // Step 8 asked for two calls, but step 9 is the final reply: neither got a result.
+      ['done', 'failed', 'interrupted', 'done', 'failed', 'no-result', 'no-result'],
+      ['pending', 'pending']
+    ])
+    const [read, run, edit, , system] = groups[0]!.calls!
+    expect(read).toMatchObject({ name: 'read_file', summary: '/Users/synthetic/a.md · lines 3–9' })
+    expect(run).toMatchObject({
+      summary: 'Synthetic summary',
+      input: 'echo synthetic',
+      error: 'Synthetic failure'
+    })
+    expect(edit).toMatchObject({ input: '-old\n+new\n+more', inputFormat: 'diff' })
+    expect(system).toMatchObject({ error: 'Synthetic system failure' })
+  })
+
+  it('shows tool inputs as JSON without the descriptions Antigravity adds, bounded', () => {
+    const long = 'x'.repeat(7000)
+    const lines = [
+      toolRequestLine({
+        step: 1,
+        tools: ['call_mcp_tool', 'write_file', 'update_focus'],
+        args: [
+          { ServerName: 'synthetic', ToolName: 'lookup', Arguments: '{}', toolAction: 'Call' },
+          { Path: '/Users/synthetic/c.md', Content: long },
+          'not an object'
+        ]
+      })
+    ]
+    const [mcp, write, odd] = (
+      antigravityMessages(parse(lines, true))[0] as {
+        calls: { summary: string | null; input: string | null; inputLength: number }[]
+      }
+    ).calls
+    expect(mcp).toMatchObject({ summary: 'lookup (synthetic)' })
+    expect(JSON.parse(mcp!.input!)).toEqual({
+      ServerName: 'synthetic',
+      ToolName: 'lookup',
+      Arguments: '{}'
+    })
+    expect(write).toMatchObject({ inputLength: 7000, summary: '/Users/synthetic/c.md' })
+    expect(write!.input).toHaveLength(6000)
+    expect(odd).toMatchObject({ input: null, summary: null })
+  })
+
+  it('puts the requested skill on a /name prompt', () => {
+    const path = '/Users/synthetic/.gemini/config/skills/synthetic-pr/SKILL.md'
+    const lines = [
+      userInputLine({
+        step: 0,
+        text: '/synthetic-pr open it',
+        metadata: skillBlock('synthetic-pr', path)
+      }),
+      userInputLine({ step: 1, text: 'Use it please', metadata: skillBlock('synthetic-pr', path) })
+    ]
+    expect(antigravityMessages(parse(lines, true))).toEqual([
+      {
+        kind: 'prompt',
+        text: '/synthetic-pr open it',
+        at: T0,
+        skill: { name: 'synthetic-pr', path, start: 0, end: 13 }
+      },
+      {
+        kind: 'prompt',
+        text: 'Use it please',
+        at: T0 + SECOND,
+        skill: { name: 'synthetic-pr', path, start: 0, end: 0 }
+      }
     ])
   })
 })

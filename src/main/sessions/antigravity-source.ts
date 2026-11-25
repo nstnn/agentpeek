@@ -11,6 +11,7 @@ import {
   foldAntigravityRecords
 } from '../../core/antigravity/turn-state'
 import type { ToolHealth } from '../../core/health'
+import type { SkillContent, SkillRequest } from '../../core/skills'
 import type {
   RecentMessages,
   SessionFacts,
@@ -18,7 +19,7 @@ import type {
   SessionReply,
   SessionSummary
 } from '../../core/session'
-import { type AccessGate, createAccessGate } from './access'
+import { type AccessGate, createAccessGate, createSkillAccessGate } from './access'
 import { isAntigravityAppRunning } from './app-running'
 import {
   annotationPath,
@@ -34,6 +35,7 @@ import { statFile } from './claude-files'
 import { readFirstLine, readLastLines } from './jsonl-reader'
 import { DEFAULT_LISTING_RANGE, type ListingRange, type SessionSource } from './session-source'
 import { readSmallFile } from './small-file-reader'
+import { readLocalSkill } from './skill-reader'
 import { createQueue, isMissing } from './source-support'
 
 // The Antigravity Desktop source. The reader (TASK-004) lists the user's local Antigravity
@@ -50,8 +52,12 @@ import { createQueue, isMissing } from './source-support'
 //   changed (DECISION-002). The workspace is never known: `null`.
 // - Live updates: Antigravity opens, appends, and closes the transcript on every step, so a folder
 //   watch on `brain/` sees each append (TASK-001). No file needs its own watch.
-// The catalog reads records without their text. Message text is read only by `recentMessages`, is
-// never kept, and is never logged.
+// - Skills: a `/name` prompt names the skill's SKILL.md, never its text. `skill` reauthorizes the
+//   request against the prompt in the current tail, then reads the file through the skill gate,
+//   which adds Antigravity's own `.gemini/config/skills`. A skill in a project folder is refused:
+//   Antigravity never says which folder a conversation works in.
+// The catalog reads records without their text. Message text is read only by `recentMessages` and
+// `skill`, is never kept, and is never logged.
 
 export interface AntigravityReaderOptions {
   /** The home folder: the user's, or `AGENTPEEK_HOME` in fixture mode. */
@@ -64,7 +70,12 @@ export interface AntigravityReaderOptions {
   pinnedIds?: () => readonly string[]
   /** The clock, in epoch milliseconds. */
   now?: () => number
+  /** Fixture mode: skill reads stay inside `home`, symlinks included. */
+  fixture?: boolean
 }
+
+/** Where Antigravity Desktop keeps the user's skills, under the home folder (observed 2026-11-25). */
+export const ANTIGRAVITY_SKILL_FOLDERS = ['.gemini/config/skills'] as const
 
 export type { AntigravityFileStatus } from '../../core/antigravity/facts'
 
@@ -87,6 +98,8 @@ export interface AntigravityReader {
   refresh(changedPaths: readonly string[]): Promise<AntigravityConversationFacts[]>
   /** A listed conversation's recent prompts, final replies, and tool-call groups, at most `limit`. */
   recentMessages(conversationId: string, limit: number): Promise<RecentMessages>
+  /** The SKILL.md a recent `/name` prompt asked for, only when the prompt still names it. */
+  skill(conversationId: string, request: SkillRequest): Promise<SkillContent>
   health(): ToolHealth
   olderAvailable(): boolean
 }
@@ -463,7 +476,12 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
       : reply
   }
 
-  async function recentMessages(conversationId: string, limit: number): Promise<RecentMessages> {
+  /** The current tail's records, with text, of a listed conversation. */
+  async function detailRecords(
+    conversationId: string
+  ): Promise<
+    { kind: 'records'; records: AntigravityRecord[]; reachedStart: boolean } | RecentMessages
+  > {
     if (!tracked.has(conversationId)) return { kind: 'not-found' }
     const file = await statTranscript(paths, conversationId)
     if (file === null) return { kind: 'unreadable' }
@@ -477,22 +495,55 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
         maxBytes: MESSAGES_TAIL_BYTES
       })
       if (!(await stillCurrent(file))) return { kind: 'unreadable' }
-      const messages = antigravityMessages(parseRecords(tail.lines, file.modifiedAt, true))
-      const count = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 0
-      return {
-        kind: 'messages',
-        messages: messages.slice(Math.max(0, messages.length - count)),
-        hasOlder: messages.length > count || !tail.reachedStart
-      }
+      const records = parseRecords(tail.lines, file.modifiedAt, true)
+      return { kind: 'records', records, reachedStart: tail.reachedStart }
     } catch {
       return { kind: 'unreadable' }
     }
+  }
+
+  async function recentMessages(conversationId: string, limit: number): Promise<RecentMessages> {
+    const read = await detailRecords(conversationId)
+    if (read.kind !== 'records') return read
+    const messages = antigravityMessages(read.records)
+    const count = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 0
+    return {
+      kind: 'messages',
+      messages: messages.slice(Math.max(0, messages.length - count)),
+      hasOlder: messages.length > count || !read.reachedStart
+    }
+  }
+
+  async function skill(conversationId: string, request: SkillRequest): Promise<SkillContent> {
+    const read = await detailRecords(conversationId)
+    if (read.kind !== 'records') {
+      return {
+        kind: 'unavailable',
+        reason: read.kind === 'unreadable' ? 'unreadable' : 'not-found'
+      }
+    }
+    const asked = read.records.some(
+      (record) =>
+        record.kind === 'user-input' &&
+        record.at === request.at &&
+        record.skill?.name === request.name &&
+        record.skill.path === request.path
+    )
+    if (!asked) return { kind: 'unavailable', reason: 'not-found' }
+    const skillGate = createSkillAccessGate(
+      options.home,
+      null,
+      options.fixture === true,
+      ANTIGRAVITY_SKILL_FOLDERS
+    )
+    return readLocalSkill(request.path, skillGate)
   }
 
   return {
     catalog: () => serialized(reconcile),
     refresh: (changedPaths) => serialized(() => refresh(changedPaths)),
     recentMessages: (id, limit) => serialized(() => recentMessages(id, limit)),
+    skill: (id, request) => serialized(() => skill(id, request)),
     health: () => health,
     olderAvailable: () => older.size > 0
   }
@@ -577,6 +628,10 @@ export function createAntigravitySource(options: AntigravitySourceOptions): Sess
       key.tool === 'antigravity'
         ? reader.recentMessages(key.id, limit)
         : Promise.resolve({ kind: 'not-found' }),
+    getSkill: (key: SessionKey, request: SkillRequest) =>
+      key.tool === 'antigravity'
+        ? reader.skill(key.id, request)
+        : Promise.resolve({ kind: 'unavailable', reason: 'not-found' }),
     health: () => reader.health(),
     olderAvailable: () => reader.olderAvailable(),
     watchedFiles: () => []

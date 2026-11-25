@@ -7,7 +7,7 @@ import {
   type SkillContent,
   type SkillRequest
 } from '../../core/skills'
-import { AccessRefusedError, createSkillAccessGate } from './access'
+import { type AccessGate, AccessRefusedError, createSkillAccessGate } from './access'
 
 const MAX_SKILL_BYTES = 128 * 1024
 
@@ -62,9 +62,16 @@ export async function readRequestedSkill(options: {
       /* Malformed or unrelated records do not authorize a read. */
     }
   }
-  const gate = createSkillAccessGate(options.home, options.workspace, options.fixture)
+  return readLocalSkill(
+    request.path,
+    createSkillAccessGate(options.home, options.workspace, options.fixture)
+  )
+}
+
+/** Reads a SKILL.md through a skill gate, bounded, after the caller reauthorized the request. */
+export async function readLocalSkill(path: string, gate: AccessGate): Promise<SkillContent> {
   try {
-    const handle = await gate.open(request.path)
+    const handle = await gate.open(path)
     try {
       const buffer = Buffer.alloc(MAX_SKILL_BYTES + 1)
       let size = 0

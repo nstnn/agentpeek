@@ -188,28 +188,36 @@ export const registry = (name, status, at) =>
 export const ANTIGRAVITY_IDS = Object.freeze({
   idle: id(801),
   running: id(802),
-  quiet: id(803)
+  quiet: id(803),
+  skill: id(804)
 })
 const antigravityStep = (step, at, fields) =>
   JSON.stringify({ step_index: step, created_at: iso(at), status: 'DONE', ...fields })
-export const antigravityPrompt = (step, at, text) =>
+// A `/name` request adds this block to the prompt's metadata (observed 2026-11-25).
+export const antigravitySkillBlock = (name, path) =>
+  `<SKILL>\nThe user requested you read and use the "${name}" skill. The path to the skill file is:\n${path}\n</SKILL>`
+export const antigravityPrompt = (step, at, text, metadata = '') =>
   antigravityStep(step, at, {
     source: 'USER_EXPLICIT',
     type: 'USER_INPUT',
-    content: `<USER_REQUEST>\n${text}\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nSynthetic metadata.\n</ADDITIONAL_METADATA>`
+    content: `<USER_REQUEST>\n${text}\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nSynthetic metadata.\n${metadata}</ADDITIONAL_METADATA>`
   })
-export const antigravityToolRequest = (step, at, names) =>
+export const antigravityToolRequest = (step, at, names, args = []) =>
   antigravityStep(step, at, {
     source: 'MODEL',
     type: 'PLANNER_RESPONSE',
     thinking: 'Synthetic thinking that must never be shown.',
-    tool_calls: names.map((name) => ({ name, args: { path: `${CWD}/notes/synthetic.md` } }))
+    tool_calls: names.map((name, index) => ({
+      name,
+      args: args[index] ?? { AbsolutePath: `${CWD}/notes/synthetic.md` }
+    }))
   })
-export const antigravityToolResult = (step, at) =>
+export const antigravityToolResult = (step, at, error) =>
   antigravityStep(step, at, {
     source: 'MODEL',
     type: 'GENERIC',
-    content: 'Synthetic tool output that must never be shown.'
+    content: 'Synthetic tool output that must never be shown.',
+    ...(error === undefined ? {} : { status: 'ERROR', error })
   })
 export const antigravityReply = (step, at, text, truncated = false) =>
   antigravityStep(step, at, {
