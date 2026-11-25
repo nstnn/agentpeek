@@ -1,5 +1,5 @@
 import type { Session } from '../../core/session'
-import { rowStatus, toolName } from './session-display'
+import { quietMinutes, rowStatus, toolName } from './session-display'
 
 export const clockTime = (at: number): string =>
   new Date(at).toLocaleTimeString('en-US', { hour12: false })
@@ -35,22 +35,23 @@ export function detailStatus(session: Session): { kind: string; label: string; c
       kind: 'error',
       label: rowStatus(session).label,
       callout:
-        session.key.tool === 'codex'
-          ? 'Codex ended the turn with an error.'
-          : `Claude Code stopped because of an API error (${reason}).`
+        session.key.tool === 'claude'
+          ? `Claude Code stopped because of an API error (${reason}).`
+          : `${toolName(session.key.tool)} ended the turn with an error.`
     }
   }
   if (activity.state === 'unknown') {
     const last = clockTime(session.summary.lastActivityAt)
+    const name = toolName(session.key.tool)
     const descriptions = {
       'process-ended': `Claude Code's process for this session ended without reporting that the turn finished. Last activity ${last}.`,
       'app-not-running':
         session.key.tool === 'antigravity'
           ? `The last turn looks unfinished. AgentPeek couldn't confirm that Antigravity is running. Last activity ${last}.`
           : `The last turn looks unfinished, but the Codex app isn't running. Last activity ${last}.`,
-      quiet: `The last turn looks unfinished, but Codex hasn't written anything for 30 minutes. Last activity ${last}.`,
+      quiet: `The last turn looks unfinished, but ${name} hasn't written anything for ${quietMinutes(session.key.tool)} minutes. Last activity ${last}.`,
       unreadable: "AgentPeek couldn't read this session's file.",
-      unsupported: `${toolName(session.key.tool)} ${session.summary.toolVersion ?? '(unknown version)'} writes this session in a format AgentPeek doesn't recognize.`
+      unsupported: `${name} ${session.summary.toolVersion ?? '(unknown version)'} writes this session in a format AgentPeek doesn't recognize.`
     }
     return {
       ...rowStatus({ ...session, attention: { waiting: false, newReply: false, error: false } }),

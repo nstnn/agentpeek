@@ -1,10 +1,12 @@
 # AgentPeek
 
-Keep an eye on your local Codex and Claude Code sessions in one macOS window.
+Keep an eye on your local Codex and Claude Code sessions in one macOS window. Google Antigravity
+Desktop support is implemented and checked with synthetic data, but not yet accepted on a real
+Antigravity install.
 
 ## Features
 
-- See which sessions are running, waiting for you, have unread replies, or failed.
+- See which sessions are running, waiting for you, have unread replies, or failed (Antigravity Desktop, pending acceptance, covers transcript-backed conversations with Running, Idle, Unknown, and unread replies).
 - Find sessions with **⌘K**, pin important ones, and group them by project or status.
 - Read two sessions side by side and jump back to Codex or Claude.
 - Choose System, Light, or Dark appearance, resize panes, and adjust text zoom.
@@ -38,6 +40,7 @@ AgentPeek is a standalone windowed app built with Electron, TypeScript, and Reac
 Optionally check sessions from your own devices through Tailscale. Remote View is **off by
 default**; session titles and recent messages have separate sharing controls. Recent-message
 sharing has only been checked with synthetic data and is not yet accepted for real-session use.
+Remote View shows Codex and Claude Code sessions only; Antigravity sessions are never shared.
 
 See [Remote View](REMOTE_VIEW.md) for setup, privacy boundaries, and known limits.
 
@@ -51,5 +54,5 @@ Contributors: see [AGENTS.md](AGENTS.md) and the
 
 [MIT](LICENSE). Report vulnerabilities privately using [SECURITY.md](SECURITY.md).
 
-Independent project; not affiliated with OpenAI or Anthropic. Codex and Claude Code are trademarks
+Independent project; not affiliated with OpenAI, Anthropic, or Google. Codex, Claude Code, and Antigravity are trademarks
 of their respective owners.

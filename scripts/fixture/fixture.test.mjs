@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { openSessionsService } from '../../src/main/sessions/open-sessions'
 import { createFixture, removeFixture, fixtureTarget, codexPath } from './home.mjs'
 import { simulate } from './simulate.mjs'
-import { IDS, PIDS, LONG_REPLY, HOSTILE } from './records.mjs'
+import { IDS, PIDS, LONG_REPLY, HOSTILE, ANTIGRAVITY_IDS } from './records.mjs'
 
 const homes = []
 let service
@@ -27,6 +27,7 @@ async function start(created, dead = false) {
     fixture: true,
     now: () => clock,
     isCodexAppRunning: async () => true,
+    isAntigravityAppRunning: async () => true,
     probe: { isAlive: async (pid) => !(dead && pid === PIDS.dead) },
     onSnapshot: () => {},
     createWatcher: () => ({ watchFolders: async () => {}, watchFiles: () => {}, close: () => {} })
@@ -230,6 +231,32 @@ it.each(['codex', 'claude'])('can omit %s at bootstrap', async (missingTool) => 
   await start(created)
   expect(service.snapshot().health[missingTool].state).toBe('not-installed')
   expect(service.snapshot().sessions.every((s) => s.key.tool !== missingTool)).toBe(true)
+})
+
+it('seeds idle, running and quiet Antigravity conversations once, before launch', async () => {
+  const created = await fixture()
+  await simulate(created.home, 'antigravity-seed', Date.now())
+  await expect(simulate(created.home, 'antigravity-seed', Date.now())).rejects.toThrow()
+  await start(created)
+  await vi.waitFor(() => expect(service.snapshot().health.antigravity.state).toBe('connected'))
+  const antigravity = (name) =>
+    service
+      .snapshot()
+      .sessions.find((s) => s.key.tool === 'antigravity' && s.key.id === ANTIGRAVITY_IDS[name])
+  expect(service.snapshot().sessions.filter((s) => s.key.tool === 'antigravity')).toHaveLength(3)
+  expect(antigravity('idle').activity).toEqual({ state: 'idle' })
+  expect(antigravity('idle').summary.title).toBe('Fixture Antigravity idle')
+  expect(antigravity('idle').attention.newReply).toBe(false)
+  expect(antigravity('running').activity).toEqual({ state: 'running' })
+  expect(antigravity('quiet').activity).toEqual({ state: 'unknown', reason: 'quiet' })
+  expect(service.snapshot().groupCounts.running).toBe(8)
+  const idle = await service.recentMessages({ tool: 'antigravity', id: ANTIGRAVITY_IDS.idle }, 20)
+  expect(idle.messages.map((m) => [m.kind, m.truncated === true])).toEqual([
+    ['prompt', false],
+    ['tool-calls', false],
+    ['reply', true]
+  ])
+  expect(JSON.stringify(idle)).not.toContain('must never be shown')
 })
 
 it('refuses unmarked, escaping, symlinked and unknown simulation targets', async () => {

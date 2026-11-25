@@ -11,9 +11,10 @@ import {
   type JSX
 } from 'react'
 import { sessionKeyToString, type Session } from '../../core/session'
+import { AGENT_TOOLS } from '../../core/tools'
 import { buildView } from '../../core/views'
 import { createSessionsStore, displayedGroups, sameKey, type SessionsStore } from './sessions-store'
-import { VIEW_NAMES } from './session-display'
+import { toolName, VIEW_NAMES } from './session-display'
 import { Sidebar, SessionBanners, EmptyList, SessionRangeFootnote } from './session-panels'
 import { SessionList } from './SessionList'
 import { SessionDetail } from './SessionDetail'
@@ -533,7 +534,7 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                 </div>
               </div>
               <div className="tool-filter" role="radiogroup" aria-label="Filter by tool">
-                {(['all', 'codex', 'claude'] as const).map((tool) => (
+                {(['all', ...AGENT_TOOLS] as const).map((tool) => (
                   <button
                     key={tool}
                     type="button"
@@ -542,20 +543,22 @@ export function App({ store: suppliedStore }: { store?: SessionsStore }): JSX.El
                     tabIndex={filter === tool ? 0 : -1}
                     onClick={() => store.setFilter(tool)}
                     onKeyDown={(event) => {
-                      const tools = ['all', 'codex', 'claude'] as const
+                      const tools = ['all', ...AGENT_TOOLS] as const
                       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
                       event.preventDefault()
                       const index =
                         event.key === 'Home'
                           ? 0
                           : event.key === 'End'
-                            ? 2
-                            : (tools.indexOf(tool) + (event.key === 'ArrowRight' ? 1 : 2)) % 3
+                            ? tools.length - 1
+                            : (tools.indexOf(tool) +
+                                (event.key === 'ArrowRight' ? 1 : tools.length - 1)) %
+                              tools.length
                       store.setFilter(tools[index]!)
                       event.currentTarget.parentElement?.querySelectorAll('button')[index]?.focus()
                     }}
                   >
-                    {tool === 'all' ? 'All' : tool === 'codex' ? 'Codex' : 'Claude Code'}{' '}
+                    {tool === 'all' ? 'All' : toolName(tool)}{' '}
                     <span>{contents.toolCounts[tool]}</span>
                   </button>
                 ))}

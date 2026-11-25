@@ -505,6 +505,12 @@ button[aria-disabled='true'] {
 .settings-select-label {
   font-weight: 500;
 }
+.settings-source-note {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--secondary);
+  line-height: 1.4;
+}
 .settings-select-field {
   flex: none;
   anchor-scope: --settings-select;
@@ -879,6 +885,8 @@ button[aria-disabled='true'] {
 }
 .tool-filter {
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   background: var(--fill);
   border-radius: 7px;
   padding: 2px;
@@ -888,7 +896,7 @@ button[aria-disabled='true'] {
   border: 0;
   border-radius: 5px;
   background: transparent;
-  padding: 3px 10px;
+  padding: 3px 8px;
   font-size: 11px;
   white-space: nowrap;
 }

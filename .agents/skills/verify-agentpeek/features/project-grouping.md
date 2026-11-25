@@ -1,6 +1,6 @@
 # Project grouping
 
-The list defaults to Project, combining both tools when their working-folder paths match. Each project has an unfilled heading, a folder mark and a session-count badge, with its session rows indented below. A subtle background appears only on hover, and keyboard focus retains its visible outline. Collapsible headings keep attention and running counts visible, moving the summary below the name in narrow lists. Group by switches to Status without replacing either reading pane.
+The list defaults to Project, combining Codex and Claude Code sessions when their working-folder paths match. Antigravity never records a working folder, so its sessions always appear under No folder. Each project has an unfilled heading, a folder mark and a session-count badge, with its session rows indented below. A subtle background appears only on hover, and keyboard focus retains its visible outline. Collapsible headings keep attention and running counts visible, moving the summary below the name in narrow lists. Group by switches to Status without replacing either reading pane.
 
 ## Sub-features
 
@@ -25,7 +25,7 @@ The list defaults to Project, combining both tools when their working-folder pat
 Preconditions:
 
 - The user approved synthetic launches and focus/menu interaction for this task.
-- Use a generator-owned synthetic home with both tools, shared paths, duplicate basenames, a long path and a session without a folder. Change only invented records before launch; never use real sessions.
+- Use a generator-owned synthetic home with Codex and Claude Code sessions, shared paths, duplicate basenames, a long path and a session without a folder. Change only invented records before launch; never use real sessions.
 - Run `launch --label project-grouping --fixture <absolute-synthetic-home>` and `doctor` using `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs`.
 - Discover exact labels and selectors with `aria` and read-only `eval` before acting.
 - Choose the view first. The app opens in Active, which lists running sessions only, so its headings show only running counts. Inbox shows only sessions that need attention. Waiting and idle synthetic chats, such as the No folder records below, appear only in All Sessions (or Pinned). Use View > All Sessions for steps that expect mixed attention/running summaries or non-running rows.

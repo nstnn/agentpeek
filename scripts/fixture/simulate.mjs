@@ -1,4 +1,4 @@
-import { appendFile, chmod, rename, rm, writeFile } from 'node:fs/promises'
+import { appendFile, chmod, mkdir, rename, rm, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fixtureTarget, codexPath, registryPath, transcriptPath } from './home.mjs'
 import {
@@ -11,7 +11,13 @@ import {
   prompt,
   assistant,
   claude,
-  registry
+  registry,
+  ANTIGRAVITY_IDS,
+  antigravityPrompt,
+  antigravityToolRequest,
+  antigravityToolResult,
+  antigravityReply,
+  antigravityTitle
 } from './records.mjs'
 
 export const STEPS = Object.freeze([
@@ -36,8 +42,61 @@ export const STEPS = Object.freeze([
   'skill-references',
   'claude-skill',
   'skill-local-updated',
-  'skill-missing-restored'
+  'skill-missing-restored',
+  'antigravity-seed'
 ])
+
+const MINUTE = 60 * 1000
+
+/** Creates one new folder inside the fixture. Never reuses or follows an existing entry. */
+async function newFolder(home, parent, name) {
+  const path = join(await fixtureTarget(home, parent), name)
+  await mkdir(path)
+  return fixtureTarget(home, path)
+}
+
+/**
+ * Adds three synthetic Antigravity Desktop conversations: Idle with a reply the tool shortened,
+ * Running (fixture mode confirms the app), and an open turn quiet for 20 minutes (Unknown).
+ */
+async function seedAntigravity(home, at) {
+  const root = await newFolder(home, await newFolder(home, home, '.gemini'), 'antigravity')
+  const brain = await newFolder(home, root, 'brain')
+  const annotations = await newFolder(home, root, 'annotations')
+  const openTurn = (start, text) => [
+    antigravityPrompt(0, start, text),
+    antigravityToolRequest(1, start + 1000, ['view_file']),
+    antigravityToolResult(2, start + 2000)
+  ]
+  const conversations = [
+    [
+      'idle',
+      at - 5 * MINUTE,
+      (start) => [
+        ...openTurn(start, 'Synthetic Antigravity question.'),
+        antigravityReply(3, start + 3000, 'Synthetic Antigravity answer, cut short.', true)
+      ]
+    ],
+    ['running', at - MINUTE, (start) => openTurn(start, 'Synthetic Antigravity running task.')],
+    ['quiet', at - 20 * MINUTE, (start) => openTurn(start, 'Synthetic Antigravity quiet task.')]
+  ]
+  for (const [name, start, lines] of conversations) {
+    const conversationId = ANTIGRAVITY_IDS[name]
+    let folder = brain
+    for (const part of [conversationId, '.system_generated', 'logs'])
+      folder = await newFolder(home, folder, part)
+    const records = lines(start)
+    const transcript = join(folder, 'transcript.jsonl')
+    await writeFile(transcript, records.join('\n') + '\n', { flag: 'wx' })
+    const last = (start + (records.length - 1) * 1000) / 1000
+    await utimes(transcript, last, last)
+    await writeFile(
+      join(annotations, `${conversationId}.pbtxt`),
+      antigravityTitle(`Fixture Antigravity ${name}`),
+      { flag: 'wx' }
+    )
+  }
+}
 
 export async function simulate(home, step, at = Date.now()) {
   if (!STEPS.includes(step) || !Number.isSafeInteger(at))
@@ -59,6 +118,9 @@ export async function simulate(home, step, at = Date.now()) {
   const codex = (name, lines) => append(codexPath(home, IDS[name]), lines)
   const transcript = (name, lines) => append(transcriptPath(home, IDS[name]), lines)
   switch (step) {
+    case 'antigravity-seed':
+      await seedAntigravity(home, at)
+      break
     case 'claude-skill': {
       const name = 'synthetic-skill'
       const directory = join(home, '.claude', 'skills', name)

@@ -199,6 +199,60 @@ describe('sessions interface', () => {
     await userEvent.keyboard('{ArrowRight}')
     expect(document.activeElement?.getAttribute('aria-checked')).toBe('true')
     expect(document.activeElement?.textContent).toContain('Codex')
+    await userEvent.keyboard('{End}')
+    expect(document.activeElement?.getAttribute('aria-checked')).toBe('true')
+    expect(document.activeElement?.textContent).toContain('Antigravity')
+    await userEvent.keyboard('{ArrowRight}')
+    expect(document.activeElement?.textContent).toContain('All')
+    await userEvent.keyboard('{ArrowLeft}')
+    expect(document.activeElement?.textContent).toContain('Antigravity')
+  })
+
+  it('filters Antigravity sessions with live per-view counts and 15-minute quiet status', async () => {
+    const fake = mount(
+      snapshot(
+        [
+          session('cx'),
+          session('ag-run', {
+            key: { tool: 'antigravity', id: 'ag-run' },
+            summary: {
+              title: 'Synthetic AG running',
+              workspacePath: null,
+              lastActivityAt: NOW,
+              toolVersion: null
+            }
+          }),
+          session('ag-quiet', {
+            key: { tool: 'antigravity', id: 'ag-quiet' },
+            summary: {
+              title: 'Synthetic AG quiet',
+              workspacePath: null,
+              lastActivityAt: NOW,
+              toolVersion: null
+            },
+            activity: { state: 'unknown', reason: 'quiet' }
+          })
+        ],
+        {
+          health: {
+            codex: { state: 'connected', lastReadAt: NOW },
+            claude: { state: 'connected', lastReadAt: NOW },
+            antigravity: { state: 'connected', lastReadAt: NOW }
+          }
+        }
+      )
+    )
+    await screen.findByRole('option', { name: /Synthetic AG running/ })
+    await userEvent.click(screen.getByRole('radio', { name: 'Antigravity 1' }))
+    expect(screen.getAllByRole('option')).toHaveLength(1)
+    expect(screen.getByRole('option').getAttribute('aria-label')).toContain(
+      'Synthetic AG running, Antigravity, No folder, Running'
+    )
+    act(() => fake.command('view:all'))
+    expect(screen.getByRole('radio', { name: 'Antigravity 2' })).toBeTruthy()
+    expect(
+      screen.getByRole('option', { name: /Synthetic AG quiet/ }).getAttribute('aria-label')
+    ).toContain('Unknown · Quiet for 15 min')
   })
 
   it('uses exact session keys for context menus, keeps gray highlight until dismissal, supports keyboard', async () => {

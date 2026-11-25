@@ -150,6 +150,7 @@ describe('Settings', () => {
     expect(
       screen.getByRole('switch', { name: 'Monitor Antigravity' }).getAttribute('aria-checked')
     ).toBe('true')
+    expect(screen.getByText(/Lists Desktop conversations with transcripts only/)).toBeTruthy()
     expect(screen.getAllByRole('switch', { name: /^Monitor / })).toHaveLength(3)
   })
   it('restores the selection on save failure and can load settings again after a failed read', async () => {

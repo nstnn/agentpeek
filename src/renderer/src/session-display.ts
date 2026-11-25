@@ -1,5 +1,6 @@
+import { ANTIGRAVITY_QUIET_LIMIT_MS, CODEX_QUIET_LIMIT_MS } from '../../core/activity'
 import type { ToolHealth } from '../../core/health'
-import type { Session } from '../../core/session'
+import type { Session, UnknownReason } from '../../core/session'
 import type { AgentTool } from '../../core/tools'
 import type { GroupId, ViewId } from '../../core/views'
 
@@ -29,13 +30,33 @@ const TOOL_NAMES: Readonly<Record<AgentTool, string>> = {
   claude: 'Claude Code',
   antigravity: 'Antigravity'
 }
+const TOOL_AUTHORS: Readonly<Record<AgentTool, string>> = {
+  codex: 'Codex',
+  claude: 'Claude',
+  antigravity: 'Antigravity'
+}
+const TOOL_MONOGRAMS: Readonly<Record<AgentTool, string>> = {
+  codex: 'C',
+  claude: 'A',
+  antigravity: 'G'
+}
+const OPEN_TOOL_LABELS: Readonly<Record<AgentTool, string | null>> = {
+  codex: 'Open Codex',
+  claude: 'Open Claude',
+  antigravity: null
+}
 const TOOL_HOMES: Readonly<Record<AgentTool, string>> = {
   codex: '~/.codex',
   claude: '~/.claude',
   antigravity: '~/.gemini/antigravity'
 }
 export const toolName = (tool: AgentTool): string => TOOL_NAMES[tool]
+export const toolAuthor = (tool: AgentTool): string => TOOL_AUTHORS[tool]
+export const toolMonogram = (tool: AgentTool): string => TOOL_MONOGRAMS[tool]
+export const openToolLabel = (tool: AgentTool): string | null => OPEN_TOOL_LABELS[tool]
 export const toolHome = (tool: AgentTool): string => TOOL_HOMES[tool]
+export const quietMinutes = (tool: AgentTool): number =>
+  (tool === 'antigravity' ? ANTIGRAVITY_QUIET_LIMIT_MS : CODEX_QUIET_LIMIT_MS) / 60_000
 export const sessionTitle = (session: Session): string =>
   session.summary.title ||
   `${session.unavailable ? `Unavailable ${session.pinned ? 'pinned ' : ''}session` : 'Untitled session'} · ${session.key.id.slice(0, 6)}`
@@ -51,12 +72,19 @@ const WAITING: Record<string, string> = {
   'worker request': 'Worker',
   'goal proposal': 'Goal'
 }
-const UNKNOWN = {
-  'process-ended': 'Process ended',
-  'app-not-running': 'Codex not running',
-  quiet: 'Quiet for 30 min',
-  unreadable: "Can't read",
-  unsupported: 'Unsupported format'
+function unknownReasonLabel(tool: AgentTool, reason: UnknownReason): string {
+  switch (reason) {
+    case 'process-ended':
+      return 'Process ended'
+    case 'app-not-running':
+      return tool === 'antigravity' ? 'Antigravity activity unconfirmed' : 'Codex not running'
+    case 'quiet':
+      return `Quiet for ${quietMinutes(tool)} min`
+    case 'unreadable':
+      return "Can't read"
+    case 'unsupported':
+      return 'Unsupported format'
+  }
 }
 export function rowStatus(session: Session, missing = false): { kind: string; label: string } {
   if (session.unavailable) return { kind: 'unknown', label: 'Unavailable' }
@@ -81,11 +109,10 @@ export function rowStatus(session: Session, missing = false): { kind: string; la
   }
   if (session.attention.newReply) return { kind: 'reply', label: 'New reply' }
   if (activity.state === 'unknown') {
-    const reason =
-      activity.reason === 'app-not-running' && session.key.tool === 'antigravity'
-        ? 'Antigravity activity unconfirmed'
-        : UNKNOWN[activity.reason]
-    return { kind: 'unknown', label: `Unknown · ${reason}` }
+    return {
+      kind: 'unknown',
+      label: `Unknown · ${unknownReasonLabel(session.key.tool, activity.reason)}`
+    }
   }
   return { kind: 'idle', label: 'Idle' }
 }

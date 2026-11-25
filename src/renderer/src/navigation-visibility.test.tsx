@@ -242,6 +242,21 @@ describe('independent navigation visibility', () => {
     expect(screen.queryByLabelText('Codex source: No access')).toBeNull()
     expect(screen.queryByLabelText('Codex source: Connected')).toBeNull()
     expect(screen.getByRole('img', { name: 'Claude Code source: Connected' })).toBeTruthy()
+    act(() =>
+      f.push(
+        snapshot([f.a, f.b], {
+          health: {
+            codex: { state: 'connected', lastReadAt: NOW },
+            claude: { state: 'connected', lastReadAt: NOW },
+            antigravity: { state: 'connected', lastReadAt: NOW }
+          }
+        })
+      )
+    )
+    expect(screen.getByRole('img', { name: 'Antigravity source: Connected' })).toBeTruthy()
+    expect(
+      [...document.querySelectorAll('.source-monogram')].map((node) => node.textContent)
+    ).toEqual(['C', 'A', 'G'])
     await userEvent.click(screen.getByRole('button', { name: 'Settings' }))
     expect(f.store.getSnapshot().settingsOpen).toBe(true)
   })

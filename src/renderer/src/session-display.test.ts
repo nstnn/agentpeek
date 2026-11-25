@@ -1,8 +1,58 @@
 import { describe, expect, it } from 'vitest'
-import { relativeTime, sessionTitle, workspaceName } from './session-display'
+import {
+  openToolLabel,
+  quietMinutes,
+  relativeTime,
+  rowStatus,
+  sessionTitle,
+  toolAuthor,
+  toolMonogram,
+  toolName,
+  workspaceName
+} from './session-display'
 import { NOW, session } from '../test-support'
 
 describe('session presentation', () => {
+  it('uses distinct labels, authors, monograms, open support, and quiet limits for every tool', () => {
+    expect([toolName('codex'), toolName('claude'), toolName('antigravity')]).toEqual([
+      'Codex',
+      'Claude Code',
+      'Antigravity'
+    ])
+    expect([toolAuthor('codex'), toolAuthor('claude'), toolAuthor('antigravity')]).toEqual([
+      'Codex',
+      'Claude',
+      'Antigravity'
+    ])
+    expect([toolMonogram('codex'), toolMonogram('claude'), toolMonogram('antigravity')]).toEqual([
+      'C',
+      'A',
+      'G'
+    ])
+    expect([openToolLabel('codex'), openToolLabel('claude'), openToolLabel('antigravity')]).toEqual(
+      ['Open Codex', 'Open Claude', null]
+    )
+    expect([quietMinutes('codex'), quietMinutes('antigravity')]).toEqual([30, 15])
+    expect(
+      rowStatus(
+        session('ag-quiet', {
+          key: { tool: 'antigravity', id: 'ag-quiet' },
+          activity: { state: 'unknown', reason: 'quiet' }
+        })
+      ).label
+    ).toBe('Unknown · Quiet for 15 min')
+    expect(
+      rowStatus(
+        session('ag-unconfirmed', {
+          key: { tool: 'antigravity', id: 'ag-unconfirmed' },
+          activity: { state: 'unknown', reason: 'app-not-running' }
+        })
+      ).label
+    ).toBe('Unknown · Antigravity activity unconfirmed')
+    expect(
+      rowStatus(session('cx-quiet', { activity: { state: 'unknown', reason: 'quiet' } })).label
+    ).toBe('Unknown · Quiet for 30 min')
+  })
   it('uses ID and folder fallbacks and preserves full source values', () => {
     const s = session('abcdef123', {
       summary: { title: null, workspacePath: null, lastActivityAt: NOW, toolVersion: null }

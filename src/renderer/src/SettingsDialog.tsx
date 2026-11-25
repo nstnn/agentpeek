@@ -230,6 +230,12 @@ export function SettingsDialog({
                       ? healthCopy(tool, health).label
                       : 'Loading…'}
                 </p>
+                {tool === 'antigravity' && (
+                  <p className="settings-source-note">
+                    Lists Desktop conversations with transcripts only (excludes older legacy
+                    sessions). Shows Running, Idle, Unknown, and new replies.
+                  </p>
+                )}
               </div>
               <button
                 id={`${id}-${tool}`}

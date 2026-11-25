@@ -1,7 +1,7 @@
 # Security policy
 
-AgentPeek reads the local session files of Codex and Claude Code, which can contain private
-conversations. Security reports are welcome and taken seriously.
+AgentPeek reads the local session files of Codex, Claude Code, and Google Antigravity Desktop,
+which can contain private conversations. Security reports are welcome and taken seriously.
 
 ## Reporting a vulnerability
 
@@ -13,7 +13,8 @@ Use synthetic data only: never attach real conversation text, session files, or 
 
 ## In scope
 
-- AgentPeek writing, renaming, locking, or deleting any Codex or Claude Code file or setting.
+- AgentPeek writing, renaming, locking, or deleting any Codex, Claude Code, or Antigravity file or
+  setting.
 - Reading files outside AgentPeek's path allowlist, including credential files.
 - Conversation text being logged, stored, or sent anywhere, or any network request made by the app.
 - Remote View, the one opt-in network feature (see the README): the listener accepting connections

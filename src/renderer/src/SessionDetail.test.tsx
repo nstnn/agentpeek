@@ -697,6 +697,55 @@ describe('session detail', () => {
       )
     }
   )
+
+  it('renders Antigravity author, truncation notice, 15-minute quiet copy, and no Open action', async () => {
+    const f = mountDetail(
+      {
+        key: { tool: 'antigravity', id: 'exact-ag-id' },
+        summary: {
+          title: 'Synthetic Antigravity chat',
+          workspacePath: null,
+          lastActivityAt: NOW,
+          toolVersion: null
+        },
+        activity: { state: 'unknown', reason: 'quiet' },
+        attention: { waiting: false, newReply: true, error: false },
+        lastReply: reply('ag-reply')
+      },
+      false
+    )
+    f.api.getMessages.mockResolvedValue({
+      kind: 'messages',
+      hasOlder: false,
+      messages: [
+        { kind: 'prompt', text: 'Synthetic AG prompt', at: NOW - 1000, truncated: true },
+        { kind: 'reply', text: 'Synthetic AG reply', at: NOW, truncated: true }
+      ]
+    })
+    f.rerender(
+      <SessionDetail
+        {...f.props}
+        session={{
+          ...f.props.session,
+          summary: { ...f.props.session.summary, lastActivityAt: NOW + 1 }
+        }}
+      />
+    )
+    await screen.findByText('Synthetic AG reply')
+    expect(screen.getByText('Antigravity · No folder')).toBeTruthy()
+    expect(screen.getByText('Unknown · Quiet for 15 min')).toBeTruthy()
+    expect(screen.getByText(/Antigravity hasn't written anything for 15 minutes\./)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Open / })).toBeNull()
+    expect(screen.getByText('Antigravity')).toBeTruthy()
+    expect(screen.queryByText('Claude')).toBeNull()
+    expect(
+      screen.getAllByText('Antigravity shortened this message in its transcript file.')
+    ).toHaveLength(2)
+    await userEvent.click(screen.getByRole('button', { name: 'Pin' }))
+    expect(f.api.setPinned).toHaveBeenCalledWith({ tool: 'antigravity', id: 'exact-ag-id' }, true)
+    await userEvent.click(screen.getByRole('button', { name: 'Mark Read' }))
+    expect(f.api.markRead).toHaveBeenCalledWith({ tool: 'antigravity', id: 'exact-ag-id' })
+  })
 })
 
 describe('detail navigation and request lifetime', () => {

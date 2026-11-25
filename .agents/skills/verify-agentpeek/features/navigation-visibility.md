@@ -16,7 +16,7 @@ An icon left of the Sessions heading collapses navigation to an icon rail indepe
 - Click the icon left of Sessions to collapse navigation; click its rail icon to expand it, or press Shift-Command-B. Clicking the Sessions title does nothing.
 - Select a session, then click the icon beside Active/Inbox/Pinned/All Sessions to hide the list. Click the restore icon in the reading header to show it again, or press Shift-Command-L. Accessible names remain Hide Sessions / Show Sessions.
 - In the rail, click Active, Inbox, Pinned or All Sessions, or use View's existing commands.
-- Connected sources sit above Settings as non-interactive status indicators: names, or initials in the rail (C for Codex, A for Claude Code). Use Settings to inspect every source.
+- Connected sources sit above Settings as non-interactive status indicators: names, or initials in the rail (C for Codex, A for Claude Code, G for Antigravity). Use Settings to inspect every source.
 - Resize the window or expanded sidebar while reading one or two sessions.
 - Toggle again during a transition to reverse it. With macOS Reduce Motion enabled, navigation changes immediately.
 
