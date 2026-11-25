@@ -3,7 +3,7 @@ import type { AppSnapshot } from '../../shared/api'
 import { AGENT_TOOLS } from '../../core/tools'
 import type { ViewId } from '../../core/views'
 import type { RendererState } from './sessions-store'
-import { rangeDays, toolHome, toolName, VIEW_NAMES } from './session-display'
+import { rangeDays, toolHome, toolMonogram, toolName, VIEW_NAMES } from './session-display'
 import { NavigationIcon } from './NavigationIcon'
 import { SessionIcon } from './SessionIcon'
 import { SettingsIcon } from './SettingsDialog'
@@ -73,9 +73,9 @@ export function Sidebar({
                 aria-label={label}
                 title={
                   id === 'active'
-                    ? `${count} running ${count === 1 ? 'session' : 'sessions'} across both tools.`
+                    ? `${count} running ${count === 1 ? 'session' : 'sessions'} across all monitored tools.`
                     : id === 'inbox'
-                      ? `${label}. Waiting sessions, unread replies and errors across both tools.`
+                      ? `${label}. Waiting sessions, unread replies and errors across all monitored tools.`
                       : label
                 }
                 aria-current={view === id ? 'page' : undefined}
@@ -130,7 +130,7 @@ export function Sidebar({
                 <span className="health-dot connected" aria-hidden="true" />
                 {collapsed ? (
                   <span className="source-monogram" aria-hidden="true">
-                    {tool === 'codex' ? 'C' : 'A'}
+                    {toolMonogram(tool)}
                   </span>
                 ) : (
                   <span>{toolName(tool)}</span>
@@ -366,7 +366,8 @@ export function EmptyList({
     body = 'Choose View > Reload Sessions to try again.'
   } else if (checking || health?.state === 'checking') {
     title = 'Reading sessions…'
-    body = 'Checking Codex and Claude Code files on this Mac. AgentPeek only reads them.'
+    body =
+      'Checking Codex, Claude Code, and Antigravity files on this Mac. AgentPeek only reads them.'
   } else if (
     health?.state === 'off' ||
     (snapshot && AGENT_TOOLS.every((tool) => snapshot.health[tool].state === 'off'))
@@ -414,7 +415,11 @@ export function EmptyList({
     action = { label: 'Browse All Sessions', onClick: onShowAll }
   } else if (view === 'all' || snapshot?.sessions.length === 0) {
     title = filter === 'all' ? 'No sessions yet' : `No ${toolName(filter)} sessions yet`
-    body = `Start a conversation in ${filter === 'all' ? 'Codex or Claude Code' : toolName(filter)} and it will show up here. AgentPeek lists sessions from the last 7 days.`
+    const loadedDays = rangeDays(snapshot?.range.loadedDays ?? 7)
+    body =
+      filter === 'antigravity'
+        ? `Start a conversation in Antigravity Desktop and it will show up here. AgentPeek lists conversations with a transcript from the last ${loadedDays}; older legacy conversations are not included.`
+        : `Start a conversation in ${filter === 'all' ? 'Codex, Claude Code, or Antigravity' : toolName(filter)} and it will show up here. AgentPeek lists sessions from the last ${loadedDays}.`
   } else {
     title = view === 'active' ? 'No running sessions' : 'Inbox is clear'
     body =

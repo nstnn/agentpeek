@@ -181,4 +181,37 @@ describe('tool call disclosures', () => {
       screen.getByText('Showing the first 1 of 2 calls. Open Claude for the full group.')
     ).toBeTruthy()
   })
+
+  it('renders Antigravity name-only summaries and never misnames Antigravity as Claude', () => {
+    const view = render(
+      <ToolCalls
+        message={{ kind: 'tool-calls', count: 3, names: ['run_command', 'read_file'], at: call.at }}
+        tool="antigravity"
+        activity="idle"
+      />
+    )
+    expect(screen.getByText('3 tool calls · run_command, read_file')).toBeTruthy()
+    expect(view.container.querySelector('details')).toBeNull()
+    view.rerender(
+      <ToolCalls
+        message={{
+          kind: 'tool-calls',
+          count: 2,
+          names: ['read_file'],
+          at: call.at,
+          calls: [{ ...call, input: 'x'.repeat(10), inputLength: 9000, nestedNames: null }]
+        }}
+        tool="antigravity"
+        activity="idle"
+      />
+    )
+    expect(
+      screen.getByText(
+        'Showing the first 10 of 9,000 characters. Open Antigravity for the full input.'
+      )
+    ).toBeTruthy()
+    expect(
+      screen.getByText('Showing the first 1 of 2 calls. Open Antigravity for the full group.')
+    ).toBeTruthy()
+  })
 })

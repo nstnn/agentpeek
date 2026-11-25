@@ -8,6 +8,7 @@ This folder is the maintained source for verifying what a user of AgentPeek can 
 - `launch --label <feature>` succeeded, and `doctor` prints `doctor: OK`.
 - The run uses an empty synthetic home unless the feature file names a fixture. The app reads that home only; `doctor` must confirm the snapshot and banner name it.
 - No step drives an instance that this run did not start.
+- Antigravity recipes use a seeded generator fixture: run `npm run fixture -- create`, then `npm run fixture -- simulate <home> antigravity-seed` on the printed original `home`, and launch with `--fixture <home>` within about ten minutes, while the seeded running conversation is still Running. The seed adds Fixture Antigravity idle, running and quiet; see `scripts/fixture/README.md`. Active then shows 8.
 
 ## Driving conventions
 

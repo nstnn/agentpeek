@@ -2,6 +2,7 @@ import type { JSX } from 'react'
 import type { SessionActivity, SessionMessage, ToolCallDetail } from '../../core/session'
 import type { AgentTool } from '../../core/tools'
 import { clockTime } from './detail-status'
+import { toolAuthor } from './session-display'
 
 type CallLabel = { text: string; kind: 'failed' | 'running' | 'waiting' | 'muted' }
 
@@ -37,7 +38,7 @@ export function ToolCalls({
 }): JSX.Element {
   const label = `${message.count} tool ${message.count === 1 ? 'call' : 'calls'} · ${message.names.join(', ')}`
   if (!message.calls?.length) return <p className="tool-summary">{label}</p>
-  const toolName = tool === 'codex' ? 'Codex' : 'Claude'
+  const author = toolAuthor(tool)
   const labels = message.calls.map((call) => callLabel(call, activity))
   // The group's summary counts the calls that need a look: failed, running, or waiting.
   const counts = (['failed', 'running', 'waiting'] as const)
@@ -83,7 +84,7 @@ export function ToolCalls({
                   {call.inputLength > call.input.length && (
                     <p>
                       Showing the first {call.input.length.toLocaleString('en-US')} of{' '}
-                      {call.inputLength.toLocaleString('en-US')} characters. Open {toolName} for the
+                      {call.inputLength.toLocaleString('en-US')} characters. Open {author} for the
                       full input.
                     </p>
                   )}
@@ -110,8 +111,8 @@ export function ToolCalls({
         ))}
         {message.count > message.calls.length && (
           <p className="tool-call-limit">
-            Showing the first {message.calls.length} of {message.count} calls. Open {toolName} for
-            the full group.
+            Showing the first {message.calls.length} of {message.count} calls. Open {author} for the
+            full group.
           </p>
         )}
       </div>

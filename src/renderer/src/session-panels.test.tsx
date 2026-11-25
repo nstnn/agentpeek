@@ -62,24 +62,33 @@ describe('empty states and health', () => {
     expect(screen.getByRole('option')).toBeTruthy()
   })
 
-  describe.each(['codex', 'claude'] as AgentTool[])('%s filter', (tool) => {
-    const otherTool = tool === 'codex' ? 'claude' : 'codex'
+  describe.each(['codex', 'claude', 'antigravity'] as AgentTool[])('%s filter', (tool) => {
+    const otherTool: AgentTool = tool === 'codex' ? 'claude' : 'codex'
     it.each(['pinned', 'active', 'inbox', 'all'] as const)(
       'clears only the tool filter from an empty %s view and restores keyboard focus',
       async (view) => {
         const fake = mount(
-          snapshot([
-            session('hidden', {
-              key: { tool: otherTool, id: 'hidden' },
-              pinned: true,
-              ...(view === 'inbox'
-                ? {
-                    activity: { state: 'idle' },
-                    attention: { waiting: false, error: false, newReply: true }
-                  }
-                : {})
-            })
-          ])
+          snapshot(
+            [
+              session('hidden', {
+                key: { tool: otherTool, id: 'hidden' },
+                pinned: true,
+                ...(view === 'inbox'
+                  ? {
+                      activity: { state: 'idle' },
+                      attention: { waiting: false, error: false, newReply: true }
+                    }
+                  : {})
+              })
+            ],
+            {
+              health: {
+                codex: { state: 'connected', lastReadAt: NOW },
+                claude: { state: 'connected', lastReadAt: NOW },
+                antigravity: { state: 'connected', lastReadAt: NOW }
+              }
+            }
+          )
         )
         await screen.findByRole('heading', { name: 'Active', level: 1 })
         act(() => fake.command(`view:${view}`))
@@ -121,9 +130,18 @@ describe('empty states and health', () => {
 
     it('offers browse for zero pins even with sessions in the other tool, preserving the filter', async () => {
       const fake = mount(
-        snapshot([
-          session('other', { key: { tool: otherTool, id: 'other' }, activity: { state: 'idle' } })
-        ])
+        snapshot(
+          [
+            session('other', { key: { tool: otherTool, id: 'other' }, activity: { state: 'idle' } })
+          ],
+          {
+            health: {
+              codex: { state: 'connected', lastReadAt: NOW },
+              claude: { state: 'connected', lastReadAt: NOW },
+              antigravity: { state: 'connected', lastReadAt: NOW }
+            }
+          }
+        )
       )
       await screen.findByRole('heading', { name: 'No running sessions' })
       await userEvent.click(screen.getByRole('radio', { name: `${toolName(tool)} 0` }))
@@ -142,29 +160,53 @@ describe('empty states and health', () => {
       expect(screen.getByRole('option', { name: /Synthetic other/ })).toBeTruthy()
     })
 
-    it('shows pins in both tools and retains the filter across view changes', async () => {
+    it('shows pins across all tools and retains the filter across view changes', async () => {
       const fake = mount(
-        snapshot([
-          session('codex-pin', { pinned: true }),
-          session('claude-pin', { key: { tool: 'claude', id: 'claude-pin' }, pinned: true })
-        ])
+        snapshot(
+          [
+            session('codex-pin', { pinned: true }),
+            session('claude-pin', { key: { tool: 'claude', id: 'claude-pin' }, pinned: true }),
+            session('antigravity-pin', {
+              key: { tool: 'antigravity', id: 'antigravity-pin' },
+              pinned: true
+            })
+          ],
+          {
+            health: {
+              codex: { state: 'connected', lastReadAt: NOW },
+              claude: { state: 'connected', lastReadAt: NOW },
+              antigravity: { state: 'connected', lastReadAt: NOW }
+            }
+          }
+        )
       )
       await screen.findAllByRole('option')
       await userEvent.click(screen.getByRole('radio', { name: `${toolName(tool)} 1` }))
       act(() => fake.command('view:pinned'))
       expect(screen.getAllByRole('option')).toHaveLength(1)
       expect(screen.getByRole('option').getAttribute('id')).toBe(`session-${tool}:${tool}-pin`)
-      expect(screen.getByRole('button', { name: 'Pinned 2' })).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Pinned 3' })).toBeTruthy()
       expect(screen.queryByRole('button', { name: 'Show All Pinned' })).toBeNull()
     })
 
     it('names the tool when no source has any sessions', async () => {
-      const fake = mount(snapshot())
+      const fake = mount(
+        snapshot([], {
+          health: {
+            codex: { state: 'connected', lastReadAt: NOW },
+            claude: { state: 'connected', lastReadAt: NOW },
+            antigravity: { state: 'connected', lastReadAt: NOW }
+          }
+        })
+      )
       await screen.findByRole('heading', { name: 'No sessions yet' })
       await userEvent.click(screen.getByRole('radio', { name: `${toolName(tool)} 0` }))
       expect(
         screen.getByRole('heading', { name: `No ${toolName(tool)} sessions yet` })
       ).toBeTruthy()
+      if (tool === 'antigravity') {
+        expect(screen.getByText(/older legacy conversations are not included/)).toBeTruthy()
+      }
       act(() => fake.command('view:all'))
       expect(
         screen.getByRole('heading', { name: `No ${toolName(tool)} sessions yet` })
@@ -187,7 +229,7 @@ describe('empty states and health', () => {
     mount(snapshot(Array.from({ length: 7 }, (_, i) => session(`running-${i}`))))
     const active = await screen.findByRole('button', { name: 'Active 7' })
     expect(active.getAttribute('title')).toContain('7 running sessions')
-    expect(active.getAttribute('title')).toContain('across both tools')
+    expect(active.getAttribute('title')).toContain('across all monitored tools')
     expect(active.querySelector('.badge')).toBeNull()
     expect(screen.getAllByRole('option')).toHaveLength(7)
     await userEvent.click(screen.getByRole('radio', { name: 'Claude Code 0' }))

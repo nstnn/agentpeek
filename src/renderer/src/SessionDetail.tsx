@@ -11,7 +11,14 @@ import type { RecentMessages, Session, SessionMessage } from '../../core/session
 import type { AgentPeekApi } from '../../shared/api'
 import type { RemoteStatusView } from '../../shared/remote-settings'
 import { useRemoteAlias } from './remote-status'
-import { rowStatus, sessionTitle, toolName, workspaceName } from './session-display'
+import {
+  openToolLabel,
+  rowStatus,
+  sessionTitle,
+  toolAuthor,
+  toolName,
+  workspaceName
+} from './session-display'
 import { clockTime, detailStatus } from './detail-status'
 import { SessionIcon } from './SessionIcon'
 import { SafeMarkdown } from './SafeMarkdown'
@@ -53,7 +60,9 @@ function messageEntries(previous: MessageEntry[], messages: SessionMessage[]): M
             call.nestedNames?.join('\0') === other.nestedNames?.join('\0')
           )
         })
-      : b.kind !== 'tool-calls' && a.text === b.text)
+      : b.kind !== 'tool-calls' &&
+        a.text === b.text &&
+        Boolean(a.truncated) === Boolean(b.truncated))
   const matches = messages.map((message) => {
     const candidates = previous.filter((entry) => sameContent(entry.message, message))
     const count = messages.filter((other) => sameContent(other, message)).length
@@ -263,7 +272,7 @@ export function SessionDetail({
         callout: undefined
       }
     : detailStatus(session)
-  const openName = tool === 'codex' ? 'Open Codex' : 'Open Claude'
+  const openName = openToolLabel(tool)
   const messages = result?.kind === 'messages' ? result.messages : []
   const entries = result?.kind === 'messages' ? loaded!.entries : []
   let lastPrompt = -1
@@ -311,22 +320,24 @@ export function SessionDetail({
           </div>
         )}
         <div className="detail-actions">
-          <button
-            type="button"
-            disabled={missing}
-            title={
-              tool === 'codex'
-                ? 'Open this session in Codex'
-                : session.appSessionId
-                  ? 'Open this session in Claude'
-                  : 'Bring the Claude app to the front'
-            }
-            onClick={() =>
-              void action(() => api.openTool(session.key), `Couldn't open ${toolName(tool)}.`)
-            }
-          >
-            {openName}
-          </button>
+          {openName !== null && (
+            <button
+              type="button"
+              disabled={missing}
+              title={
+                tool === 'codex'
+                  ? 'Open this session in Codex'
+                  : session.appSessionId
+                    ? 'Open this session in Claude'
+                    : 'Bring the Claude app to the front'
+              }
+              onClick={() =>
+                void action(() => api.openTool(session.key), `Couldn't open ${toolName(tool)}.`)
+              }
+            >
+              {openName}
+            </button>
+          )}
           <button
             type="button"
             disabled={missing || !(session.attention.newReply || session.attention.error)}
@@ -529,7 +540,7 @@ function Message({
   return (
     <article className={`message ${message.kind}`}>
       <header>
-        <strong>{message.kind === 'prompt' ? 'You' : tool === 'codex' ? 'Codex' : 'Claude'}</strong>
+        <strong>{message.kind === 'prompt' ? 'You' : toolAuthor(tool)}</strong>
         <time dateTime={new Date(message.at).toISOString()}>{clockTime(message.at)}</time>
       </header>
       <MessageText
@@ -537,6 +548,7 @@ function Message({
         tool={tool}
         onLink={onLink}
         markdown={message.kind === 'reply'}
+        sourceTruncated={message.truncated === true}
         promptContext={message.kind === 'prompt' ? promptContext : undefined}
       />
     </article>
@@ -548,12 +560,14 @@ function MessageText({
   tool,
   onLink,
   markdown,
+  sourceTruncated = false,
   promptContext
 }: {
   text: string
   tool: Session['key']['tool']
   onLink: (url: string) => void
   markdown: boolean
+  sourceTruncated?: boolean
   promptContext?: PromptSkillContext
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false)
@@ -634,16 +648,26 @@ function MessageText({
           )}
         </div>
       )}
-      {text.length > PREVIEW_LIMIT && (
+      {(text.length > PREVIEW_LIMIT || sourceTruncated) && (
         <p className="truncation-notice" id={noticeId}>
-          {shortened
-            ? `Showing the first ${limit.toLocaleString('en-US')} of ${text.length.toLocaleString('en-US')} characters.`
-            : `Showing all ${text.length.toLocaleString('en-US')} characters.`}
-          {capped && (
+          {text.length > PREVIEW_LIMIT && (
             <>
-              {' '}
-              {!expanded && 'Expansion is limited to 200,000 characters. '}
-              Open {tool === 'codex' ? 'Codex' : 'Claude'} to read the rest.
+              {shortened
+                ? `Showing the first ${limit.toLocaleString('en-US')} of ${text.length.toLocaleString('en-US')} characters.`
+                : `Showing all ${text.length.toLocaleString('en-US')} characters.`}
+              {capped && (
+                <>
+                  {' '}
+                  {!expanded && 'Expansion is limited to 200,000 characters. '}
+                  Open {toolAuthor(tool)} to read the rest.
+                </>
+              )}
+            </>
+          )}
+          {sourceTruncated && (
+            <>
+              {text.length > PREVIEW_LIMIT ? ' ' : ''}
+              {toolName(tool)} shortened this message in its transcript file.
             </>
           )}
         </p>

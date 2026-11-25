@@ -20,6 +20,7 @@ export function buildSessionMenu(
   options: { context?: boolean; canGoBack?: boolean; canCloseSecondary?: boolean } = {}
 ): MenuItemConstructorOptions[] {
   const enabled = session !== null
+  const canOpen = session === null || session.key.tool !== 'antigravity'
   const items: MenuItemConstructorOptions[] = [
     ...(options.canCloseSecondary
       ? [
@@ -38,13 +39,17 @@ export function buildSessionMenu(
       click: actions.openSecondary
     },
     { type: 'separator' },
-    {
-      id: 'session-open',
-      label: session?.key.tool === 'claude' ? 'Open Claude' : 'Open Codex',
-      accelerator: 'CommandOrControl+O',
-      enabled: enabled && !session.unavailable,
-      click: actions.open
-    },
+    ...(canOpen
+      ? [
+          {
+            id: 'session-open',
+            label: session?.key.tool === 'claude' ? 'Open Claude' : 'Open Codex',
+            accelerator: 'CommandOrControl+O',
+            enabled: enabled && !session.unavailable,
+            click: actions.open
+          }
+        ]
+      : []),
     {
       id: 'session-mark-read',
       label: 'Mark Read',

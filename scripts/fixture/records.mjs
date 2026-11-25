@@ -183,3 +183,39 @@ export const registry = (name, status, at) =>
     status,
     ...(status === 'waiting' ? { waitingFor: 'permission' } : {})
   })
+
+// Antigravity Desktop 2.34.0 transcript steps (TASK-001 observed shape). Each line is one step.
+export const ANTIGRAVITY_IDS = Object.freeze({
+  idle: id(801),
+  running: id(802),
+  quiet: id(803)
+})
+const antigravityStep = (step, at, fields) =>
+  JSON.stringify({ step_index: step, created_at: iso(at), status: 'DONE', ...fields })
+export const antigravityPrompt = (step, at, text) =>
+  antigravityStep(step, at, {
+    source: 'USER_EXPLICIT',
+    type: 'USER_INPUT',
+    content: `<USER_REQUEST>\n${text}\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nSynthetic metadata.\n</ADDITIONAL_METADATA>`
+  })
+export const antigravityToolRequest = (step, at, names) =>
+  antigravityStep(step, at, {
+    source: 'MODEL',
+    type: 'PLANNER_RESPONSE',
+    thinking: 'Synthetic thinking that must never be shown.',
+    tool_calls: names.map((name) => ({ name, args: { path: `${CWD}/notes/synthetic.md` } }))
+  })
+export const antigravityToolResult = (step, at) =>
+  antigravityStep(step, at, {
+    source: 'MODEL',
+    type: 'GENERIC',
+    content: 'Synthetic tool output that must never be shown.'
+  })
+export const antigravityReply = (step, at, text, truncated = false) =>
+  antigravityStep(step, at, {
+    source: 'MODEL',
+    type: 'PLANNER_RESPONSE',
+    content: text,
+    ...(truncated ? { truncated_fields: ['content'] } : {})
+  })
+export const antigravityTitle = (title) => `title: ${JSON.stringify(title)}\n`
