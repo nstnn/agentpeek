@@ -9,7 +9,7 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 export interface AntigravityPaths {
   /** `~/.gemini/antigravity/brain`: one `<conversation id>` folder per conversation. */
   brain: string
-  /** `~/.gemini/antigravity/annotations`: `<conversation id>.pbtxt`, holding the title. */
+  /** `~/.gemini/antigravity/annotations`: `<conversation id>.pbtxt` with title and archive flag. */
   annotations: string
 }
 

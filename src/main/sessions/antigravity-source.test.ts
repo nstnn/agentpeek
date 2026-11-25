@@ -410,6 +410,33 @@ describe('refresh', () => {
     expect(opened).toEqual([])
   })
 
+  it('drops a running conversation on an annotation-only archive and restores it on unarchive', async () => {
+    const transcript = await writeTranscript(1, [userInputLine({ step: 0, text: 'Synthetic' })])
+    await writeTranscript(2, finishedTurn(), NOW - 2 * MINUTE)
+    const readerOptions = { range: () => ({ windowMs: DAY, maxPerTool: 1 }) }
+    const reader = createReader(readerOptions)
+    expect(await reader.catalog()).toMatchObject([
+      { conversationId: conversationId(1), lastTurnStep: 'open' }
+    ])
+
+    const annotation = await writeAnnotation(1, 'title:"Synthetic" archived:true\n')
+    expect(await reader.refresh([annotation])).toMatchObject([
+      { conversationId: conversationId(2), lastTurnStep: 'ended' }
+    ])
+    expect(reader.olderAvailable()).toBe(false)
+    expect(await reader.recentMessages(conversationId(1), 10)).toEqual({ kind: 'not-found' })
+    expect(await reader.refresh([transcript])).toHaveLength(1)
+    expect(await reader.catalog()).toMatchObject([{ conversationId: conversationId(2) }])
+
+    const pinned = createReader({ ...readerOptions, pinnedIds: () => [conversationId(1)] })
+    expect(await pinned.catalog()).toMatchObject([{ conversationId: conversationId(2) }])
+
+    await writeAnnotation(1, 'title:"Synthetic" archived:false\n')
+    expect(await reader.refresh([annotation])).toMatchObject([
+      { conversationId: conversationId(1), lastTurnStep: 'open' }
+    ])
+  })
+
   it('rereads a replaced transcript and drops one that disappeared', async () => {
     const path = await writeTranscript(1, finishedTurn())
     const reader = createReader()

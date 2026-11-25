@@ -12,6 +12,7 @@ The window opens in Active with tool health, collapsible Project groups and live
 - `list-view-counts` counts running sessions in Active and waiting sessions and non-running unread results in Inbox, unfiltered across all monitored tools; zero stays accessible in the rail.
 - `list-groups` shows Running only in Active; Inbox orders Waiting for you, Errors and New replies, with text status labels.
 - `list-inbox-transitions` removes completed tasks from Active immediately, preserves reading panes, clears read results and returns restarted tasks to Active.
+- `list-antigravity-archive` removes an archived Antigravity conversation from the live list even while its last recorded turn is open.
 - `list-second-marker` names naturally listed Right sessions; one list cursor follows the active pane without changing counts.
 - `list-placement` supports row drag/cancel and explicit left/right context placement; ordinary clicks use the active or remembered pane.
 - `list-selection` starts unselected, supports arrows/Home/End, keeps selected rows through updates and supplies the Session menu target.
@@ -62,6 +63,24 @@ Preconditions:
 - **Health and notices.** Empty launch shows "No sessions yet"; choosing a missing tool shows its installation copy. A fresh populated profile shows the first-launch strip; `click --role button --name "Dismiss first launch notice"` hides it for the run. Save before/after aria trees and screenshots. Unreadable/newer/unwritable state files and health recovery have synthetic component tests; claim runtime proof only when the corresponding file condition is actually exercised.
 - **Compact header and tool filter (`list-filter`).** Launch the seeded Antigravity fixture from the [baseline preconditions](./README.md) and require `doctor`. Open All Sessions and choose Status with `click --role combobox --name "Group sessions by"` and `click --role option --name "Status"`. Open the tool filter with `click --role combobox --name "Filter by tool"`. Capture ARIA and a screenshot of All tools, Codex, Claude Code and Antigravity with their current-view counts and the checkmark on the current source. Choose Antigravity 3 with `click --role option --name "Antigravity 3"`. Only the three Antigravity fixture rows remain, including the quiet row labeled Unknown. The trigger shows Antigravity 3 and sidebar Active still shows 8. With the filter focused, press ArrowDown to open, Home to highlight All tools, then Escape. The trigger stays focused on Antigravity. Repeat with Enter and confirm All tools applies. Open either menu and press Tab or click elsewhere to dismiss it without applying a choice. At the 280-pixel list width, capture both menus and the closed header. Check that both controls share a row, the status phrases keep their labels with their counts, and the full options remain reachable without horizontal overflow.
 - **Antigravity health and empty copy (`list-health`).** In a new scratch folder outside the repository, run `mkdir -p <scratch>/antigravity-empty/.gemini/antigravity/brain`, launch `node .agents/skills/verify-agentpeek/scripts/agentpeek.mjs launch --label sessions-list-antigravity-empty --fixture <scratch>/antigravity-empty` and require `doctor`. In All Sessions, run `click --role combobox --name "Filter by tool"` and `click --role option --name "Antigravity 0"` and capture `aria list-health-antigravity-empty` plus `screenshot list-health-antigravity-empty`: No Antigravity sessions yet, and the body says AgentPeek lists conversations with a transcript from the last 7 days and leaves out older legacy conversations. In the seeded fixture, the quiet row's label reads Unknown · Quiet for 15 min. Unknown · Antigravity activity unconfirmed cannot be reached in fixture mode, which always confirms the app; component tests cover it.
+- **Antigravity archive (`list-antigravity-archive`).** Launch the seeded Antigravity fixture and confirm Fixture Antigravity running is in Active. Capture `aria antigravity-archive-before` and `screenshot antigravity-archive-before`. Replace `<copied-home>` with the run's synthetic `homeDir` and set its annotation's archive flag:
+
+  ```sh
+  node --input-type=module - '<copied-home>' true <<'JS'
+  import { writeFile } from 'node:fs/promises'
+  import { join } from 'node:path'
+  import { fixtureTarget } from './scripts/fixture/home.mjs'
+  import { ANTIGRAVITY_IDS, antigravityTitle } from './scripts/fixture/records.mjs'
+
+  const [, , home, archive] = process.argv
+  const path = join(home, '.gemini/antigravity/annotations', ANTIGRAVITY_IDS.running + '.pbtxt')
+  const title = antigravityTitle('Fixture Antigravity running')
+  await writeFile(await fixtureTarget(home, path), title + (archive === 'true' ? 'archived: true\n' : ''))
+  JS
+  ```
+
+  Capture `aria antigravity-archive-after` and `screenshot antigravity-archive-after` once the watcher updates the view. Active drops by one and the row disappears. In All Sessions, the other two Antigravity rows are still present. Repeat the command with `false` and confirm the row returns to Active while the transcript is still fresh.
+
 - **Cleanup.** Run `doctor`, `menu-click "Window > Close Window"`, `wait-exit --timeout 3000`, then `stop`. Record `clean: true` and `defaultProfileUnchanged: true`.
 
 ## Gotchas

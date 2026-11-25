@@ -1,5 +1,6 @@
 import {
-  parseAnnotationTitle,
+  parseAnnotation,
+  type AntigravityAnnotation,
   parseRecord,
   type AntigravityRecord
 } from '../../core/antigravity/records'
@@ -25,7 +26,6 @@ import {
   annotationPath,
   antigravityPaths,
   classifyAntigravityPath,
-  isConversationId,
   listTranscripts,
   statTranscript,
   transcriptSignature,
@@ -48,8 +48,8 @@ import { createQueue, isMissing } from './source-support'
 //   range's cap (50 by default) are kept, plus saved pins.
 // - Turns: each changed version is read from a bounded tail. This keeps facts and detail on the
 //   same version even when a rewrite keeps the inode and grows the file.
-// - Titles: `annotations/<id>.pbtxt`, read only for listed conversations and only when the file
-//   changed (DECISION-002). The workspace is never known: `null`.
+// - Annotations: `annotations/<id>.pbtxt` supplies the title and archive flag for eligible
+//   transcripts. An archive update can remove a conversation without any transcript write.
 // - Live updates: Antigravity opens, appends, and closes the transcript on every step, so a folder
 //   watch on `brain/` sees each append (TASK-001). No file needs its own watch.
 // - Skills: a `/name` prompt names the skill's SKILL.md, never its text. `skill` reauthorizes the
@@ -94,7 +94,7 @@ export interface AntigravityConversationFacts {
 export interface AntigravityReader {
   /** Lists the conversations and reads what changed in them. Newest activity first. */
   catalog(): Promise<AntigravityConversationFacts[]>
-  /** Reads only the transcripts and titles named by `changedPaths`; ignores any other path. */
+  /** Refreshes named transcripts and annotations, reconciling the list on archive changes. */
   refresh(changedPaths: readonly string[]): Promise<AntigravityConversationFacts[]>
   /** A listed conversation's recent prompts, final replies, and tool-call groups, at most `limit`. */
   recentMessages(conversationId: string, limit: number): Promise<RecentMessages>
@@ -148,7 +148,7 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
   const tracked = new Map<string, TrackedConversation>()
   // A rewrite cannot undo a later user prompt already observed for this UUID.
   const promptSteps = new Map<string, number>()
-  const titles = new Map<string, { signature: string | null; title: string | null }>()
+  const annotations = new Map<string, AntigravityAnnotation & { signature: string | null }>()
   const older = new Set<string>()
   let health: ToolHealth = { state: 'checking' }
   let lastReadAt: number | null = null
@@ -164,12 +164,13 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
     } catch (error) {
       health = isMissing(error) ? { state: 'not-installed' } : { state: 'no-access', lastReadAt }
       tracked.clear()
-      titles.clear()
+      annotations.clear()
       inspected.clear()
       return []
     }
     const present = new Set(files.map((file) => file.conversationId))
     for (const id of inspected.keys()) if (!present.has(id)) inspected.delete(id)
+    for (const id of annotations.keys()) if (!present.has(id)) annotations.delete(id)
 
     const pins = new Set(options.pinnedIds?.() ?? [])
     let recentCount = 0
@@ -211,6 +212,11 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
         if (!pinned && recent && cached === undefined) rejectBudget--
         continue
       }
+      const annotationWasCached = annotations.has(id)
+      if ((await readAnnotation(id)).archived) {
+        if (!pinned && recent && !annotationWasCached) rejectBudget--
+        continue
+      }
       if (!pinned && !recent) {
         if (result.kind === 'user') older.add(id)
         continue
@@ -219,7 +225,6 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
       if (!pinned) recentCount++
     }
     keep(kept)
-    await readTitles()
 
     lastReadAt = startedAt
     health =
@@ -238,7 +243,10 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
       readAny = true
       const id = kind.conversationId
       if (kind.kind === 'annotation') {
-        if (tracked.has(id)) await readTitle(id)
+        const previous = annotations.get(id)
+        if (previous !== undefined && (await readAnnotation(id)).archived !== previous.archived) {
+          return reconcile()
+        }
         continue
       }
       older.delete(id)
@@ -253,13 +261,16 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
       }
       if (entry === undefined) {
         tracked.delete(id)
-        titles.delete(id)
-      } else {
-        tracked.set(id, entry)
+        if (file === null) annotations.delete(id)
+        continue
       }
+      if ((await readAnnotation(id)).archived) {
+        if (tracked.has(id)) return reconcile()
+        continue
+      }
+      tracked.set(id, entry)
     }
     keep([...tracked.values()])
-    await readTitles({ onlyMissing: true })
     if (
       readAny &&
       (health.state === 'connected' || (health.state === 'unsupported' && recognizedTranscript))
@@ -396,37 +407,28 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
     if (state.lastUserStep > previous) promptSteps.set(id, state.lastUserStep)
   }
 
-  /**
-   * Reads the titles of listed conversations whose annotation file changed (or, with `onlyMissing`,
-   * that have none read yet), and forgets the titles of conversations no longer listed.
-   */
-  async function readTitles(options: { onlyMissing?: boolean } = {}): Promise<void> {
-    for (const id of titles.keys()) if (!tracked.has(id)) titles.delete(id)
-    for (const id of tracked.keys()) {
-      if (options.onlyMissing === true && titles.has(id)) continue
-      await readTitle(id)
-    }
-  }
-
-  async function readTitle(conversationId: string): Promise<void> {
-    // Only IDs from a listing or a classified path get here, so the path stays inside annotations/.
-    if (!isConversationId(conversationId)) return
+  async function readAnnotation(conversationId: string): Promise<AntigravityAnnotation> {
+    // Only IDs from listed transcripts or an existing annotation cache entry reach this read.
     const path = annotationPath(paths, conversationId)
     const file = await statFile(path)
     const signature = file?.signature ?? null
-    const cached = titles.get(conversationId)
-    if (cached !== undefined && cached.signature === signature) return
-    let title: string | null = null
+    const cached = annotations.get(conversationId)
+    if (cached !== undefined && cached.signature === signature) return cached
+    let annotation: AntigravityAnnotation = { title: null, archived: false }
     if (file !== null) {
+      annotation.archived = cached?.archived ?? false
       try {
         const read = await readSmallFile(gate, path, ANNOTATION_MAX_BYTES)
-        title = read.kind === 'text' ? parseAnnotationTitle(read.text) : null
+        if (read.kind === 'text') annotation = parseAnnotation(read.text)
       } catch {
-        // A missing, refused, or unreadable annotation only costs the title.
-        title = null
+        // Keep the last known archive flag, and retry the new version on the next read.
+        annotations.set(conversationId, { ...annotation, signature: cached?.signature ?? null })
+        return annotation
       }
     }
-    titles.set(conversationId, { signature, title })
+    const updated = { ...annotation, signature }
+    annotations.set(conversationId, updated)
+    return updated
   }
 
   /**
@@ -456,7 +458,7 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
     return [...tracked.values()].sort(newestFirst).map((entry) => ({
       conversationId: entry.file.conversationId,
       summary: {
-        title: titles.get(entry.file.conversationId)?.title ?? null,
+        title: annotations.get(entry.file.conversationId)?.title ?? null,
         workspacePath: null,
         lastActivityAt: lastActivityAt(entry),
         toolVersion: null
