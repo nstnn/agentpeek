@@ -1,6 +1,6 @@
 # Project grouping
 
-The list defaults to Project, combining Codex and Claude Code sessions when their working-folder paths match. Antigravity never records a working folder, so its sessions always appear under No folder. Each project has an unfilled heading, a folder mark and a session-count badge, with its session rows indented below. A subtle background appears only on hover, and keyboard focus retains its visible outline. Collapsible headings keep attention and running counts visible, moving the summary below the name in narrow lists. Group by switches to Status without replacing either reading pane.
+The list defaults to Project, combining Codex, Claude Code and Antigravity sessions when their working-folder paths match. Antigravity takes its folder from its summaries database; its sessions appear under No folder when it records none. Each project has an unfilled heading, a folder mark and a session-count badge, with its session rows indented below. A subtle background appears only on hover, and keyboard focus retains its visible outline. Collapsible headings keep attention and running counts visible, moving the summary below the name in narrow lists. Group by switches to Status without replacing either reading pane.
 
 ## Sub-features
 

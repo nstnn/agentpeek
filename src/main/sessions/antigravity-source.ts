@@ -31,6 +31,7 @@ import {
   transcriptSignature,
   type TranscriptFile
 } from './antigravity-files'
+import { createAntigravityWorkspaces } from './antigravity-workspaces'
 import { statFile } from './claude-files'
 import { readFirstLine, readLastLines } from './jsonl-reader'
 import { DEFAULT_LISTING_RANGE, type ListingRange, type SessionSource } from './session-source'
@@ -50,12 +51,15 @@ import { createQueue, isMissing } from './source-support'
 //   same version even when a rewrite keeps the inode and grows the file.
 // - Annotations: `annotations/<id>.pbtxt` supplies the title and archive flag for eligible
 //   transcripts. An archive update can remove a conversation without any transcript write.
+// - Workspaces: `conversation_summaries.db` supplies each conversation's folder (DECISION-006),
+//   read as an in-memory copy by `antigravity-workspaces.ts`. It is not watched: a transcript
+//   change or listing checks it, and Antigravity writes both as a conversation runs.
 // - Live updates: Antigravity opens, appends, and closes the transcript on every step, so a folder
 //   watch on `brain/` sees each append (TASK-001). No file needs its own watch.
 // - Skills: a `/name` prompt names the skill's SKILL.md, never its text. `skill` reauthorizes the
 //   request against the prompt in the current tail, then reads the file through the skill gate,
-//   which adds Antigravity's own `.gemini/config/skills`. A skill in a project folder is refused:
-//   Antigravity never says which folder a conversation works in.
+//   which adds Antigravity's own `.gemini/config/skills`. A skill in a project folder is refused,
+//   even now that the workspace is known (DECISION-005, unchanged by DECISION-006).
 // The catalog reads records without their text. Message text is read only by `recentMessages` and
 // `skill`, is never kept, and is never logged.
 
@@ -82,7 +86,7 @@ export type { AntigravityFileStatus } from '../../core/antigravity/facts'
 /** What the reader reports about one conversation. No message text. */
 export interface AntigravityConversationFacts {
   conversationId: string
-  /** The title from the annotation file, or null; the workspace is always null (DECISION-002). */
+  /** The title from the annotation file and the workspace from the summaries database, or null. */
   summary: SessionSummary
   fileStatus: AntigravityFileStatus
   /** See `AntigravityTurnState.lastTurnStep`. */
@@ -150,6 +154,7 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
   const promptSteps = new Map<string, number>()
   const annotations = new Map<string, AntigravityAnnotation & { signature: string | null }>()
   const older = new Set<string>()
+  const workspaces = createAntigravityWorkspaces({ gate, path: paths.summaries, now })
   let health: ToolHealth = { state: 'checking' }
   let lastReadAt: number | null = null
   const serialized = createQueue()
@@ -225,6 +230,7 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
       if (!pinned) recentCount++
     }
     keep(kept)
+    await workspaces.update(tracked.keys())
 
     lastReadAt = startedAt
     health =
@@ -271,6 +277,7 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
       tracked.set(id, entry)
     }
     keep([...tracked.values()])
+    await workspaces.update(tracked.keys())
     if (
       readAny &&
       (health.state === 'connected' || (health.state === 'unsupported' && recognizedTranscript))
@@ -459,7 +466,7 @@ export function createAntigravityReader(options: AntigravityReaderOptions): Anti
       conversationId: entry.file.conversationId,
       summary: {
         title: annotations.get(entry.file.conversationId)?.title ?? null,
-        workspacePath: null,
+        workspacePath: workspaces.get(entry.file.conversationId),
         lastActivityAt: lastActivityAt(entry),
         toolVersion: null
       },
