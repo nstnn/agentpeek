@@ -4,18 +4,24 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 // Where Antigravity Desktop keeps its files, and a metadata-only listing of its transcripts. The
 // listing reads folder entries and modification times; it never opens a file (CONSTRAINT-001).
-// Opening goes through the access gate, which allows exactly the two file shapes named here.
+// Opening goes through the access gate, which allows exactly the file shapes named here.
 
 export interface AntigravityPaths {
   /** `~/.gemini/antigravity/brain`: one `<conversation id>` folder per conversation. */
   brain: string
   /** `~/.gemini/antigravity/annotations`: `<conversation id>.pbtxt` with title and archive flag. */
   annotations: string
+  /** `~/.gemini/antigravity/conversation_summaries.db`: each conversation's workspace. */
+  summaries: string
 }
 
 export function antigravityPaths(home: string): AntigravityPaths {
   const root = join(home, '.gemini', 'antigravity')
-  return { brain: join(root, 'brain'), annotations: join(root, 'annotations') }
+  return {
+    brain: join(root, 'brain'),
+    annotations: join(root, 'annotations'),
+    summaries: join(root, 'conversation_summaries.db')
+  }
 }
 
 /** The transcript's place inside a conversation folder (Antigravity Desktop 2.34.0). */

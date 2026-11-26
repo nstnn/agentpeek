@@ -73,7 +73,12 @@ const ALLOWED_FILES = [
     ]
   ],
   ['an Antigravity transcript', [...BRAIN, CONVERSATION, ...TRANSCRIPT]],
-  ['an Antigravity title', ['.gemini', 'antigravity', 'annotations', `${CONVERSATION}.pbtxt`]]
+  ['an Antigravity title', ['.gemini', 'antigravity', 'annotations', `${CONVERSATION}.pbtxt`]],
+  ['the Antigravity summaries database', ['.gemini', 'antigravity', 'conversation_summaries.db']],
+  [
+    'the Antigravity summaries write-ahead log',
+    ['.gemini', 'antigravity', 'conversation_summaries.db-wal']
+  ]
 ] as const
 
 describe('createAccessGate', () => {
@@ -247,6 +252,19 @@ describe('createAccessGate', () => {
     [
       'an Antigravity legacy store',
       ['.gemini', 'antigravity', 'conversations', `${CONVERSATION}.pb`]
+    ],
+    [
+      'the Antigravity summaries rollback journal',
+      ['.gemini', 'antigravity', 'conversation_summaries.db-journal']
+    ],
+    [
+      'the Antigravity summaries shared memory',
+      ['.gemini', 'antigravity', 'conversation_summaries.db-shm']
+    ],
+    ['another Antigravity database', ['.gemini', 'antigravity', 'user_settings.db']],
+    [
+      'an Antigravity summaries database in a subfolder',
+      ['.gemini', 'antigravity', 'brain', 'conversation_summaries.db']
     ],
     [
       'an Antigravity presence lock',

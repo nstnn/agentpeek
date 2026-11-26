@@ -1,5 +1,7 @@
 import { appendFile, chmod, mkdir, rename, rm, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
+import { pathToFileURL } from 'node:url'
 import { fixtureTarget, codexPath, registryPath, transcriptPath } from './home.mjs'
 import {
   IDS,
@@ -117,6 +119,32 @@ async function seedAntigravity(home, at) {
   ]
   for (const [name, start, lines] of conversations)
     await writeAntigravityConversation(home, name, start, lines(start))
+  // Idle and running work in the shared fixture project; quiet records no folder (No folder).
+  writeAntigravitySummaries(join(root, 'conversation_summaries.db'), [
+    [ANTIGRAVITY_IDS.idle, [CWD]],
+    [ANTIGRAVITY_IDS.running, [CWD]],
+    [ANTIGRAVITY_IDS.quiet, []]
+  ])
+}
+
+/**
+ * Writes a new synthetic `conversation_summaries.db` in WAL mode, closed so no `-wal` remains, with
+ * the observed columns AgentPeek reads and synthetic text in two it must not read.
+ */
+function writeAntigravitySummaries(path, rows) {
+  const database = new DatabaseSync(path)
+  try {
+    database.exec('PRAGMA journal_mode=WAL')
+    database.exec(`CREATE TABLE conversation_summaries (conversation_id text PRIMARY KEY,
+      title text NOT NULL DEFAULT '', preview text NOT NULL DEFAULT '', workspace_uris text NOT NULL)`)
+    const insert = database.prepare('INSERT INTO conversation_summaries VALUES (?, ?, ?, ?)')
+    for (const [conversationId, folders] of rows) {
+      const uris = folders.map((folder) => pathToFileURL(folder).href)
+      insert.run(conversationId, 'Synthetic title', 'Synthetic preview', JSON.stringify(uris))
+    }
+  } finally {
+    database.close()
+  }
 }
 
 /**

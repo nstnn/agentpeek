@@ -9,6 +9,7 @@ import {
   utimes,
   writeFile
 } from 'node:fs/promises'
+import { DatabaseSync } from 'node:sqlite'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -102,6 +103,54 @@ function finishedTurn(text = 'Synthetic question', at = T0): string[] {
     finalReplyLine({ step: 3, at: at + 3 * SECOND, text: 'Synthetic answer' })
   ]
 }
+
+/** Writes a synthetic summaries database (DECISION-006) in WAL mode, as Antigravity does. */
+function writeSummaries(rows: readonly [number, string][]): void {
+  const database = new DatabaseSync(paths.summaries)
+  database.exec('PRAGMA journal_mode=WAL')
+  database.exec(
+    'CREATE TABLE IF NOT EXISTS conversation_summaries (conversation_id text PRIMARY KEY, title text, workspace_uris text NOT NULL)'
+  )
+  database.exec('DELETE FROM conversation_summaries')
+  const insert = database.prepare('INSERT INTO conversation_summaries VALUES (?, ?, ?)')
+  for (const [n, uris] of rows) insert.run(conversationId(n), 'Synthetic title', uris)
+  database.close()
+}
+
+describe('workspaces', () => {
+  it('takes each conversation folder from the summaries database, else No folder', async () => {
+    await writeTranscript(1, finishedTurn(), NOW - 3 * MINUTE)
+    await writeTranscript(2, finishedTurn(), NOW - 2 * MINUTE)
+    await writeTranscript(3, finishedTurn(), NOW - MINUTE)
+    writeSummaries([
+      [1, '["file:///Users/synthetic/projects/app"]'],
+      [2, '[]']
+    ])
+    const reader = createReader()
+    const folders = async () =>
+      Object.fromEntries(
+        (await reader.catalog()).map((fact) => [fact.conversationId, fact.summary.workspacePath])
+      )
+    expect(await folders()).toEqual({
+      [conversationId(1)]: '/Users/synthetic/projects/app',
+      [conversationId(2)]: null,
+      [conversationId(3)]: null
+    })
+    expect(opened).toContain(paths.summaries)
+
+    // A new row for a listed conversation shows on a later transcript refresh.
+    writeSummaries([
+      [1, '["file:///Users/synthetic/projects/app"]'],
+      [2, '[]'],
+      [3, '["file:///Users/synthetic/projects/other"]']
+    ])
+    clock += 10 * SECOND
+    const refreshed = await reader.refresh([transcriptPath(paths, conversationId(3))])
+    expect(
+      refreshed.find((fact) => fact.conversationId === conversationId(3))?.summary.workspacePath
+    ).toBe('/Users/synthetic/projects/other')
+  })
+})
 
 describe('catalog', () => {
   it('lists user conversations newest first and leaves out subagents, legacy and other folders', async () => {

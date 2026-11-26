@@ -64,7 +64,8 @@ description, an Edit diff, a Read range, a failed Bash with its error, an ID-nam
 truncated Write with literal script text, and a last Bash with no result yet (Running, or Waiting
 after `claude-waiting`). These inputs are synthetic text only.
 `antigravity-seed` writes `~/.gemini/antigravity` transcripts and titles for three
-conversations. Fixture Antigravity idle is a finished turn: a `read_file` call that works, a
+conversations, plus a synthetic `conversation_summaries.db` (WAL mode, closed) that records the
+fixture project folder for idle and running and no folder for quiet. Fixture Antigravity idle is a finished turn: a `read_file` call that works, a
 `run_command` call that fails, and a reply marked shortened by the tool, so the detail shows the
 truncation notice. Running is an open turn one minute old and quiet an open turn 20 minutes old
 (Unknown · Quiet for 15 min); each has one `view_file` tool group. `antigravity-skill` writes

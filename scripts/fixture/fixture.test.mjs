@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { openSessionsService } from '../../src/main/sessions/open-sessions'
 import { createFixture, removeFixture, fixtureTarget, codexPath } from './home.mjs'
 import { simulate } from './simulate.mjs'
-import { IDS, PIDS, LONG_REPLY, HOSTILE, ANTIGRAVITY_IDS } from './records.mjs'
+import { IDS, PIDS, LONG_REPLY, HOSTILE, ANTIGRAVITY_IDS, CWD } from './records.mjs'
 
 const homes = []
 let service
@@ -249,6 +249,9 @@ it('seeds idle, running and quiet Antigravity conversations once, before launch'
   expect(antigravity('idle').attention.newReply).toBe(false)
   expect(antigravity('running').activity).toEqual({ state: 'running' })
   expect(antigravity('quiet').activity).toEqual({ state: 'unknown', reason: 'quiet' })
+  expect(antigravity('idle').summary.workspacePath).toBe(CWD)
+  expect(antigravity('running').summary.workspacePath).toBe(CWD)
+  expect(antigravity('quiet').summary.workspacePath).toBeNull()
   expect(service.snapshot().groupCounts.running).toBe(8)
   const idle = await service.recentMessages({ tool: 'antigravity', id: ANTIGRAVITY_IDS.idle }, 20)
   expect(idle.messages.map((m) => [m.kind, m.truncated === true])).toEqual([

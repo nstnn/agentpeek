@@ -29,12 +29,16 @@ const ALLOWLIST: readonly AllowedFiles[] = [
     pattern: '*/*/local_*.json'
   },
   // Antigravity Desktop (TASK-003 of the antigravity-desktop plan): one transcript per conversation,
-  // and its title/archive annotation. Never `transcript_full.jsonl`, `conversations/`, or `presence/`.
+  // its title/archive annotation, and the summaries database with its WAL for workspaces only
+  // (DECISION-006, read as an in-memory copy). Never `transcript_full.jsonl`, `conversations/`,
+  // `presence/`, or the database's `-shm` index.
   {
     folder: '.gemini/antigravity/brain',
     pattern: '{uuid}/.system_generated/logs/transcript.jsonl'
   },
-  { folder: '.gemini/antigravity/annotations', pattern: '{uuid}.pbtxt' }
+  { folder: '.gemini/antigravity/annotations', pattern: '{uuid}.pbtxt' },
+  { folder: '.gemini/antigravity', pattern: 'conversation_summaries.db' },
+  { folder: '.gemini/antigravity', pattern: 'conversation_summaries.db-wal' }
 ]
 
 /** File names that are never read, even if a pattern matches them: keys and credentials. */
