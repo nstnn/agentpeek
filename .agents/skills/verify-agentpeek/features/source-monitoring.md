@@ -36,7 +36,7 @@ Preconditions:
 ## Gotchas
 
 - ON permits AgentPeek to monitor local files; it does not launch, quit, sign in to, or change any tool.
-- Connected for Antigravity confirms access to transcript-backed Desktop conversations only (not older `.pb`-only legacy history), and Antigravity sessions omit unsupported Open actions in detail and menus.
+- Connected for Antigravity confirms access to transcript-backed Desktop conversations only (not older `.pb`-only legacy history), and Open Antigravity only brings the app to the front, never one conversation.
 - A source may remain ON while Not installed, No access or Unsupported format. Only Connected tools appear in the footer; all sources remain reachable in Settings.
 - Saving temporarily prevents further source changes without removing switch keyboard focus. Failed saves leave the previous choice in place.
 - Already queued reads may complete after OFF; their results must not repopulate sessions or return messages.

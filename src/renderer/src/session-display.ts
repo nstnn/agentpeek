@@ -40,10 +40,10 @@ const TOOL_MONOGRAMS: Readonly<Record<AgentTool, string>> = {
   claude: 'A',
   antigravity: 'G'
 }
-const OPEN_TOOL_LABELS: Readonly<Record<AgentTool, string | null>> = {
+const OPEN_TOOL_LABELS: Readonly<Record<AgentTool, string>> = {
   codex: 'Open Codex',
   claude: 'Open Claude',
-  antigravity: null
+  antigravity: 'Open Antigravity'
 }
 const TOOL_HOMES: Readonly<Record<AgentTool, string>> = {
   codex: '~/.codex',
@@ -53,7 +53,7 @@ const TOOL_HOMES: Readonly<Record<AgentTool, string>> = {
 export const toolName = (tool: AgentTool): string => TOOL_NAMES[tool]
 export const toolAuthor = (tool: AgentTool): string => TOOL_AUTHORS[tool]
 export const toolMonogram = (tool: AgentTool): string => TOOL_MONOGRAMS[tool]
-export const openToolLabel = (tool: AgentTool): string | null => OPEN_TOOL_LABELS[tool]
+export const openToolLabel = (tool: AgentTool): string => OPEN_TOOL_LABELS[tool]
 export const toolHome = (tool: AgentTool): string => TOOL_HOMES[tool]
 export const quietMinutes = (tool: AgentTool): number =>
   (tool === 'antigravity' ? ANTIGRAVITY_QUIET_LIMIT_MS : CODEX_QUIET_LIMIT_MS) / 60_000

@@ -1,6 +1,7 @@
 import type { MenuItemConstructorOptions } from 'electron'
 import type { Session } from '../core/session'
 import type { MenuCommand } from '../shared/api'
+import type { AgentTool } from '../core/tools'
 import { MIN_ZOOM, MAX_ZOOM, type ZoomAction } from '../shared/preferences'
 
 export interface SessionMenuActions {
@@ -14,13 +15,18 @@ export interface SessionMenuActions {
   back(this: void): void
 }
 
+const OPEN_LABELS: Readonly<Record<AgentTool, string>> = {
+  codex: 'Open Codex',
+  claude: 'Open Claude',
+  antigravity: 'Open Antigravity'
+}
+
 export function buildSessionMenu(
   session: Session | null,
   actions: SessionMenuActions,
   options: { context?: boolean; canGoBack?: boolean; canCloseSecondary?: boolean } = {}
 ): MenuItemConstructorOptions[] {
   const enabled = session !== null
-  const canOpen = session === null || session.key.tool !== 'antigravity'
   const items: MenuItemConstructorOptions[] = [
     ...(options.canCloseSecondary
       ? [
@@ -39,17 +45,13 @@ export function buildSessionMenu(
       click: actions.openSecondary
     },
     { type: 'separator' },
-    ...(canOpen
-      ? [
-          {
-            id: 'session-open',
-            label: session?.key.tool === 'claude' ? 'Open Claude' : 'Open Codex',
-            accelerator: 'CommandOrControl+O',
-            enabled: enabled && !session.unavailable,
-            click: actions.open
-          }
-        ]
-      : []),
+    {
+      id: 'session-open',
+      label: OPEN_LABELS[session?.key.tool ?? 'codex'],
+      accelerator: 'CommandOrControl+O',
+      enabled: enabled && !session.unavailable,
+      click: actions.open
+    },
     {
       id: 'session-mark-read',
       label: 'Mark Read',

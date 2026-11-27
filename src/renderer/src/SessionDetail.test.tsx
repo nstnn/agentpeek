@@ -669,9 +669,12 @@ describe('session detail', () => {
     expect(screen.getByRole('button', { name: 'Open Claude' }).getAttribute('title')).toBe(tooltip)
   })
 
-  it.each(['codex', 'claude'] as const)(
+  it.each(['codex', 'claude', 'antigravity'] as const)(
     'dispatches %s header actions and reports failures',
     async (tool) => {
+      const open = { codex: 'Open Codex', claude: 'Open Claude', antigravity: 'Open Antigravity' }[
+        tool
+      ]
       const f = mountDetail(
         {
           key: { tool, id: 'exact-synthetic-id' },
@@ -680,25 +683,21 @@ describe('session detail', () => {
         false
       )
       await screen.findByText('Synthetic prompt')
-      await userEvent.click(
-        screen.getByRole('button', { name: tool === 'codex' ? 'Open Codex' : 'Open Claude' })
-      )
+      await userEvent.click(screen.getByRole('button', { name: open }))
       expect(f.api.openTool).toHaveBeenCalledWith({ tool, id: 'exact-synthetic-id' })
       await userEvent.click(screen.getByRole('button', { name: 'Pin' }))
       expect(f.api.setPinned).toHaveBeenCalledWith({ tool, id: 'exact-synthetic-id' }, true)
       await userEvent.click(screen.getByRole('button', { name: 'Mark Read' }))
       expect(f.api.markRead).toHaveBeenCalledWith({ tool, id: 'exact-synthetic-id' })
       f.api.openTool.mockResolvedValueOnce(false)
-      await userEvent.click(
-        screen.getByRole('button', { name: tool === 'codex' ? 'Open Codex' : 'Open Claude' })
-      )
+      await userEvent.click(screen.getByRole('button', { name: open }))
       expect(screen.getByRole('status').textContent).toBe(
-        `Couldn't open ${tool === 'codex' ? 'Codex' : 'Claude Code'}.`
+        `Couldn't open ${{ codex: 'Codex', claude: 'Claude Code', antigravity: 'Antigravity' }[tool]}.`
       )
     }
   )
 
-  it('renders Antigravity author, truncation notice, 15-minute quiet copy, and no Open action', async () => {
+  it('renders Antigravity author, truncation notice, 15-minute quiet copy, and an app-only Open', async () => {
     const f = mountDetail(
       {
         key: { tool: 'antigravity', id: 'exact-ag-id' },
@@ -735,7 +734,10 @@ describe('session detail', () => {
     expect(screen.getByText('Antigravity · No folder')).toBeTruthy()
     expect(screen.getByText('Unknown · Quiet for 15 min')).toBeTruthy()
     expect(screen.getByText(/Antigravity hasn't written anything for 15 minutes\./)).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /^Open / })).toBeNull()
+    // Antigravity has no link to one conversation, so Open only brings the app forward and says so.
+    expect(screen.getByRole('button', { name: 'Open Antigravity' }).title).toBe(
+      "Bring Antigravity to the front. It can't open this conversation for you."
+    )
     expect(screen.getByText('Antigravity')).toBeTruthy()
     expect(screen.queryByText('Claude')).toBeNull()
     expect(
