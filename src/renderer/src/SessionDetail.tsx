@@ -320,24 +320,24 @@ export function SessionDetail({
           </div>
         )}
         <div className="detail-actions">
-          {openName !== null && (
-            <button
-              type="button"
-              disabled={missing}
-              title={
-                tool === 'codex'
-                  ? 'Open this session in Codex'
+          <button
+            type="button"
+            disabled={missing}
+            title={
+              tool === 'codex'
+                ? 'Open this session in Codex'
+                : tool === 'antigravity'
+                  ? "Bring Antigravity to the front. It can't open this conversation for you."
                   : session.appSessionId
                     ? 'Open this session in Claude'
                     : 'Bring the Claude app to the front'
-              }
-              onClick={() =>
-                void action(() => api.openTool(session.key), `Couldn't open ${toolName(tool)}.`)
-              }
-            >
-              {openName}
-            </button>
-          )}
+            }
+            onClick={() =>
+              void action(() => api.openTool(session.key), `Couldn't open ${toolName(tool)}.`)
+            }
+          >
+            {openName}
+          </button>
           <button
             type="button"
             disabled={missing || !(session.attention.newReply || session.attention.error)}

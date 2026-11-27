@@ -30,7 +30,7 @@ describe('session presentation', () => {
       'G'
     ])
     expect([openToolLabel('codex'), openToolLabel('claude'), openToolLabel('antigravity')]).toEqual(
-      ['Open Codex', 'Open Claude', null]
+      ['Open Codex', 'Open Claude', 'Open Antigravity']
     )
     expect([quietMinutes('codex'), quietMinutes('antigravity')]).toEqual([30, 15])
     expect(

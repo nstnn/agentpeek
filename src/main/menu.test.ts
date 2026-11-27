@@ -185,7 +185,7 @@ describe('session and context menus', () => {
     expect(items).toHaveLength(6)
     expect(items.some((item) => item.id === 'session-back')).toBe(false)
   })
-  it('omits the unsupported Open item for Antigravity in both Session and context menus', () => {
+  it('offers Open Antigravity in both Session and context menus', () => {
     const callbacks = actions()
     const antigravity = testSession({
       key: { tool: 'antigravity', id: 'synthetic-ag' },
@@ -196,28 +196,25 @@ describe('session and context menus', () => {
       canGoBack: true,
       canCloseSecondary: true
     })
-    expect(sessionMenu.some((item) => item.id === 'session-open')).toBe(false)
     expect(
       sessionMenu.filter((item) => item.label).map((item) => [item.label, item.accelerator])
     ).toEqual([
       ['Open in Left Pane', undefined],
       ['Open in Right Pane', undefined],
+      ['Open Antigravity', 'CommandOrControl+O'],
       ['Mark Read', 'Shift+CommandOrControl+U'],
       ['Unpin', 'Shift+CommandOrControl+P'],
       ['Copy Session ID', 'Alt+CommandOrControl+C'],
       ['Close Right Pane', undefined],
       ['Back', 'CommandOrControl+[']
     ])
-    for (const item of sessionMenu.filter((item) => item.label)) click(item)
-    expect(callbacks.open).not.toHaveBeenCalled()
-    expect(callbacks.markRead).toHaveBeenCalledOnce()
-    expect(callbacks.pin).toHaveBeenCalledOnce()
-    expect(callbacks.copy).toHaveBeenCalledOnce()
+    click(sessionMenu.find((item) => item.id === 'session-open'))
+    expect(callbacks.open).toHaveBeenCalledOnce()
 
     const contextMenu = buildSessionMenu(antigravity, actions(), { context: true })
-    expect(contextMenu.some((item) => item.id === 'session-open')).toBe(false)
     expect(contextMenu.filter((item) => item.label).map((item) => item.label)).toEqual([
       'Open to the Right',
+      'Open Antigravity',
       'Mark Read',
       'Unpin',
       'Copy Session ID'
